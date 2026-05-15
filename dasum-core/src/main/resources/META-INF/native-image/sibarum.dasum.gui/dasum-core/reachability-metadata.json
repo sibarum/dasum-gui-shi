@@ -1,0 +1,8 @@
+{
+  "resources": [
+    { "glob": "shaders/solid-fill.vert" },
+    { "glob": "shaders/solid-fill.frag" },
+    { "glob": "shaders/msdf-text.vert" },
+    { "glob": "shaders/msdf-text.frag" }
+  ]
+}
