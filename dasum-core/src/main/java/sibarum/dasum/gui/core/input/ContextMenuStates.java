@@ -35,4 +35,10 @@ public final class ContextMenuStates {
 
     /** Alias of {@link #remove(Component)} used by {@link sibarum.dasum.gui.core.component.Components#detach}. */
     public static void clear(Component c) { remove(c); }
+
+    /** Copy {@code from}'s provider (if any) to {@code to}. */
+    public static void migrate(Component from, Component to) {
+        ContextMenuProvider p = PROVIDERS.get(from);
+        if (p != null) PROVIDERS.put(to, p);
+    }
 }

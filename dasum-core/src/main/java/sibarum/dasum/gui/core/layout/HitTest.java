@@ -107,8 +107,8 @@ public final class HitTest {
 
     private static List<Component> childrenOf(Component c) {
         return switch (c) {
-            case Component.Box  b -> b.children();
-            case Component.Flex f -> f.children();
+            case Component.Box  b -> sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(b);
+            case Component.Flex f -> sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(f);
             case Component.Scroll s -> s.child() != null ? List.of(s.child()) : List.of();
             case Component.Text t   -> List.of();
             case Component.Checkbox cb -> List.of();

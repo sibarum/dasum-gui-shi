@@ -75,4 +75,17 @@ public final class GraphSurfaceZOrder {
         }
         if (changed) Invalidator.invalidate();
     }
+
+    /** Migrate z-order entries (surface and child roles). */
+    public static void migrate(Component from, Component to) {
+        List<Component> surfaceList = ORDERS.get(from);
+        if (surfaceList != null) {
+            ORDERS.put(to, new ArrayList<>(surfaceList));
+        }
+        for (List<Component> list : ORDERS.values()) {
+            for (int i = 0; i < list.size(); i++) {
+                if (list.get(i) == from) list.set(i, to);
+            }
+        }
+    }
 }

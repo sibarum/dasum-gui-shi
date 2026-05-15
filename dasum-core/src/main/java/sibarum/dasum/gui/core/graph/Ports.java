@@ -104,4 +104,38 @@ public final class Ports {
         }
         BY_NODE.remove(c);
     }
+
+    /**
+     * Copy port-related state from {@code from} to {@code to}. Handles
+     * both roles: if {@code from} is a port, re-register the port with
+     * {@code to} as the port component; if {@code from} is a node, copy
+     * its port list (re-pointing each Port record's {@code node} field
+     * to {@code to}).
+     */
+    public static void migrate(Component from, Component to) {
+        Port asPort = PORTS.get(from);
+        if (asPort != null) {
+            PORTS.put(to, new Port(to, asPort.type(), asPort.direction(),
+                asPort.node(), asPort.name()));
+            List<Port> siblings = BY_NODE.get(asPort.node());
+            if (siblings != null) {
+                for (int i = 0; i < siblings.size(); i++) {
+                    Port p = siblings.get(i);
+                    if (p.component() == from) {
+                        siblings.set(i, new Port(to, p.type(), p.direction(), p.node(), p.name()));
+                    }
+                }
+            }
+        }
+        List<Port> nodeList = BY_NODE.get(from);
+        if (nodeList != null) {
+            List<Port> repointed = new ArrayList<>(nodeList.size());
+            for (Port p : nodeList) {
+                Port np = new Port(p.component(), p.type(), p.direction(), to, p.name());
+                repointed.add(np);
+                PORTS.put(p.component(), np);
+            }
+            BY_NODE.put(to, repointed);
+        }
+    }
 }

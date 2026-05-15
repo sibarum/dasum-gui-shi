@@ -57,4 +57,16 @@ public final class GraphSurfacePositions {
         }
         if (changed) Invalidator.invalidate();
     }
+
+    /** Migrate positions for {@code from} (handles both surface and child roles). */
+    public static void migrate(Component from, Component to) {
+        Map<Component, Pos> surfaceMap = POSITIONS.get(from);
+        if (surfaceMap != null) {
+            POSITIONS.put(to, new IdentityHashMap<>(surfaceMap));
+        }
+        for (Map<Component, Pos> map : POSITIONS.values()) {
+            Pos p = map.get(from);
+            if (p != null) map.put(to, p);
+        }
+    }
 }

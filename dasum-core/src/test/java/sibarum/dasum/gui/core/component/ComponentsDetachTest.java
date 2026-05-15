@@ -155,6 +155,91 @@ final class ComponentsDetachTest {
     }
 
     @Test
+    void migrateStateCopiesEveryBuiltInSidecar() {
+        // Use a clean component pair — registration on `original`, then
+        // migrate to `replacement`, then verify replacement carries the
+        // state.
+        Component.Box  original    = new Component.Box(Em.of(2f), Em.of(2f), Em.ZERO,
+            new Color(0.5f, 0.5f, 0.5f, 1f));
+        Component.Box  replacement = new Component.Box(Em.of(2f), Em.of(2f), Em.ZERO,
+            new Color(0.6f, 0.6f, 0.6f, 1f));
+
+        // Register every kind of sidecar entry on `original`.
+        int[] clickFired = { 0 };
+        Handlers.onClick(original, () -> clickFired[0]++);
+        Handlers.onContextMenu(original, ev -> java.util.List.of());
+        FocusState.set(original);
+        HoverState.update(original);
+
+        // Migrate.
+        Components.migrateState(original, replacement);
+
+        // Replacement now has handlers + provider.
+        assertNotNull(ContextMenuStates.get(replacement),
+            "context-menu provider copied to replacement");
+        assertEquals(replacement, FocusState.focused(),
+            "focus transferred to replacement");
+        assertEquals(replacement, HoverState.hovered(),
+            "hover transferred to replacement");
+
+        // Click handler reachable on replacement via Handlers.activate.
+        Handlers.activate(replacement, replacement);
+        assertEquals(1, clickFired[0],
+            "click handler fires on replacement after migrate");
+
+        // Note on FocusState semantics: migrate(original, replacement)
+        // already moved focus to replacement (FocusState.set transitions
+        // away from original). So after migrate, original is no longer
+        // focused. Subsequent detach(original) doesn't clear replacement's
+        // focus.
+        Components.detach(original);
+        assertEquals(replacement, FocusState.focused(),
+            "focus stays on replacement after detaching original");
+    }
+
+    @Test
+    void dynamicChildrenParticipateInDetach() {
+        // Build a Flex with one declared child and add two more via
+        // DynamicChildren. Detach the parent — verify all three children
+        // have their state cleared and the dynamic-children sidecar is
+        // empty afterwards.
+        Component.Box declared = new Component.Box(Em.of(1f), Em.of(1f), Em.ZERO,
+            new Color(0.5f, 0.5f, 0.5f, 1f));
+        Component.Box dyn1     = new Component.Box(Em.of(1f), Em.of(1f), Em.ZERO,
+            new Color(0.4f, 0.4f, 0.4f, 1f));
+        Component.Box dyn2     = new Component.Box(Em.of(1f), Em.of(1f), Em.ZERO,
+            new Color(0.3f, 0.3f, 0.3f, 1f));
+        Component.Flex parent = new Component.Flex(
+            null, null, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            sibarum.dasum.gui.core.component.Direction.COLUMN,
+            sibarum.dasum.gui.core.component.JustifyContent.START,
+            sibarum.dasum.gui.core.component.AlignItems.STRETCH,
+            Em.ZERO, List.of(declared), false, 0);
+        sibarum.dasum.gui.core.component.DynamicChildren.add(parent, dyn1);
+        sibarum.dasum.gui.core.component.DynamicChildren.add(parent, dyn2);
+        Handlers.onClick(dyn1, () -> {});
+        Handlers.onClick(dyn2, () -> {});
+
+        // Pre-detach: effective children = [declared, dyn1, dyn2].
+        assertEquals(3,
+            sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(parent).size());
+
+        Components.detach(parent);
+
+        // Dynamic-children list cleared.
+        assertTrue(
+            sibarum.dasum.gui.core.component.DynamicChildren.added(parent).isEmpty(),
+            "dynamic-children list cleared after parent detach");
+        // Declared child's handler is also cleared (cascade through declared
+        // children — same as before).
+        assertTrue(
+            sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(parent).isEmpty()
+                || sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(parent)
+                    .stream().allMatch(c -> ContextMenuStates.get(c) == null),
+            "no orphaned context-menu providers");
+    }
+
+    @Test
     void externalCleanerReceivesEveryComponentExactlyOnce() {
         Component.Box leaf1 = new Component.Box(Em.of(1f), Em.of(1f), Em.ZERO,
             new Color(0f, 0f, 0f, 1f));

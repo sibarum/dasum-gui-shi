@@ -78,4 +78,17 @@ public final class GraphSurfaceChildren {
         }
         if (changed) Invalidator.invalidate();
     }
+
+    /** Migrate dynamic-children entries (surface and child roles). */
+    public static void migrate(Component from, Component to) {
+        List<Component> surfaceList = ADDED.get(from);
+        if (surfaceList != null) {
+            ADDED.put(to, new ArrayList<>(surfaceList));
+        }
+        for (List<Component> list : ADDED.values()) {
+            for (int i = 0; i < list.size(); i++) {
+                if (list.get(i) == from) list.set(i, to);
+            }
+        }
+    }
 }

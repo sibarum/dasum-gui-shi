@@ -47,6 +47,11 @@ public final class Connections {
     }
 
     private static void fire(EventKind kind, Component surface, Connection c) {
+        sibarum.dasum.gui.core.debug.Dbg.log("connections", () ->
+            kind + " on " + sibarum.dasum.gui.core.debug.Dbg.id(surface)
+                + ": " + sibarum.dasum.gui.core.debug.Dbg.id(c.from())
+                + " → " + sibarum.dasum.gui.core.debug.Dbg.id(c.to())
+                + " (listeners=" + LISTENERS.size() + ")");
         if (LISTENERS.isEmpty()) return;
         Event e = new Event(kind, surface, c);
         for (Consumer<Event> l : LISTENERS) l.accept(e);
@@ -162,5 +167,29 @@ public final class Connections {
             }
         }
         if (changed) Invalidator.invalidate();
+    }
+
+    /**
+     * Migrate connection state from {@code from} to {@code to}. Handles
+     * both roles: surface-keyed list copy when {@code from} is a surface,
+     * and endpoint rewriting when {@code from} is a port (rewires every
+     * connection mentioning it across all surfaces). Does not re-fire
+     * listener events — this is a structural relocation, not an add.
+     */
+    public static void migrate(Component from, Component to) {
+        List<Connection> surfaceList = BY_SURFACE.get(from);
+        if (surfaceList != null) {
+            BY_SURFACE.put(to, new ArrayList<>(surfaceList));
+        }
+        for (List<Connection> list : BY_SURFACE.values()) {
+            for (int i = 0; i < list.size(); i++) {
+                Connection conn = list.get(i);
+                Component newFromEp = (conn.from() == from) ? to : conn.from();
+                Component newToEp   = (conn.to()   == from) ? to : conn.to();
+                if (newFromEp != conn.from() || newToEp != conn.to()) {
+                    list.set(i, new Connection(newFromEp, newToEp));
+                }
+            }
+        }
     }
 }

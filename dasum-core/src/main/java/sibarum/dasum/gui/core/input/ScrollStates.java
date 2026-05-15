@@ -34,4 +34,10 @@ public final class ScrollStates {
     public static void clear(Component c) {
         STATES.remove(c);
     }
+
+    /** Copy {@code from}'s scroll position to {@code to}. */
+    public static void migrate(Component from, Component to) {
+        ScrollPosition p = STATES.get(from);
+        if (p != null) STATES.put(to, p);
+    }
 }

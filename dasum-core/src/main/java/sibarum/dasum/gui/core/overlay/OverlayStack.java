@@ -172,6 +172,15 @@ public final class OverlayStack {
                 h = viewport.height() * 0.5f;
             }
         }
+        // Clamp the overlay's size to the viewport before computing its
+        // anchor position. Oversized overlays (e.g. a popup whose content
+        // intrinsic-sizes larger than the screen) would otherwise hang
+        // off whichever edge the anchor would otherwise leave them on.
+        // The actual scrolling of clipped content is the overlay's
+        // responsibility — apps that produce long popups should wrap
+        // them in a Scroll with a bounded height.
+        if (w > viewport.width())  w = viewport.width();
+        if (h > viewport.height()) h = viewport.height();
         return switch (o.anchor()) {
             case Anchor.Center c -> new PixelRect(
                 viewport.x() + (viewport.width()  - w) * 0.5f,

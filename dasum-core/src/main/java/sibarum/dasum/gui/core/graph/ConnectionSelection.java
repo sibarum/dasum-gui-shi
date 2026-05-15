@@ -51,4 +51,21 @@ public final class ConnectionSelection {
             clear();
         }
     }
+
+    /**
+     * If the selection's surface or either endpoint is {@code from},
+     * rewrite the selection to point at {@code to}. Designed for use
+     * after {@link Connections#migrate}.
+     */
+    public static void migrate(Component from, Component to) {
+        if (selectedConnection == null) return;
+        if (selectedSurface == from && to instanceof Component.GraphSurface gs) {
+            selectedSurface = gs;
+        }
+        Component newFrom = (selectedConnection.from() == from) ? to : selectedConnection.from();
+        Component newTo   = (selectedConnection.to()   == from) ? to : selectedConnection.to();
+        if (newFrom != selectedConnection.from() || newTo != selectedConnection.to()) {
+            selectedConnection = new Connection(newFrom, newTo);
+        }
+    }
 }

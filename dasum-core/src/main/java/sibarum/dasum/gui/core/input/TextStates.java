@@ -88,4 +88,12 @@ public final class TextStates {
         STATES.remove(c);
         LISTENERS.remove(c);
     }
+
+    /** Copy {@code from}'s edit state + listeners to {@code to}. */
+    public static void migrate(Component from, Component to) {
+        TextState s = STATES.get(from);
+        if (s != null) STATES.put(to, s);
+        List<Consumer<String>> ls = LISTENERS.get(from);
+        if (ls != null) LISTENERS.put(to, new ArrayList<>(ls));
+    }
 }

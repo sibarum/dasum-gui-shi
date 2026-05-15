@@ -39,10 +39,16 @@ public final class Handlers {
 
     private Handlers() {}
 
-    public static void onClick(Component c, ClickHandler h) { CLICK.put(c, h); }
+    public static void onClick(Component c, ClickHandler h) {
+        CLICK.put(c, h);
+        sibarum.dasum.gui.core.debug.Dbg.log("handlers", () ->
+            "onClick registered on " + sibarum.dasum.gui.core.debug.Dbg.id(c));
+    }
 
     public static void onClick(Component c, Runnable r) {
         CLICK.put(c, () -> { r.run(); return false; });
+        sibarum.dasum.gui.core.debug.Dbg.log("handlers", () ->
+            "onClick registered on " + sibarum.dasum.gui.core.debug.Dbg.id(c));
     }
 
     public static void onFocus(Component c, Runnable r) { FOCUS.put(c, r); }
@@ -79,6 +85,23 @@ public final class Handlers {
     /** Alias of {@link #clearAll(Component)} used by {@link sibarum.dasum.gui.core.component.Components#detach}. */
     public static void clear(Component c) { clearAll(c); }
 
+    /**
+     * Copy every handler registered against {@code from} to {@code to}.
+     * Existing entries on {@code to} are overwritten. Used by
+     * {@link sibarum.dasum.gui.core.component.Components#migrateState} to
+     * recover when an app transforms a Component (via a {@code with*}
+     * method) after registering identity-keyed state on it.
+     */
+    public static void migrate(Component from, Component to) {
+        ClickHandler ch = CLICK.get(from);
+        if (ch != null) CLICK.put(to, ch);
+        Runnable f = FOCUS.get(from);
+        if (f != null) FOCUS.put(to, f);
+        Runnable b = BLUR.get(from);
+        if (b != null) BLUR.put(to, b);
+        ContextMenuStates.migrate(from, to);
+    }
+
     // ---------- dispatch ----------
 
     /**
@@ -88,10 +111,23 @@ public final class Handlers {
      */
     public static void fireClick(Component leaf, Component root) {
         if (leaf == null || root == null) return;
+        sibarum.dasum.gui.core.debug.Dbg.log("handlers", () ->
+            "fireClick leaf=" + sibarum.dasum.gui.core.debug.Dbg.id(leaf));
         List<Component> path = HitTest.pathTo(root, leaf); // root → leaf
+        boolean handled = false;
         for (int i = path.size() - 1; i >= 0; i--) {
             ClickHandler h = CLICK.get(path.get(i));
-            if (h != null && h.onClick()) return;
+            if (h != null) {
+                final Component owner = path.get(i);
+                sibarum.dasum.gui.core.debug.Dbg.log("handlers", () ->
+                    "click consumed by " + sibarum.dasum.gui.core.debug.Dbg.id(owner));
+                handled = true;
+                if (h.onClick()) return;
+            }
+        }
+        if (!handled) {
+            sibarum.dasum.gui.core.debug.Dbg.log("handlers",
+                "click bubbled to root with no handler — check registration identity (Themed/with* may have swapped it)");
         }
     }
 

@@ -17,6 +17,7 @@ import sibarum.dasum.gui.core.input.TextStates;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -59,6 +60,7 @@ public final class Components {
      * is negligible.
      */
     private static final List<Consumer<Component>> EXTERNAL_CLEANERS = new CopyOnWriteArrayList<>();
+    private static final List<BiConsumer<Component, Component>> EXTERNAL_MIGRATORS = new CopyOnWriteArrayList<>();
 
     private Components() {}
 
@@ -75,6 +77,68 @@ public final class Components {
      */
     public static void registerCleaner(Consumer<Component> cleaner) {
         EXTERNAL_CLEANERS.add(cleaner);
+    }
+
+    /**
+     * Register a per-component migrator for an app-defined sidecar. The
+     * migrator is invoked from {@link #migrateState(Component, Component)}
+     * and should copy any state keyed by the {@code from} component to
+     * be keyed by {@code to} instead. Cleaners and migrators are
+     * registered separately because not every sidecar that participates
+     * in cleanup needs to participate in migration (e.g. ephemeral
+     * caches), and vice versa.
+     */
+    public static void registerMigrator(BiConsumer<Component, Component> migrator) {
+        EXTERNAL_MIGRATORS.add(migrator);
+    }
+
+    /**
+     * Copy every built-in sidecar's entries keyed by {@code from} to be
+     * keyed by {@code to} as well. The original entries under
+     * {@code from} are left in place — call {@link #detach(Component)
+     * detach(from)} afterwards if you also want to discard them.
+     *
+     * <p>Intended use: an app intentionally transformed a Component via
+     * a {@code with*} method (which always produces a new record identity)
+     * after registering identity-keyed state on it. Without
+     * {@code migrateState}, the new instance would have no
+     * {@link sibarum.dasum.gui.core.input.Handlers}, no
+     * {@link sibarum.dasum.gui.core.graph.Ports}, no scroll position,
+     * etc. — every sidecar lookup silently misses. With it:
+     *
+     * <pre>
+     *   Component button = Themed.button("Save", Em.of(6f), Variant.PRIMARY, 0);
+     *   Handlers.onClick(button, this::save);
+     *   Component padded = button.withFlexGrow(1);
+     *   Components.migrateState(button, padded);   // ← recover
+     *   parent.add(padded);
+     * </pre>
+     *
+     * <p>For most cases the cleaner approach is to register state on the
+     * final record identity instead — see
+     * {@link sibarum.dasum.gui.core.theme.Themed#button(String,
+     * sibarum.dasum.gui.core.em.Em,
+     * sibarum.dasum.gui.core.theme.Variant, int, Runnable)} for the
+     * idiomatic pattern.
+     */
+    public static void migrateState(Component from, Component to) {
+        if (from == null || to == null || from == to) return;
+        Handlers.migrate(from, to);
+        ContextMenuStates.migrate(from, to);
+        TextStates.migrate(from, to);
+        ScrollStates.migrate(from, to);
+        FocusState.migrate(from, to);
+        HoverState.migrate(from, to);
+        Connections.migrate(from, to);
+        ConnectionSelection.migrate(from, to);
+        Ports.migrate(from, to);
+        GraphSurfacePositions.migrate(from, to);
+        GraphSurfaceZOrder.migrate(from, to);
+        GraphSurfaceChildren.migrate(from, to);
+        DynamicChildren.migrate(from, to);
+        for (BiConsumer<Component, Component> ext : EXTERNAL_MIGRATORS) {
+            ext.accept(from, to);
+        }
     }
 
     /**
@@ -117,8 +181,8 @@ public final class Components {
      */
     private static List<Component> childrenOf(Component c) {
         return switch (c) {
-            case Component.Box b      -> b.children();
-            case Component.Flex f     -> f.children();
+            case Component.Box b      -> DynamicChildren.effectiveChildren(b);
+            case Component.Flex f     -> DynamicChildren.effectiveChildren(f);
             case Component.Scroll s   -> s.child() == null ? List.of() : List.of(s.child());
             case Component.Tabs t     -> tabContents(t);
             case Component.GraphSurface g -> GraphSurfaceChildren.all(g);
@@ -160,5 +224,6 @@ public final class Components {
         GraphSurfacePositions.clear(c);
         GraphSurfaceZOrder.clear(c);
         GraphSurfaceChildren.clear(c);
+        DynamicChildren.clear(c);
     }
 }

@@ -86,8 +86,9 @@ public final class Layout {
     private static float fitContentMain(Component.Flex flex) {
         boolean row = flex.direction() == Direction.ROW;
         float total = 0f;
-        int n = flex.children().size();
-        for (Component child : flex.children()) {
+        List<Component> kids = sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(flex);
+        int n = kids.size();
+        for (Component child : kids) {
             total += intrinsicMain(child, row);
         }
         if (n > 1) total += flex.gap().toPixels() * (n - 1);
@@ -98,7 +99,7 @@ public final class Layout {
     private static float fitContentCross(Component.Flex flex) {
         boolean row = flex.direction() == Direction.ROW;
         float maxCross = 0f;
-        for (Component child : flex.children()) {
+        for (Component child : sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(flex)) {
             float c = intrinsicCross(child, row);
             if (c > maxCross) maxCross = c;
         }
@@ -327,7 +328,7 @@ public final class Layout {
 
     private static void layoutBoxChildren(Component.Box box, PixelRect rect, Map<Component, PixelRect> rects) {
         PixelRect interior = insetByPadding(rect, box.padding());
-        for (Component child : box.children()) {
+        for (Component child : sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(box)) {
             PixelRect childRect = centerChildIn(child, interior);
             layoutInto(child, childRect, rects);
         }
@@ -419,7 +420,7 @@ public final class Layout {
 
     private static void layoutFlex(Component.Flex flex, PixelRect rect, Map<Component, PixelRect> rects) {
         PixelRect interior = insetByPadding(rect, flex.padding());
-        List<Component> kids = flex.children();
+        List<Component> kids = sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(flex);
         if (kids.isEmpty()) return;
 
         boolean row = flex.direction() == Direction.ROW;

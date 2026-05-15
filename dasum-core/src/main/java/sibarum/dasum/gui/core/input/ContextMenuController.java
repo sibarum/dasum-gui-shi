@@ -19,6 +19,7 @@ import sibarum.dasum.gui.natives.glfw.Glfw;
 import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Dispatcher for right-click context menus. On {@link #onMouseDown},
@@ -43,12 +44,33 @@ public final class ContextMenuController {
     private static final Color ROW_BG_SEL  = new Color(0.30f, 0.55f, 0.85f, 1f);
     private static final Color ROW_FG_SEL  = new Color(0.97f, 0.98f, 1.00f, 1f);
     private static final Color SEP_BG      = new Color(0.25f, 0.27f, 0.32f, 1f);
+    private static final Color INPUT_BG    = new Color(0.13f, 0.16f, 0.21f, 1f);
     private static final Color TRANSPARENT = new Color(0f, 0f, 0f, 0f);
+
+    /** Item count at or below which the popup fits to content with no
+     *  filter input or scroll — keeps short menus tight. */
+    private static final int FIT_TO_CONTENT_ITEMS = 10;
+    /** Width of the popup when it switches to long-menu mode (filter +
+     *  scroll). Fixed because mixing AUTO width with a Scroll's bounded
+     *  height makes filter typing reflow the popup awkwardly. */
+    private static final Em LONG_MODE_WIDTH = Em.of(22f);
+    /** Max scroll viewport height for the row list in long-menu mode. */
+    private static final Em LONG_MODE_SCROLL_HEIGHT = Em.of(16f);
 
     private static boolean menuOpen = false;
     private static List<ContextMenuItem> currentItems = List.of();
-    private static final List<Component> currentRows = new ArrayList<>(); // parallel to currentItems (separators included)
-    private static int selectedIndex = -1;
+    /** Currently-rendered rows, parallel to {@link #visibleIndices}. */
+    private static final List<Component> currentRows = new ArrayList<>();
+    /** Indices into {@link #currentItems} that match the active filter,
+     *  in display order. When filter is empty, equals 0..items-1. */
+    private static List<Integer> visibleIndices = List.of();
+    /** Index into {@link #visibleIndices} pointing at the highlighted row;
+     *  {@code -1} if no row is highlightable. */
+    private static int selectedVisible = -1;
+    /** Stable Text component for the filter input. Reused across rebuilds
+     *  to preserve its caret position. {@code null} when the popup is
+     *  closed or in fit-to-content (no-filter) mode. */
+    private static Component.Text filterInput = null;
 
     private ContextMenuController() {}
 
@@ -71,7 +93,14 @@ public final class ContextMenuController {
         if (lr == null || root == null) return false;
 
         Component deepest = HitTest.test(root, lr, (float) pxX, (float) pxY);
-        if (deepest == null) return false;
+        if (deepest == null) {
+            sibarum.dasum.gui.core.debug.Dbg.log("ctx-menu", () ->
+                "right-click at (" + pxX + "," + pxY + ") hit no component");
+            return false;
+        }
+        sibarum.dasum.gui.core.debug.Dbg.log("ctx-menu", () ->
+            "right-click at (" + pxX + "," + pxY + ") hit "
+                + sibarum.dasum.gui.core.debug.Dbg.id(deepest));
 
         // Innermost-out: walk deepest → root, take the first registered provider.
         List<Component> path = HitTest.pathTo(root, deepest);
@@ -81,13 +110,22 @@ public final class ContextMenuController {
             ContextMenuProvider p = ContextMenuStates.get(path.get(i));
             if (p != null) { provider = p; owner = path.get(i); break; }
         }
+        if (provider != null) {
+            final Component finalOwner = owner;
+            sibarum.dasum.gui.core.debug.Dbg.log("ctx-menu", () ->
+                "provider resolved on " + sibarum.dasum.gui.core.debug.Dbg.id(finalOwner));
+        }
         // Fallback: selectable Text gets the built-in default.
         if (provider == null
             && deepest instanceof Component.Text t && t.selectable()) {
             provider = TextContextMenu.defaultProvider();
             owner = deepest;
         }
-        if (provider == null) return false;
+        if (provider == null) {
+            sibarum.dasum.gui.core.debug.Dbg.log("ctx-menu",
+                "no provider on hit path — register via Handlers.onContextMenu on the *final* component identity (post-with*)");
+            return false;
+        }
 
         float pxPerEm = EmContext.pixelsPerEm();
         if (pxPerEm <= 0f) return false;
@@ -99,13 +137,43 @@ public final class ContextMenuController {
         if (items == null || items.isEmpty()) return false;
 
         currentItems = items;
-        selectedIndex = firstNavigableIndex(items);
         menuOpen = true;
+        // Long-menu mode: create the filter input lazily so its identity
+        // (and TextStates content + caret) persists across rebuilds.
+        if (items.size() > FIT_TO_CONTENT_ITEMS) {
+            ensureFilterInput();
+            sibarum.dasum.gui.core.input.TextStates.setContent(filterInput, "");
+        } else {
+            filterInput = null;
+        }
+        recomputeVisible();
+        selectedVisible = firstNavigableVisible();
         Component popup = buildPopup();
         OverlayStack.push(new OverlayStack.Overlay(
             popup, Anchor.at(Em.of(emX), Em.of(emY)), true,
             ContextMenuController::onDismiss));
+        // Focus the filter input so typing filters immediately.
+        if (filterInput != null) {
+            FocusState.set(filterInput);
+        }
         return true;
+    }
+
+    private static void ensureFilterInput() {
+        if (filterInput != null) return;
+        filterInput = new Component.Text(
+            "", FontGroups.DEFAULT, Em.of(0.95f), ROW_FG,
+            null, null, Em.of(0.35f),
+            null, false,
+            true, true, true, false, 0
+        );
+        Handlers.disableContextMenu(filterInput);
+        TextStates.onContentChange(filterInput, q -> {
+            if (!menuOpen) return;
+            recomputeVisible();
+            selectedVisible = firstNavigableVisible();
+            rebuild();
+        });
     }
 
     /**
@@ -131,17 +199,17 @@ public final class ContextMenuController {
         if (!menuOpen) return false;
         switch (key) {
             case Glfw.GLFW_KEY_UP -> {
-                int idx = prevNavigableIndex(selectedIndex);
-                if (idx != selectedIndex) {
-                    selectedIndex = idx;
+                int idx = prevNavigableVisible(selectedVisible);
+                if (idx != selectedVisible) {
+                    selectedVisible = idx;
                     rebuild();
                 }
                 return true;
             }
             case Glfw.GLFW_KEY_DOWN -> {
-                int idx = nextNavigableIndex(selectedIndex);
-                if (idx != selectedIndex) {
-                    selectedIndex = idx;
+                int idx = nextNavigableVisible(selectedVisible);
+                if (idx != selectedVisible) {
+                    selectedVisible = idx;
                     rebuild();
                 }
                 return true;
@@ -164,13 +232,15 @@ public final class ContextMenuController {
         for (Component row : currentRows) Handlers.clearAll(row);
         currentRows.clear();
         currentItems = List.of();
-        selectedIndex = -1;
+        visibleIndices = List.of();
+        selectedVisible = -1;
+        filterInput = null;  // drop reference; new menu opening will recreate
         Invalidator.invalidate();
     }
 
     private static void activateSelected() {
-        if (selectedIndex < 0 || selectedIndex >= currentItems.size()) { close(); return; }
-        ContextMenuItem it = currentItems.get(selectedIndex);
+        if (selectedVisible < 0 || selectedVisible >= visibleIndices.size()) { close(); return; }
+        ContextMenuItem it = currentItems.get(visibleIndices.get(selectedVisible));
         if (!isNavigable(it)) { close(); return; }
         close();
         if (it.action() != null) it.action().run();
@@ -182,15 +252,68 @@ public final class ContextMenuController {
         currentRows.clear();
         Component popup = buildPopup();
         OverlayStack.replaceTopmost(popup);
+        // Re-focus the filter input across rebuilds so typing continues
+        // uninterrupted; the input's identity is stable so caret state
+        // is preserved by TextStates.
+        if (filterInput != null) FocusState.set(filterInput);
     }
 
     private static Component buildPopup() {
-        List<Component> rows = new ArrayList<>(currentItems.size());
-        for (int i = 0; i < currentItems.size(); i++) {
-            ContextMenuItem it = currentItems.get(i);
+        boolean longMode = filterInput != null;
+        List<Component> rows = buildRows();
+
+        // Inner column of rows. AUTO width in fit-mode (each row sized to
+        // its label and the column picks the widest); explicit width in
+        // long-mode so the Scroll viewport has a known cross extent.
+        Component.Flex listInner = new Component.Flex(
+            longMode ? LONG_MODE_WIDTH : Em.AUTO,
+            Em.AUTO, Em.of(0.25f), MENU_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            rows, false, 0
+        );
+
+        Component listContainer;
+        if (longMode) {
+            // Cap the scroll viewport height so the popup can't grow past
+            // the screen — overflow scrolls inside the popup instead.
+            listContainer = new Component.Scroll(
+                LONG_MODE_WIDTH, LONG_MODE_SCROLL_HEIGHT, Em.ZERO, MENU_BG,
+                listInner, false, 0
+            );
+        } else {
+            listContainer = listInner;
+        }
+
+        List<Component> dialogChildren = new ArrayList<>();
+        if (longMode) {
+            Component filterBox = new Component.Flex(
+                LONG_MODE_WIDTH, Em.AUTO, Em.ZERO, INPUT_BG,
+                Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+                List.of(filterInput), false, 0
+            );
+            dialogChildren.add(filterBox);
+        }
+        dialogChildren.add(listContainer);
+
+        Component dialog = new Component.Flex(
+            longMode ? LONG_MODE_WIDTH : Em.AUTO, Em.AUTO, Em.ZERO, MENU_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            dialogChildren, false, 0
+        );
+        // Thin border halo via outer Flex.
+        return new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.08f), MENU_BORDER,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            List.of(dialog), false, 0
+        );
+    }
+
+    private static List<Component> buildRows() {
+        List<Component> rows = new ArrayList<>(visibleIndices.size());
+        for (int visIdx = 0; visIdx < visibleIndices.size(); visIdx++) {
+            int realIdx = visibleIndices.get(visIdx);
+            ContextMenuItem it = currentItems.get(realIdx);
             if (it.isSeparator()) {
-                // Flex (not Box) — Box requires non-null width; Flex with
-                // width=null stretches to fill the parent column.
                 Component sep = new Component.Flex(
                     null, Em.of(0.08f), Em.ZERO, SEP_BG,
                     Direction.ROW, JustifyContent.START, AlignItems.START, Em.ZERO,
@@ -200,7 +323,7 @@ public final class ContextMenuController {
                 currentRows.add(sep);
                 continue;
             }
-            boolean selected = (i == selectedIndex) && it.enabled();
+            boolean selected = (visIdx == selectedVisible) && it.enabled();
             Color rowBg = selected ? ROW_BG_SEL : TRANSPARENT;
             Color rowFg = !it.enabled() ? ROW_FG_DIM : (selected ? ROW_FG_SEL : ROW_FG);
 
@@ -210,67 +333,82 @@ public final class ContextMenuController {
                 null, false,
                 false, false, false, false, 0
             );
-            // AUTO width so each row's intrinsic cross-size = label width
-            // (Layout.fitContentCross of the inner column then picks the
-            // widest row). AlignItems.STRETCH on the inner makes every row
-            // expand to that width so the selected-row background spans
-            // the full popup width.
             Component.Flex row = new Component.Flex(
                 Em.AUTO, Em.of(1.6f), Em.of(0.3f), rowBg,
                 Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.ZERO,
                 List.of(label),
                 true, 0
             );
-            final int idx = i;
+            final int visFinal = visIdx;
             Handlers.onClick(row, () -> {
-                selectedIndex = idx;
+                selectedVisible = visFinal;
                 activateSelected();
             });
             rows.add(row);
             currentRows.add(row);
         }
-
-        // Em.AUTO on both axes → Layout.fitAxisSize → fitContentCross /
-        // fitContentMain. Width = widest row's intrinsic; height = sum of
-        // row heights + padding. The popup hugs its content with no
-        // fixed-size leaks into the API.
-        Component.Flex inner = new Component.Flex(
-            Em.AUTO, Em.AUTO, Em.of(0.25f), MENU_BG,
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
-            rows, false, 0
-        );
-        return new Component.Flex(
-            Em.AUTO, Em.AUTO, Em.of(0.08f), MENU_BORDER,
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
-            List.of(inner), false, 0
-        );
+        if (visibleIndices.isEmpty() && filterInput != null) {
+            Component.Text empty = new Component.Text(
+                "(no matches)", FontGroups.DEFAULT, Em.of(0.9f), ROW_FG_DIM,
+                null, null, Em.of(0.35f),
+                null, false,
+                false, false, false, false, 0
+            );
+            rows.add(new Component.Flex(
+                Em.AUTO, Em.of(1.6f), Em.of(0.3f), TRANSPARENT,
+                Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.ZERO,
+                List.of(empty), false, 0
+            ));
+        }
+        return rows;
     }
 
-    private static int firstNavigableIndex(List<ContextMenuItem> items) {
-        for (int i = 0; i < items.size(); i++) {
-            if (isNavigable(items.get(i))) return i;
+    /** Rebuild {@link #visibleIndices} from the current filter input. */
+    private static void recomputeVisible() {
+        String filter = filterInput == null ? "" : TextStates.contentOf(filterInput);
+        String needle = filter.trim().toLowerCase(Locale.ROOT);
+        List<Integer> indices = new ArrayList<>(currentItems.size());
+        for (int i = 0; i < currentItems.size(); i++) {
+            ContextMenuItem it = currentItems.get(i);
+            if (it.isSeparator()) {
+                // Drop separators in filter mode — they'd land between
+                // non-adjacent items and confuse the visual grouping.
+                if (needle.isEmpty()) indices.add(i);
+                continue;
+            }
+            if (needle.isEmpty()
+                || it.label().toLowerCase(Locale.ROOT).contains(needle)) {
+                indices.add(i);
+            }
+        }
+        visibleIndices = List.copyOf(indices);
+    }
+
+    private static int firstNavigableVisible() {
+        for (int i = 0; i < visibleIndices.size(); i++) {
+            if (isNavigable(currentItems.get(visibleIndices.get(i)))) return i;
         }
         return -1;
     }
 
-    private static int nextNavigableIndex(int from) {
-        if (currentItems.isEmpty()) return -1;
-        int n = currentItems.size();
+    private static int nextNavigableVisible(int from) {
+        if (visibleIndices.isEmpty()) return -1;
+        int n = visibleIndices.size();
         int start = (from < 0) ? -1 : from;
         for (int step = 1; step <= n; step++) {
             int i = ((start + step) % n + n) % n;
-            if (isNavigable(currentItems.get(i))) return i;
+            if (isNavigable(currentItems.get(visibleIndices.get(i)))) return i;
         }
         return from;
     }
 
-    private static int prevNavigableIndex(int from) {
-        if (currentItems.isEmpty()) return -1;
-        int n = currentItems.size();
+    private static int prevNavigableVisible(int from) {
+        if (visibleIndices.isEmpty()) return -1;
+        int n = visibleIndices.size();
         int start = (from < 0) ? n : from;
         for (int step = 1; step <= n; step++) {
             int i = ((start - step) % n + n) % n;
-            if (isNavigable(currentItems.get(i))) return i;
+            if (isNavigable(currentItems.get(visibleIndices.get(i)))) return i;
         }
         return from;
     }

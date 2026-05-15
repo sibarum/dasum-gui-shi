@@ -54,6 +54,11 @@ public final class FocusState {
         if (focused == c) clear();
     }
 
+    /** If {@code from} is currently focused, transfer focus to {@code to}. */
+    public static void migrate(Component from, Component to) {
+        if (focused == from) set(to);
+    }
+
     public static void cycle(Component root, boolean reverse) {
         List<Component> all = HitTest.collectInteractive(root);
         if (all.isEmpty()) return;

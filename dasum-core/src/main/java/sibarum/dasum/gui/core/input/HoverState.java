@@ -36,4 +36,9 @@ public final class HoverState {
     public static void clear(Component c) {
         if (hovered == c) clear();
     }
+
+    /** If {@code from} is currently hovered, transfer hover to {@code to}. */
+    public static void migrate(Component from, Component to) {
+        if (hovered == from) update(to);
+    }
 }
