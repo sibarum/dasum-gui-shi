@@ -32,4 +32,7 @@ public final class ContextMenuStates {
     public static void remove(Component c) {
         PROVIDERS.remove(c);
     }
+
+    /** Alias of {@link #remove(Component)} used by {@link sibarum.dasum.gui.core.component.Components#detach}. */
+    public static void clear(Component c) { remove(c); }
 }

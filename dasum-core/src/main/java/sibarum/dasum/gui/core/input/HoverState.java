@@ -27,4 +27,13 @@ public final class HoverState {
         hovered = null;
         Invalidator.invalidate();
     }
+
+    /**
+     * Per-component cleanup hook called by
+     * {@link sibarum.dasum.gui.core.component.Components#detach}. Drops the
+     * hover pointer if it's {@code c}; no-op otherwise.
+     */
+    public static void clear(Component c) {
+        if (hovered == c) clear();
+    }
 }

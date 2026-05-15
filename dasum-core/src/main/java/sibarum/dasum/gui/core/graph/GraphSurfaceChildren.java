@@ -60,4 +60,22 @@ public final class GraphSurfaceChildren {
         out.addAll(dynamic);
         return out;
     }
+
+    /**
+     * Per-component cleanup hook called by
+     * {@link sibarum.dasum.gui.core.component.Components#detach}. Handles
+     * both surface-keyed entries (drop the entire dynamic-children list)
+     * and child-keyed entries (remove {@code c} from every surface's list).
+     */
+    public static void clear(Component c) {
+        if (ADDED.remove(c) != null) {
+            Invalidator.invalidate();
+            return;
+        }
+        boolean changed = false;
+        for (List<Component> list : ADDED.values()) {
+            if (list.removeIf(x -> x == c)) changed = true;
+        }
+        if (changed) Invalidator.invalidate();
+    }
 }

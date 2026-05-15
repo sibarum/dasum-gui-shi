@@ -39,4 +39,22 @@ public final class GraphSurfacePositions {
     public static void setEm(Component surface, Component child, Em x, Em y) {
         set(surface, child, x.value(), y.value());
     }
+
+    /**
+     * Per-component cleanup hook called by
+     * {@link sibarum.dasum.gui.core.component.Components#detach}. Handles
+     * both surface-keyed entries (drop the entire per-surface map) and
+     * child-keyed entries (remove {@code c} from every surface's map).
+     */
+    public static void clear(Component c) {
+        if (POSITIONS.remove(c) != null) {
+            Invalidator.invalidate();
+            return;
+        }
+        boolean changed = false;
+        for (Map<Component, Pos> map : POSITIONS.values()) {
+            if (map.remove(c) != null) changed = true;
+        }
+        if (changed) Invalidator.invalidate();
+    }
 }

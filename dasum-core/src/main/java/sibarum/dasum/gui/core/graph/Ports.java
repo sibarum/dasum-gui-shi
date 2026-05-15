@@ -79,4 +79,29 @@ public final class Ports {
         }
         return out;
     }
+
+    /**
+     * Per-component cleanup hook called by
+     * {@link sibarum.dasum.gui.core.component.Components#detach}. Handles
+     * three cases:
+     * <ul>
+     *   <li>{@code c} is a port — remove from {@link #PORTS} and from its
+     *       owning node's list in {@link #BY_NODE}.</li>
+     *   <li>{@code c} is a node — drop its entire entry in
+     *       {@link #BY_NODE} (the port components themselves get cleared
+     *       separately as the detach walk visits each one).</li>
+     *   <li>{@code c} is neither — no-op.</li>
+     * </ul>
+     */
+    public static void clear(Component c) {
+        Port asPort = PORTS.remove(c);
+        if (asPort != null) {
+            List<Port> siblings = BY_NODE.get(asPort.node());
+            if (siblings != null) {
+                siblings.removeIf(p -> p.component() == c);
+                if (siblings.isEmpty()) BY_NODE.remove(asPort.node());
+            }
+        }
+        BY_NODE.remove(c);
+    }
 }

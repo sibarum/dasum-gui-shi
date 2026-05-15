@@ -36,4 +36,19 @@ public final class ConnectionSelection {
         selectedConnection = null;
         Invalidator.invalidate();
     }
+
+    /**
+     * Per-component cleanup hook called by
+     * {@link sibarum.dasum.gui.core.component.Components#detach}. Drops the
+     * selection if {@code c} is the selected surface, or one of the selected
+     * connection's endpoints; no-op otherwise.
+     */
+    public static void clear(Component c) {
+        if (selectedConnection == null) return;
+        if (selectedSurface == c
+            || selectedConnection.from() == c
+            || selectedConnection.to() == c) {
+            clear();
+        }
+    }
 }

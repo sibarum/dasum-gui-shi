@@ -25,4 +25,13 @@ public final class ScrollStates {
         }
         return pos;
     }
+
+    /**
+     * Per-component cleanup hook called by
+     * {@link sibarum.dasum.gui.core.component.Components#detach}. Drops any
+     * stored scroll position for {@code c}.
+     */
+    public static void clear(Component c) {
+        STATES.remove(c);
+    }
 }

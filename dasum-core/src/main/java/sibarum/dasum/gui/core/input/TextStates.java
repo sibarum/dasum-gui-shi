@@ -78,4 +78,14 @@ public final class TextStates {
     public static void clearAllHoverCarets() {
         for (TextState s : STATES.values()) s.hoverCaretIndex = -1;
     }
+
+    /**
+     * Per-component cleanup hook called by
+     * {@link sibarum.dasum.gui.core.component.Components#detach}. Drops any
+     * text state and content-change listeners associated with {@code c}.
+     */
+    public static void clear(Component c) {
+        STATES.remove(c);
+        LISTENERS.remove(c);
+    }
 }

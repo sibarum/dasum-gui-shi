@@ -76,6 +76,9 @@ public final class Handlers {
         ContextMenuStates.remove(c);
     }
 
+    /** Alias of {@link #clearAll(Component)} used by {@link sibarum.dasum.gui.core.component.Components#detach}. */
+    public static void clear(Component c) { clearAll(c); }
+
     // ---------- dispatch ----------
 
     /**

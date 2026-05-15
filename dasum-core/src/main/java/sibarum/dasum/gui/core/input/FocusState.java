@@ -45,6 +45,15 @@ public final class FocusState {
 
     public static void clear() { set(null); }
 
+    /**
+     * Per-component cleanup hook called by
+     * {@link sibarum.dasum.gui.core.component.Components#detach}. Drops the
+     * focus pointer if it's {@code c}; no-op otherwise.
+     */
+    public static void clear(Component c) {
+        if (focused == c) clear();
+    }
+
     public static void cycle(Component root, boolean reverse) {
         List<Component> all = HitTest.collectInteractive(root);
         if (all.isEmpty()) return;
