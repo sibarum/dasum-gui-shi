@@ -52,6 +52,9 @@ public final class EventLoop {
             } else {
                 Glfw.glfwWaitEventsTimeout(Math.max(0d, Math.min(animDeadline, frameIntervalSec)));
             }
+            // Allow background-thread invalidates to post a fresh wakeup
+            // event again now that we've consumed the previous one.
+            Invalidator.consumePendingWake();
 
             long postWait = System.nanoTime();
             AnimationManager.tick(postWait);

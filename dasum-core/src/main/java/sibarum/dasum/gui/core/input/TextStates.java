@@ -17,18 +17,27 @@ import java.util.function.Consumer;
  */
 public final class TextStates {
 
+    // Identity-keyed maps require external synchronization for concurrent
+    // access — record-typed keys preclude ConcurrentHashMap (which uses
+    // value equality). All public methods synchronize on this lock so
+    // background threads (training workers, async input processors) can
+    // safely call setContent while the renderer reads contentOf. The
+    // critical section is tiny and uncontended in normal use.
+    private static final Object LOCK = new Object();
     private static final Map<Component, TextState> STATES = new IdentityHashMap<>();
     private static final Map<Component, List<Consumer<String>>> LISTENERS = new IdentityHashMap<>();
 
     private TextStates() {}
 
     public static TextState of(Component text) {
-        TextState s = STATES.get(text);
-        if (s == null) {
-            s = new TextState();
-            STATES.put(text, s);
+        synchronized (LOCK) {
+            TextState s = STATES.get(text);
+            if (s == null) {
+                s = new TextState();
+                STATES.put(text, s);
+            }
+            return s;
         }
-        return s;
     }
 
     /**
@@ -37,7 +46,10 @@ public final class TextStates {
      * the Text record's initial content.
      */
     public static String contentOf(Component.Text text) {
-        TextState s = STATES.get(text);
+        TextState s;
+        synchronized (LOCK) {
+            s = STATES.get(text);
+        }
         if (s != null && s.content != null) return s.content;
         return text.content();
     }
@@ -53,30 +65,44 @@ public final class TextStates {
      * same reason — its old position may no longer be valid.
      */
     public static void setContent(Component.Text text, String newContent) {
-        TextState s = of(text);
-        if (newContent.equals(s.content)) return;
-        s.content = newContent;
-        int len = newContent.length();
-        if (s.caretIndex > len)      s.caretIndex      = len;
-        if (s.caretIndex < 0)        s.caretIndex      = 0;
-        if (s.selectionAnchor > len) s.selectionAnchor = len;
-        if (s.selectionAnchor < 0)   s.selectionAnchor = 0;
-        s.hoverCaretIndex = -1;
-        List<Consumer<String>> ls = LISTENERS.get(text);
-        if (ls != null) {
-            for (Consumer<String> l : List.copyOf(ls)) l.accept(newContent);
+        List<Consumer<String>> snapshotListeners;
+        synchronized (LOCK) {
+            TextState s = STATES.get(text);
+            if (s == null) {
+                s = new TextState();
+                STATES.put(text, s);
+            }
+            if (newContent.equals(s.content)) return;
+            s.content = newContent;
+            int len = newContent.length();
+            if (s.caretIndex > len)      s.caretIndex      = len;
+            if (s.caretIndex < 0)        s.caretIndex      = 0;
+            if (s.selectionAnchor > len) s.selectionAnchor = len;
+            if (s.selectionAnchor < 0)   s.selectionAnchor = 0;
+            s.hoverCaretIndex = -1;
+            List<Consumer<String>> ls = LISTENERS.get(text);
+            // Snapshot listeners under the lock so we can run them without
+            // holding it (listeners may re-enter the framework).
+            snapshotListeners = (ls == null) ? null : List.copyOf(ls);
+        }
+        if (snapshotListeners != null) {
+            for (Consumer<String> l : snapshotListeners) l.accept(newContent);
         }
         sibarum.dasum.gui.core.event.Invalidator.invalidate();
     }
 
     /** Subscribe to {@link #setContent} calls on this Text instance. */
     public static void onContentChange(Component.Text text, Consumer<String> listener) {
-        LISTENERS.computeIfAbsent(text, k -> new ArrayList<>()).add(listener);
+        synchronized (LOCK) {
+            LISTENERS.computeIfAbsent(text, k -> new ArrayList<>()).add(listener);
+        }
     }
 
     /** Clears the hover phantom on every registered Text — call when focus moves elsewhere. */
     public static void clearAllHoverCarets() {
-        for (TextState s : STATES.values()) s.hoverCaretIndex = -1;
+        synchronized (LOCK) {
+            for (TextState s : STATES.values()) s.hoverCaretIndex = -1;
+        }
     }
 
     /**
@@ -85,15 +111,19 @@ public final class TextStates {
      * text state and content-change listeners associated with {@code c}.
      */
     public static void clear(Component c) {
-        STATES.remove(c);
-        LISTENERS.remove(c);
+        synchronized (LOCK) {
+            STATES.remove(c);
+            LISTENERS.remove(c);
+        }
     }
 
     /** Copy {@code from}'s edit state + listeners to {@code to}. */
     public static void migrate(Component from, Component to) {
-        TextState s = STATES.get(from);
-        if (s != null) STATES.put(to, s);
-        List<Consumer<String>> ls = LISTENERS.get(from);
-        if (ls != null) LISTENERS.put(to, new ArrayList<>(ls));
+        synchronized (LOCK) {
+            TextState s = STATES.get(from);
+            if (s != null) STATES.put(to, s);
+            List<Consumer<String>> ls = LISTENERS.get(from);
+            if (ls != null) LISTENERS.put(to, new ArrayList<>(ls));
+        }
     }
 }

@@ -38,42 +38,60 @@ import java.util.Map;
  */
 public final class DynamicChildren {
 
+    // Identity-keyed sidecar shared between caller threads. Record-typed
+    // keys preclude ConcurrentHashMap, so we synchronize a single lock
+    // around every access. The critical sections are list ops only;
+    // Invalidator.invalidate fires outside the lock to keep render-side
+    // dispatch unblocked. Worker threads (training, status auto-revert)
+    // and the main render thread can safely read and mutate concurrently.
+    private static final Object LOCK = new Object();
     private static final Map<Component, List<Component>> ADDED = new IdentityHashMap<>();
 
     private DynamicChildren() {}
 
     /** Append {@code child} to {@code container}'s dynamic-children list. */
     public static void add(Component container, Component child) {
-        ADDED.computeIfAbsent(container, k -> new ArrayList<>()).add(child);
+        synchronized (LOCK) {
+            ADDED.computeIfAbsent(container, k -> new ArrayList<>()).add(child);
+        }
         Invalidator.invalidate();
     }
 
     /** Insert {@code child} at the given index in the dynamic-children list. */
     public static void insert(Component container, int index, Component child) {
-        List<Component> list = ADDED.computeIfAbsent(container, k -> new ArrayList<>());
-        int clamped = Math.max(0, Math.min(index, list.size()));
-        list.add(clamped, child);
+        synchronized (LOCK) {
+            List<Component> list = ADDED.computeIfAbsent(container, k -> new ArrayList<>());
+            int clamped = Math.max(0, Math.min(index, list.size()));
+            list.add(clamped, child);
+        }
         Invalidator.invalidate();
     }
 
     /** Remove {@code child} from {@code container}'s dynamic-children list (no-op if not present). */
     public static void remove(Component container, Component child) {
-        List<Component> list = ADDED.get(container);
-        if (list != null && list.removeIf(c -> c == child)) {
-            Invalidator.invalidate();
+        boolean changed;
+        synchronized (LOCK) {
+            List<Component> list = ADDED.get(container);
+            changed = list != null && list.removeIf(c -> c == child);
         }
+        if (changed) Invalidator.invalidate();
     }
 
     /** Drop the entire dynamic-children list for {@code container}. */
     public static void clearChildren(Component container) {
-        List<Component> existing = ADDED.remove(container);
+        List<Component> existing;
+        synchronized (LOCK) {
+            existing = ADDED.remove(container);
+        }
         if (existing != null && !existing.isEmpty()) Invalidator.invalidate();
     }
 
     /** Just the dynamically-added children, in insertion order. */
     public static List<Component> added(Component container) {
-        List<Component> list = ADDED.get(container);
-        return (list == null || list.isEmpty()) ? List.of() : List.copyOf(list);
+        synchronized (LOCK) {
+            List<Component> list = ADDED.get(container);
+            return (list == null || list.isEmpty()) ? List.of() : List.copyOf(list);
+        }
     }
 
     /**
@@ -84,11 +102,15 @@ public final class DynamicChildren {
      */
     public static List<Component> effectiveChildren(Component c) {
         List<Component> declared = declaredChildren(c);
-        List<Component> dynamic  = ADDED.get(c);
-        if (dynamic == null || dynamic.isEmpty()) return declared;
-        List<Component> out = new ArrayList<>(declared.size() + dynamic.size());
+        List<Component> dynamicCopy;
+        synchronized (LOCK) {
+            List<Component> dynamic = ADDED.get(c);
+            if (dynamic == null || dynamic.isEmpty()) return declared;
+            dynamicCopy = new ArrayList<>(dynamic);
+        }
+        List<Component> out = new ArrayList<>(declared.size() + dynamicCopy.size());
         out.addAll(declared);
-        out.addAll(dynamic);
+        out.addAll(dynamicCopy);
         return out;
     }
 
@@ -107,26 +129,31 @@ public final class DynamicChildren {
      * container's list).
      */
     public static void clear(Component c) {
-        if (ADDED.remove(c) != null) {
-            Invalidator.invalidate();
-            return;
-        }
-        boolean changed = false;
-        for (List<Component> list : ADDED.values()) {
-            if (list.removeIf(x -> x == c)) changed = true;
+        boolean changed;
+        synchronized (LOCK) {
+            if (ADDED.remove(c) != null) {
+                changed = true;
+            } else {
+                changed = false;
+                for (List<Component> list : ADDED.values()) {
+                    if (list.removeIf(x -> x == c)) changed = true;
+                }
+            }
         }
         if (changed) Invalidator.invalidate();
     }
 
     /** Migrate dynamic-children entries (container and child roles). */
     public static void migrate(Component from, Component to) {
-        List<Component> containerList = ADDED.get(from);
-        if (containerList != null) {
-            ADDED.put(to, new ArrayList<>(containerList));
-        }
-        for (List<Component> list : ADDED.values()) {
-            for (int i = 0; i < list.size(); i++) {
-                if (list.get(i) == from) list.set(i, to);
+        synchronized (LOCK) {
+            List<Component> containerList = ADDED.get(from);
+            if (containerList != null) {
+                ADDED.put(to, new ArrayList<>(containerList));
+            }
+            for (List<Component> list : ADDED.values()) {
+                for (int i = 0; i < list.size(); i++) {
+                    if (list.get(i) == from) list.set(i, to);
+                }
             }
         }
     }
