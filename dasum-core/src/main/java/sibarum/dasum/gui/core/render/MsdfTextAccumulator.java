@@ -21,15 +21,19 @@ final class MsdfTextAccumulator {
     private static final int FLOATS_PER_VERTEX = 8;
     private static final int VERTEX_BYTES = FLOATS_PER_VERTEX * Float.BYTES;
     private static final int VERTICES_PER_QUAD = 6;
-    private static final int MAX_QUADS = 1024;
-    private static final int MAX_VERTICES = MAX_QUADS * VERTICES_PER_QUAD;
+    /** Starting capacity; the buffer grows geometrically on overflow. */
+    private static final int INITIAL_QUADS = 1024;
+    private static final int INITIAL_VERTICES = INITIAL_QUADS * VERTICES_PER_QUAD;
 
     private final MsdfTextMaterial material = new MsdfTextMaterial();
     private int vao = 0;
     private int vbo = 0;
 
-    private final float[] cpuBuffer = new float[MAX_VERTICES * FLOATS_PER_VERTEX];
+    private float[] cpuBuffer = new float[INITIAL_VERTICES * FLOATS_PER_VERTEX];
     private int vertexCount = 0;
+    /** Current GL-side capacity in vertices. Grown on flush when the
+     *  CPU side accumulated more than fits. */
+    private int gpuCapacityVertices = INITIAL_VERTICES;
 
     private int drawCalls = 0;
     private int vertices = 0;
@@ -40,7 +44,7 @@ final class MsdfTextAccumulator {
         vbo = Gl.glGenBuffer();
         Gl.glBindVertexArray(vao);
         Gl.glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        Gl.glBufferDataNull(GL_ARRAY_BUFFER, (long) MAX_VERTICES * VERTEX_BYTES, GL_DYNAMIC_DRAW);
+        Gl.glBufferDataNull(GL_ARRAY_BUFFER, (long) gpuCapacityVertices * VERTEX_BYTES, GL_DYNAMIC_DRAW);
 
         Gl.glVertexAttribPointer(0, 2, GL_FLOAT, false, VERTEX_BYTES, 0L);
         Gl.glEnableVertexAttribArray(0);
@@ -64,9 +68,7 @@ final class MsdfTextAccumulator {
     }
 
     void submit(DrawCommand.GlyphQuad q) {
-        if (vertexCount + VERTICES_PER_QUAD > MAX_VERTICES) {
-            throw new IllegalStateException("MsdfTextAccumulator buffer overflow");
-        }
+        ensureCapacity(VERTICES_PER_QUAD);
         float x0 = q.x();
         float y0 = q.y();
         float x1 = x0 + q.width();
@@ -94,6 +96,14 @@ final class MsdfTextAccumulator {
         System.arraycopy(cpuBuffer, 0, slice, 0, used);
 
         Gl.glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        if (vertexCount > gpuCapacityVertices) {
+            // Reallocate the VBO to fit. glBufferData (the *Null* helper)
+            // orphans the previous allocation atomically; the bound VAO's
+            // vertex-attribute pointers remain valid because they index
+            // by offset into whichever buffer is currently bound.
+            Gl.glBufferDataNull(GL_ARRAY_BUFFER, (long) vertexCount * VERTEX_BYTES, GL_DYNAMIC_DRAW);
+            gpuCapacityVertices = vertexCount;
+        }
         Gl.glBufferSubData(GL_ARRAY_BUFFER, 0L, slice);
 
         material.bind(projection);
@@ -105,6 +115,21 @@ final class MsdfTextAccumulator {
         drawCalls++;
         vertices += vertexCount;
         vertexCount = 0;
+    }
+
+    /**
+     * Grow {@link #cpuBuffer} geometrically when {@code add} more
+     * vertices wouldn't fit. The GL-side resize happens lazily in
+     * {@link #flush}.
+     */
+    private void ensureCapacity(int add) {
+        int needed = (vertexCount + add) * FLOATS_PER_VERTEX;
+        if (needed <= cpuBuffer.length) return;
+        int newLen = cpuBuffer.length;
+        while (newLen < needed) newLen *= 2;
+        float[] grown = new float[newLen];
+        System.arraycopy(cpuBuffer, 0, grown, 0, vertexCount * FLOATS_PER_VERTEX);
+        cpuBuffer = grown;
     }
 
     int drawCalls() { return drawCalls; }

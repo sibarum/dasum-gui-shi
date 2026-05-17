@@ -25,6 +25,11 @@
             <artifactId>dasum-glfw</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <dependency>
+            <groupId>sibarum.dasum.gui</groupId>
+            <artifactId>dasum-nfd</artifactId>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
 
     <build>

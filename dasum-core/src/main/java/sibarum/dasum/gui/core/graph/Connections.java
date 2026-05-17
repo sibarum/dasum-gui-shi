@@ -96,12 +96,21 @@ public final class Connections {
         return c;
     }
 
-    /** Remove a specific connection from the surface. No-op if not present. */
+    /** Remove a specific connection from the surface. No-op if not present.
+     *  Identity-based — two value-equal {@link Connection} records (same
+     *  port records on both ends) can legitimately coexist when distinct
+     *  node visuals have value-equal port Components, so {@code List.remove(Object)}'s
+     *  equals-based search would clobber the wrong entry. */
     public static void remove(Component surface, Connection c) {
         List<Connection> list = BY_SURFACE.get(surface);
-        if (list != null && list.remove(c)) {
-            Invalidator.invalidate();
-            fire(EventKind.REMOVED, surface, c);
+        if (list == null) return;
+        for (java.util.Iterator<Connection> it = list.iterator(); it.hasNext();) {
+            if (it.next() == c) {
+                it.remove();
+                Invalidator.invalidate();
+                fire(EventKind.REMOVED, surface, c);
+                return;
+            }
         }
     }
 
@@ -152,17 +161,24 @@ public final class Connections {
         }
         // c is not a surface — look for it as an endpoint across every
         // surface's list and fire one REMOVED per incident connection.
+        // Identity-based: distinct node visuals can produce value-equal
+        // Connection records (same port colors/sizes on both ends), so
+        // equals-based List.removeAll would clobber connections on
+        // unrelated nodes. Iterator.remove uses == under the hood here.
         boolean changed = false;
         for (Map.Entry<Component, List<Connection>> e : BY_SURFACE.entrySet()) {
             Component surface = e.getKey();
             List<Connection> list = e.getValue();
-            List<Connection> toRemove = new ArrayList<>();
-            for (Connection conn : list) {
-                if (conn.from() == c || conn.to() == c) toRemove.add(conn);
+            List<Connection> fired = new ArrayList<>();
+            for (java.util.Iterator<Connection> it = list.iterator(); it.hasNext();) {
+                Connection conn = it.next();
+                if (conn.from() == c || conn.to() == c) {
+                    it.remove();
+                    fired.add(conn);
+                }
             }
-            if (!toRemove.isEmpty()) {
-                list.removeAll(toRemove);
-                for (Connection conn : toRemove) fire(EventKind.REMOVED, surface, conn);
+            if (!fired.isEmpty()) {
+                for (Connection conn : fired) fire(EventKind.REMOVED, surface, conn);
                 changed = true;
             }
         }

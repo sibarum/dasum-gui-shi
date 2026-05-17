@@ -102,6 +102,10 @@ public final class Glfw {
         );
     }
 
+    private static MethodHandle dcOptional(String name, FunctionDescriptor desc) {
+        return LIB.find(name).map(s -> LINKER.downcallHandle(s, desc)).orElse(null);
+    }
+
     private static final MethodHandle GLFW_INIT                    = dc("glfwInit",                    FunctionDescriptor.of(JAVA_INT));
     private static final MethodHandle GLFW_TERMINATE               = dc("glfwTerminate",               FunctionDescriptor.ofVoid());
     private static final MethodHandle GLFW_WINDOW_HINT             = dc("glfwWindowHint",              FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT));
@@ -328,6 +332,30 @@ public final class Glfw {
             GLFW_GET_FRAMEBUFFER_SIZE.invokeExact(window, w, h);
             return new int[] { w.get(JAVA_INT, 0), h.get(JAVA_INT, 0) };
         } catch (Throwable t) { throw rethrow(t); }
+    }
+
+    // Platform-specific native window accessors. Looked up lazily because the
+    // symbol only exists in the GLFW build for its own platform — calling
+    // glfwGetWin32Window on macOS GLFW returns no symbol, and vice versa.
+    private static final MethodHandle GLFW_GET_WIN32_WINDOW = dcOptional(
+        "glfwGetWin32Window", FunctionDescriptor.of(ADDRESS, ADDRESS));
+    private static final MethodHandle GLFW_GET_COCOA_WINDOW = dcOptional(
+        "glfwGetCocoaWindow", FunctionDescriptor.of(ADDRESS, ADDRESS));
+
+    public static MemorySegment glfwGetWin32Window(MemorySegment window) {
+        if (GLFW_GET_WIN32_WINDOW == null) {
+            throw new UnsatisfiedLinkError("glfwGetWin32Window not available in this GLFW build");
+        }
+        try { return (MemorySegment) GLFW_GET_WIN32_WINDOW.invokeExact(window); }
+        catch (Throwable t) { throw rethrow(t); }
+    }
+
+    public static MemorySegment glfwGetCocoaWindow(MemorySegment window) {
+        if (GLFW_GET_COCOA_WINDOW == null) {
+            throw new UnsatisfiedLinkError("glfwGetCocoaWindow not available in this GLFW build");
+        }
+        try { return (MemorySegment) GLFW_GET_COCOA_WINDOW.invokeExact(window); }
+        catch (Throwable t) { throw rethrow(t); }
     }
 
     private static RuntimeException rethrow(Throwable t) {

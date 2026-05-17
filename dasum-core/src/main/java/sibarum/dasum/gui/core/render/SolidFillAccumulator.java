@@ -16,14 +16,16 @@ final class SolidFillAccumulator {
 
     private static final int FLOATS_PER_VERTEX = 6;
     private static final int VERTEX_BYTES = FLOATS_PER_VERTEX * Float.BYTES;
-    private static final int MAX_VERTICES = 4096;
+    /** Starting capacity; buffer grows geometrically on overflow. */
+    private static final int INITIAL_VERTICES = 4096;
 
     private final SolidFillMaterial material = new SolidFillMaterial();
     private int vao = 0;
     private int vbo = 0;
 
-    private final float[] cpuBuffer = new float[MAX_VERTICES * FLOATS_PER_VERTEX];
+    private float[] cpuBuffer = new float[INITIAL_VERTICES * FLOATS_PER_VERTEX];
     private int vertexCount = 0;
+    private int gpuCapacityVertices = INITIAL_VERTICES;
 
     private int drawCalls = 0;
     private int vertices = 0;
@@ -34,7 +36,7 @@ final class SolidFillAccumulator {
         vbo = Gl.glGenBuffer();
         Gl.glBindVertexArray(vao);
         Gl.glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        Gl.glBufferDataNull(GL_ARRAY_BUFFER, (long) MAX_VERTICES * VERTEX_BYTES, GL_DYNAMIC_DRAW);
+        Gl.glBufferDataNull(GL_ARRAY_BUFFER, (long) gpuCapacityVertices * VERTEX_BYTES, GL_DYNAMIC_DRAW);
 
         Gl.glVertexAttribPointer(0, 2, GL_FLOAT, false, VERTEX_BYTES, 0L);
         Gl.glEnableVertexAttribArray(0);
@@ -52,18 +54,14 @@ final class SolidFillAccumulator {
     }
 
     void submit(DrawCommand.ColoredTriangle t) {
-        if (vertexCount + 3 > MAX_VERTICES) {
-            throw new IllegalStateException("SolidFillAccumulator buffer overflow");
-        }
+        ensureCapacity(3);
         appendVertex(t.a(), t.cA());
         appendVertex(t.b(), t.cB());
         appendVertex(t.c(), t.cC());
     }
 
     void submit(DrawCommand.ColoredQuad q) {
-        if (vertexCount + 6 > MAX_VERTICES) {
-            throw new IllegalStateException("SolidFillAccumulator buffer overflow");
-        }
+        ensureCapacity(6);
         float x0 = q.x();
         float y0 = q.y();
         float x1 = x0 + q.width();
@@ -87,6 +85,10 @@ final class SolidFillAccumulator {
         System.arraycopy(cpuBuffer, 0, slice, 0, used);
 
         Gl.glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        if (vertexCount > gpuCapacityVertices) {
+            Gl.glBufferDataNull(GL_ARRAY_BUFFER, (long) vertexCount * VERTEX_BYTES, GL_DYNAMIC_DRAW);
+            gpuCapacityVertices = vertexCount;
+        }
         Gl.glBufferSubData(GL_ARRAY_BUFFER, 0L, slice);
 
         material.bind(projection);
@@ -98,6 +100,16 @@ final class SolidFillAccumulator {
         drawCalls++;
         vertices += vertexCount;
         vertexCount = 0;
+    }
+
+    private void ensureCapacity(int add) {
+        int needed = (vertexCount + add) * FLOATS_PER_VERTEX;
+        if (needed <= cpuBuffer.length) return;
+        int newLen = cpuBuffer.length;
+        while (newLen < needed) newLen *= 2;
+        float[] grown = new float[newLen];
+        System.arraycopy(cpuBuffer, 0, grown, 0, vertexCount * FLOATS_PER_VERTEX);
+        cpuBuffer = grown;
     }
 
     int drawCalls() { return drawCalls; }

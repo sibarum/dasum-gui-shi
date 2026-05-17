@@ -3,6 +3,7 @@ package sibarum.dasum.gui.demo;
 import sibarum.dasum.gui.core.GlfwContext;
 import sibarum.dasum.gui.core.command.CommandRegistry;
 import sibarum.dasum.gui.core.command.EverythingMenu;
+import sibarum.dasum.gui.core.dialog.FileDialog;
 import sibarum.dasum.gui.core.component.AlignItems;
 import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.component.Direction;
@@ -227,7 +228,7 @@ public final class App {
         Component help    = button("Help",    Em.of(4.5f), BTN_BLUE,   0);
         Component account = button("Account", Em.of(0f),   BTN_PURPLE, 1);
 
-        Handlers.onClick(file,    () -> System.out.println("File clicked"));
+        Handlers.onClick(file,    () -> CommandRegistry.invoke("file.open"));
         Handlers.onClick(edit,    () -> System.out.println("Edit clicked"));
         Handlers.onClick(view,    () -> System.out.println("View clicked"));
         Handlers.onClick(help,    () -> openHelpDialog());
@@ -794,9 +795,26 @@ public final class App {
         CommandRegistry.register("zoom.out",    "Zoom Out",               () -> EmContext.multiplyZoom(1f / 1.1f));
         CommandRegistry.register("zoom.reset",  "Reset Zoom",             () -> EmContext.setZoom(1f));
         CommandRegistry.register("focus.clear", "Clear Focus",            FocusState::clear);
-        CommandRegistry.register("file.open",   "File: Open",             () -> System.out.println("File: Open"));
-        CommandRegistry.register("file.save",   "File: Save",             () -> System.out.println("File: Save"));
-        CommandRegistry.register("file.saveas", "File: Save As…",         () -> System.out.println("File: Save As"));
+        List<FileDialog.Filter> demoFilters = List.of(
+            FileDialog.Filter.of("Text", "txt", "md"),
+            FileDialog.Filter.of("Images", "png", "jpg")
+        );
+        CommandRegistry.register("file.open",   "File: Open",             () ->
+            FileDialog.open(window, demoFilters, null)
+                .ifPresentOrElse(p -> System.out.println("Opened: " + p),
+                                 () -> System.out.println("Open cancelled")));
+        CommandRegistry.register("file.save",   "File: Save",             () ->
+            FileDialog.save(window, demoFilters, null, "untitled.txt")
+                .ifPresentOrElse(p -> System.out.println("Save to: " + p),
+                                 () -> System.out.println("Save cancelled")));
+        CommandRegistry.register("file.saveas", "File: Save As…",         () ->
+            FileDialog.save(window, demoFilters, null, "untitled.txt")
+                .ifPresentOrElse(p -> System.out.println("Save As: " + p),
+                                 () -> System.out.println("Save As cancelled")));
+        CommandRegistry.register("file.pickdir","File: Pick Folder",      () ->
+            FileDialog.pickFolder(window, null)
+                .ifPresentOrElse(p -> System.out.println("Folder: " + p),
+                                 () -> System.out.println("Pick folder cancelled")));
         CommandRegistry.register("edit.find",   "Edit: Find",             () -> System.out.println("Edit: Find"));
         CommandRegistry.register("edit.replace","Edit: Replace",          () -> System.out.println("Edit: Replace"));
         // Node-spawn commands — discoverable via Ctrl+Space. Default to (3, 3)

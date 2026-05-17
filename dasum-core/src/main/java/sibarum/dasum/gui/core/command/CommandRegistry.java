@@ -29,6 +29,12 @@ public final class CommandRegistry {
         COMMANDS.remove(id);
     }
 
+    /** Run the command registered under {@code id}, if any. No-op when unknown. */
+    public static void invoke(String id) {
+        Command c = COMMANDS.get(id);
+        if (c != null) c.action().run();
+    }
+
     public static List<Command> all() {
         return new ArrayList<>(COMMANDS.values());
     }

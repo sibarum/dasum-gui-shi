@@ -15,6 +15,7 @@
         <module>dasum-msdf-maven-plugin</module>
         <module>dasum-mvp-demo</module>
         <module>dasum-glfw</module>
+        <module>dasum-nfd</module>
     </modules>
 
     <properties>
@@ -47,6 +48,11 @@
             <dependency>
                 <groupId>sibarum.dasum.gui</groupId>
                 <artifactId>dasum-glfw</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>sibarum.dasum.gui</groupId>
+                <artifactId>dasum-nfd</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

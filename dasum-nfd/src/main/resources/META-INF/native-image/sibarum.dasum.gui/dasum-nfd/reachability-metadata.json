@@ -1,0 +1,7 @@
+{
+  "resources": [
+    { "glob": "natives/windows-x64/nfd.dll" },
+    { "glob": "natives/macos-aarch64/libnfd.dylib" },
+    { "glob": "natives/macos-x64/libnfd.dylib" }
+  ]
+}
