@@ -184,6 +184,15 @@ public final class Layout {
                     w, h
                 );
             }
+            case Component.PointCloud pc -> {
+                float w = pc.width()  != null ? pc.width().toPixels()  : viewport.width();
+                float h = pc.height() != null ? pc.height().toPixels() : viewport.height();
+                yield new PixelRect(
+                    viewport.x() + (viewport.width()  - w) * 0.5f,
+                    viewport.y() + (viewport.height() - h) * 0.5f,
+                    w, h
+                );
+            }
         };
     }
 
@@ -199,6 +208,7 @@ public final class Layout {
             case Component.Slider sl    -> { /* leaf */ }
             case Component.Tabs tabs    -> layoutTabs(tabs, rect, rects);
             case Component.GraphSurface cv    -> layoutGraphSurface(cv, rect, rects);
+            case Component.PointCloud pc -> { /* leaf — point data is in PointCloudStates, not children */ }
         }
     }
 
@@ -288,6 +298,11 @@ public final class Layout {
                 float explicit = e != null ? e.toPixels() : 0f;
                 yield Math.max(explicit, fillExtent);
             }
+            case Component.PointCloud pc -> {
+                Em e = width ? pc.width() : pc.height();
+                float explicit = e != null ? e.toPixels() : 0f;
+                yield Math.max(explicit, fillExtent);
+            }
         };
     }
 
@@ -311,6 +326,10 @@ public final class Layout {
                 : (sl.horizontal() ? sl.thickness().toPixels() : sl.length().toPixels());
             case Component.GraphSurface cv -> {
                 Em e = width ? cv.width() : cv.height();
+                yield e != null ? e.toPixels() : 0f;
+            }
+            case Component.PointCloud pc -> {
+                Em e = width ? pc.width() : pc.height();
                 yield e != null ? e.toPixels() : 0f;
             }
         };
@@ -415,6 +434,15 @@ public final class Layout {
                     w, h
                 );
             }
+            case Component.PointCloud pc -> {
+                float w = pc.width()  != null ? pc.width().toPixels()  : interior.width();
+                float h = pc.height() != null ? pc.height().toPixels() : interior.height();
+                yield new PixelRect(
+                    interior.x() + (interior.width()  - w) * 0.5f,
+                    interior.y() + (interior.height() - h) * 0.5f,
+                    w, h
+                );
+            }
         };
     }
 
@@ -511,6 +539,10 @@ public final class Layout {
                 Em e = row ? cv.width() : cv.height();
                 yield e != null ? e.toPixels() : 0f;
             }
+            case Component.PointCloud pc -> {
+                Em e = row ? pc.width() : pc.height();
+                yield e != null ? e.toPixels() : 0f;
+            }
         };
     }
 
@@ -534,6 +566,10 @@ public final class Layout {
             }
             case Component.GraphSurface cv -> {
                 Em e = row ? cv.height() : cv.width();
+                yield e != null ? e.toPixels() : 0f;
+            }
+            case Component.PointCloud pc -> {
+                Em e = row ? pc.height() : pc.width();
                 yield e != null ? e.toPixels() : 0f;
             }
         };

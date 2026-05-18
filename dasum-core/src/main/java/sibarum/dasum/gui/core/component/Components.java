@@ -190,6 +190,7 @@ public final class Components {
             case Component.Checkbox cb -> List.of();
             case Component.Radio<?> r -> List.of();
             case Component.Slider sl  -> List.of();
+            case Component.PointCloud pc -> List.of();
         };
     }
 

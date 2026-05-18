@@ -27,6 +27,7 @@ public final class Gl {
     public static final int GL_FALSE                = 0;
     public static final int GL_TRUE                 = 1;
 
+    public static final int GL_POINTS               = 0x0000;
     public static final int GL_TRIANGLES            = 0x0004;
     public static final int GL_UNSIGNED_BYTE        = 0x1401;
     public static final int GL_UNSIGNED_INT         = 0x1405;
@@ -34,6 +35,8 @@ public final class Gl {
     public static final int GL_TEXTURE_2D           = 0x0DE1;
     public static final int GL_BLEND                = 0x0BE2;
     public static final int GL_SCISSOR_TEST         = 0x0C11;
+    public static final int GL_DEPTH_TEST           = 0x0B71;
+    public static final int GL_PROGRAM_POINT_SIZE   = 0x8642;
     public static final int GL_SRC_ALPHA            = 0x0302;
     public static final int GL_ONE_MINUS_SRC_ALPHA  = 0x0303;
     public static final int GL_TEXTURE0             = 0x84C0;

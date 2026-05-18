@@ -22,6 +22,10 @@
         </dependency>
         <dependency>
             <groupId>sibarum.dasum.gui</groupId>
+            <artifactId>dasum-vis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>sibarum.dasum.gui</groupId>
             <artifactId>dasum-glfw</artifactId>
             <scope>runtime</scope>
         </dependency>

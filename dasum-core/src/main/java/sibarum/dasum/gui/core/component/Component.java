@@ -22,7 +22,7 @@ import java.util.List;
  * and both can carry a {@code flexGrow} weight for when they're a child of
  * a Flex parent.
  */
-public sealed interface Component permits Component.Box, Component.Flex, Component.Scroll, Component.Text, Component.Checkbox, Component.Radio, Component.Slider, Component.Tabs, Component.GraphSurface {
+public sealed interface Component permits Component.Box, Component.Flex, Component.Scroll, Component.Text, Component.Checkbox, Component.Radio, Component.Slider, Component.Tabs, Component.GraphSurface, Component.PointCloud {
 
     /** Per-child flex weight; default 0 means the child takes its intrinsic size. */
     int flexGrow();
@@ -343,5 +343,36 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
 
         public GraphSurface withFlexGrow(int g)        { return new GraphSurface(width, height, color, children, interactive, g); }
         public GraphSurface withInteractive(boolean v) { return new GraphSurface(width, height, color, children, v, flexGrow); }
+    }
+
+    /**
+     * Leaf 3D viewport for n-dimensional point-cloud visualization. The
+     * record carries only layout + appearance — the actual point data and
+     * camera state are stored externally in {@code PointCloudStates} (in
+     * the {@code dasum-vis} module), looked up by component identity.
+     * <p>
+     * Rendering and input handling are also owned by {@code dasum-vis};
+     * {@code dasum-core} treats this variant as a leaf with a background
+     * fill plus a delegated render hook (see
+     * {@link sibarum.dasum.gui.core.render.CustomRenderers}). A
+     * point-cloud viewport that has no registered renderer is harmless —
+     * it just draws as a flat box.
+     *
+     * @param width   em viewport width; {@code null} means fill parent
+     * @param height  em viewport height; {@code null} means fill parent
+     * @param padding inner padding inside the viewport rect
+     * @param color   background fill (drawn beneath the points)
+     */
+    record PointCloud(
+        Em width, Em height, Em padding, Color color,
+        boolean interactive, int flexGrow
+    ) implements Component {
+
+        public PointCloud(Em width, Em height, Em padding, Color color) {
+            this(width, height, padding, color, true, 0);
+        }
+
+        public PointCloud withFlexGrow(int g)        { return new PointCloud(width, height, padding, color, interactive, g); }
+        public PointCloud withInteractive(boolean v) { return new PointCloud(width, height, padding, color, v, flexGrow); }
     }
 }

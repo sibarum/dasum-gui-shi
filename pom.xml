@@ -16,6 +16,7 @@
         <module>dasum-mvp-demo</module>
         <module>dasum-glfw</module>
         <module>dasum-nfd</module>
+        <module>dasum-vis</module>
     </modules>
 
     <properties>
@@ -54,6 +55,16 @@
                 <groupId>sibarum.dasum.gui</groupId>
                 <artifactId>dasum-nfd</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>sibarum.dasum.gui</groupId>
+                <artifactId>dasum-vis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.joml</groupId>
+                <artifactId>joml</artifactId>
+                <version>1.10.8</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

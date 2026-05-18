@@ -61,6 +61,11 @@ import sibarum.dasum.gui.core.window.Window;
 import sibarum.dasum.gui.natives.gl.Gl;
 import sibarum.dasum.gui.natives.glfw.Glfw;
 import sibarum.dasum.gui.natives.glfw.GlfwCallbacks;
+import sibarum.dasum.gui.vis.DasumVis;
+import sibarum.dasum.gui.vis.math.CameraSpec;
+import sibarum.dasum.gui.vis.pointcloud.PointCloudController;
+import sibarum.dasum.gui.vis.pointcloud.PointCloudSnapshot;
+import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
 
 import java.util.List;
 
@@ -136,6 +141,7 @@ public final class App {
             Gl.load();
             batcher.init();
             cursors.init();
+            DasumVis.init();
             EmContext.setDpiScale(window.contentScaleX());
 
             try (Texture primaryTexture = Texture.fromPngResource("/dasum/atlas/primary.png")) {
@@ -254,7 +260,8 @@ public final class App {
             List.of(
                 new Component.Tabs.TabPanel("Node Editor", buildNodeEditorPane()),
                 new Component.Tabs.TabPanel("Widgets",     buildWidgetsPane()),
-                new Component.Tabs.TabPanel("Text",        buildTextPane())
+                new Component.Tabs.TabPanel("Text",        buildTextPane()),
+                new Component.Tabs.TabPanel("Point Cloud", buildPointCloudPane())
             ),
             activeTab,
             Variant.PRIMARY
@@ -444,6 +451,67 @@ public final class App {
         );
     }
 
+    /**
+     * Point-cloud pane — a unit-cube scatter rendered through dasum-vis.
+     * Left-click drag orbits the camera; scroll wheel zooms; a perspective /
+     * orthographic toggle lives in the top-right of the pane.
+     */
+    private static Component buildPointCloudPane() {
+        Color cloudBg = new Color(0.04f, 0.05f, 0.08f, 1f);
+
+        Component.PointCloud viewport = new Component.PointCloud(
+            null, null, Em.ZERO, cloudBg, true, 1
+        );
+
+        // Build a 1000-point unit cube; a small per-axis colour bias makes
+        // rotation/depth easy to read visually (red ~ x, green ~ y, blue ~ z).
+        final int N = 1000;
+        float[] positions = new float[N * 3];
+        float[] colors    = new float[N * 3];
+        java.util.Random rng = new java.util.Random(7);
+        for (int i = 0; i < N; i++) {
+            float x = (rng.nextFloat() - 0.5f) * 2f;
+            float y = (rng.nextFloat() - 0.5f) * 2f;
+            float z = (rng.nextFloat() - 0.5f) * 2f;
+            positions[i*3    ] = x;
+            positions[i*3 + 1] = y;
+            positions[i*3 + 2] = z;
+            colors[i*3    ] = 0.5f + 0.5f * x;
+            colors[i*3 + 1] = 0.5f + 0.5f * y;
+            colors[i*3 + 2] = 0.5f + 0.5f * z;
+        }
+        PointCloudSnapshot snap = new PointCloudSnapshot(3, N, positions, colors, null, null);
+        PointCloudStates.publish(viewport, snap);
+        PointCloudStates.setCamera(viewport, CameraSpec.defaultPerspective());
+
+        // Mode toggle button row.
+        Component perspectiveBtn = button("Perspective", Em.of(8f), BTN_BLUE, 0);
+        Component orthoBtn       = button("Orthographic", Em.of(8f), BTN_NEUTRAL, 0);
+        Handlers.onClick(perspectiveBtn,
+            () -> PointCloudStates.setCamera(viewport,
+                  PointCloudStates.cameraOf(viewport).withMode(
+                      sibarum.dasum.gui.vis.math.CameraMode.PERSPECTIVE)));
+        Handlers.onClick(orthoBtn,
+            () -> PointCloudStates.setCamera(viewport,
+                  PointCloudStates.cameraOf(viewport).withMode(
+                      sibarum.dasum.gui.vis.math.CameraMode.ORTHOGRAPHIC)));
+
+        Component toolbar = new Component.Flex(
+            null, Em.of(2.4f), Em.of(0.4f), TOOLBAR_BG,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
+            List.of(perspectiveBtn, orthoBtn,
+                    new Component.Text("Drag to rotate · Scroll to zoom", Em.of(0.9f), LABEL_FG)),
+            false, 0
+        );
+
+        return new Component.Flex(
+            null, null, Em.ZERO, CONTENT_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            List.of(toolbar, viewport),
+            false, 1
+        );
+    }
+
     /** Text pane — the editable paragraph and its caret/selection/clipboard demo. */
     private static Component buildTextPane() {
         String paragraph =
@@ -614,6 +682,8 @@ public final class App {
             if (ConnectionDragController.isDragging()) return;
             GraphSurfaceController.onCursorMove(x, y);
             if (GraphSurfaceController.isDragging()) return;
+            PointCloudController.onCursorMove(x, y);
+            if (PointCloudController.isDragging()) return;
             // Hover-follow keyboard selection when the context menu is open.
             ContextMenuController.onCursorMove(x, y);
 
@@ -673,6 +743,14 @@ public final class App {
                     pressTarget = null;
                     return;
                 }
+                // Point-cloud viewports: drag orbits the camera. Consume
+                // so the click doesn't also focus / hit the viewport's
+                // background as a generic interactive component.
+                if (PointCloudController.onMouseDown(HoverState.hovered(), InputState.mouseX(), InputState.mouseY())) {
+                    pressTarget = null;
+                    FocusState.set(HoverState.hovered());
+                    return;
+                }
                 // Connection selection — only fires when the click's deepest
                 // hit IS the GraphSurface (i.e., on empty surface area), so
                 // it can't steal a curve hit from a node-body drag.
@@ -712,10 +790,12 @@ public final class App {
                 boolean sliderDrag = SliderController.isDragging();
                 boolean canvasDrag = GraphSurfaceController.isDragging();
                 boolean connectionDrag = ConnectionDragController.isDragging();
+                boolean pointCloudDrag = PointCloudController.isDragging();
                 ScrollbarController.onMouseUp();
                 SliderController.onMouseUp();
                 GraphSurfaceController.onMouseUp();
                 ConnectionDragController.onMouseUp();
+                PointCloudController.onMouseUp();
 
                 // Release-on-same-target fires the click. Re-hit-test rather
                 // than reading HoverState — HoverState only updates on cursor-
@@ -729,7 +809,7 @@ public final class App {
                 Component released = (lr2 != null && dispatchRoot != null)
                     ? HitTest.test(dispatchRoot, lr2, (float) InputState.mouseX(), (float) InputState.mouseY())
                     : null;
-                if (!scrollDrag && !sliderDrag && !canvasDrag && !connectionDrag && pressTarget != null && released == pressTarget) {
+                if (!scrollDrag && !sliderDrag && !canvasDrag && !connectionDrag && !pointCloudDrag && pressTarget != null && released == pressTarget) {
                     Handlers.activate(pressTarget, dispatchRoot);
                 }
                 pressTarget = null;
@@ -762,6 +842,7 @@ public final class App {
                 ScrollbarController.cancelDrag();
                 GraphSurfaceController.cancelDrag();
                 ConnectionDragController.cancelDrag();
+                PointCloudController.cancelDrag();
                 // Window lost OS focus. Clear hover and pending drag — the
                 // mouseup likely happened in another window and we'll never
                 // see it. Selection PERSISTS so users can alt-tab away to
@@ -777,6 +858,10 @@ public final class App {
             LayoutResult lr = LatestLayout.result();
             Component layoutRoot = OverlayStack.activeInputRoot(LatestLayout.root());
             if (lr == null || layoutRoot == null) return;
+            // Point-cloud viewport gets first refusal — scroll over a
+            // viewport zooms its camera rather than scrolling a container.
+            Component pcHit = HitTest.test(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
+            if (PointCloudController.onScroll(pcHit, yOff)) return;
             Component.Scroll target = HitTest.findScroll(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
             if (target == null) return;
 

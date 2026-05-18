@@ -10,6 +10,7 @@ import sibarum.dasum.gui.core.input.TextState;
 import sibarum.dasum.gui.core.input.TextStates;
 import sibarum.dasum.gui.core.render.Batcher;
 import sibarum.dasum.gui.core.render.Color;
+import sibarum.dasum.gui.core.render.CustomRenderers;
 import sibarum.dasum.gui.core.render.DrawCommand;
 import sibarum.dasum.gui.core.text.FontGroup;
 import sibarum.dasum.gui.core.text.FontGroups;
@@ -47,11 +48,17 @@ public final class Render {
     public static void render(Component root, LayoutResult layout, Batcher batcher, float[] projection) {
         Component hovered = HoverState.hovered();
         Component focused = FocusState.focused();
-        renderInOrder(root, layout, batcher, projection, hovered, focused);
+        renderInOrder(root, layout, batcher, projection, hovered, focused, 0);
+    }
+
+    public static void render(Component root, LayoutResult layout, Batcher batcher, float[] projection, int framebufferHeightPx) {
+        Component hovered = HoverState.hovered();
+        Component focused = FocusState.focused();
+        renderInOrder(root, layout, batcher, projection, hovered, focused, framebufferHeightPx);
     }
 
     private static void renderInOrder(Component c, LayoutResult layout, Batcher batcher, float[] projection,
-                                       Component hovered, Component focused) {
+                                       Component hovered, Component focused, int framebufferHeightPx) {
         PixelRect r = layout.rectOf(c);
         if (r != null && r.width() > 0f && r.height() > 0f) {
             Color color = backgroundColorOf(c);
@@ -72,7 +79,7 @@ public final class Render {
         }
 
         if (c instanceof Component.Scroll scroll && scroll.child() != null) {
-            renderScrollContents(scroll, r, layout, batcher, projection, hovered, focused);
+            renderScrollContents(scroll, r, layout, batcher, projection, hovered, focused, framebufferHeightPx);
         } else if (c instanceof Component.Text text) {
             renderText(text, r, batcher, projection);
         } else if (c instanceof Component.Checkbox cb) {
@@ -82,12 +89,17 @@ public final class Render {
         } else if (c instanceof Component.Slider sl) {
             renderSlider(sl, r, batcher);
         } else if (c instanceof Component.Tabs tabs) {
-            renderTabs(tabs, r, layout, batcher, projection, hovered, focused);
+            renderTabs(tabs, r, layout, batcher, projection, hovered, focused, framebufferHeightPx);
         } else if (c instanceof Component.GraphSurface surface) {
-            renderGraphSurface(surface, layout, batcher, projection, hovered, focused);
+            renderGraphSurface(surface, layout, batcher, projection, hovered, focused, framebufferHeightPx);
+        } else if (c instanceof Component.PointCloud pc) {
+            CustomRenderers.Renderer ext = CustomRenderers.find(pc);
+            if (ext != null && r != null) {
+                ext.render(pc, r, batcher, projection, framebufferHeightPx);
+            }
         } else {
             for (Component child : childrenOf(c)) {
-                renderInOrder(child, layout, batcher, projection, hovered, focused);
+                renderInOrder(child, layout, batcher, projection, hovered, focused, framebufferHeightPx);
             }
         }
     }
@@ -102,9 +114,9 @@ public final class Render {
      * just works.
      */
     private static void renderGraphSurface(Component.GraphSurface surface, LayoutResult layout, Batcher batcher,
-                                      float[] projection, Component hovered, Component focused) {
+                                      float[] projection, Component hovered, Component focused, int framebufferHeightPx) {
         for (Component child : sibarum.dasum.gui.core.graph.GraphSurfaceZOrder.orderedChildren(surface)) {
-            renderInOrder(child, layout, batcher, projection, hovered, focused);
+            renderInOrder(child, layout, batcher, projection, hovered, focused, framebufferHeightPx);
         }
         // Connections sit on top of nodes so the curve visually emerges from
         // each port. The renderer is data-driven from the Connections sidecar
@@ -115,7 +127,7 @@ public final class Render {
     }
 
     private static void renderTabs(Component.Tabs tabs, PixelRect rect, LayoutResult layout, Batcher batcher,
-                                    float[] projection, Component hovered, Component focused) {
+                                    float[] projection, Component hovered, Component focused, int framebufferHeightPx) {
         if (rect == null) return;
         // The Tabs's own backgroundColorOf returned contentBg; that's already
         // painted over the whole rect. Overlay the header strip on top.
@@ -158,7 +170,7 @@ public final class Render {
         // Active content (recurse).
         Component activeContent = tabs.activeContent();
         if (activeContent != null) {
-            renderInOrder(activeContent, layout, batcher, projection, hovered, focused);
+            renderInOrder(activeContent, layout, batcher, projection, hovered, focused, framebufferHeightPx);
         }
     }
 
@@ -285,13 +297,13 @@ public final class Render {
 
     private static void renderScrollContents(Component.Scroll scroll, PixelRect outer,
                                               LayoutResult layout, Batcher batcher, float[] projection,
-                                              Component hovered, Component focused) {
+                                              Component hovered, Component focused, int framebufferHeightPx) {
         PixelRect interior = padInset(outer, scroll.padding());
 
         batcher.flush(projection);
         batcher.scissor().push(interior);
 
-        renderInOrder(scroll.child(), layout, batcher, projection, hovered, focused);
+        renderInOrder(scroll.child(), layout, batcher, projection, hovered, focused, framebufferHeightPx);
 
         batcher.flush(projection);
         batcher.scissor().pop();
@@ -334,6 +346,7 @@ public final class Render {
             case Component.Slider sl   -> sl.trackColor();
             case Component.Tabs t      -> t.contentBg();
             case Component.GraphSurface cv   -> cv.color();
+            case Component.PointCloud pc -> pc.color();
         };
     }
 
@@ -348,6 +361,7 @@ public final class Render {
             case Component.Slider sl   -> List.of();
             case Component.Tabs t      -> t.activeContent() != null ? List.of(t.activeContent()) : List.of();
             case Component.GraphSurface cv   -> cv.children();
+            case Component.PointCloud pc -> List.of();
         };
     }
 
