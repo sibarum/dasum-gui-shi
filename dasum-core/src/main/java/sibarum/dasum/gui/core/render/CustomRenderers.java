@@ -40,11 +40,16 @@ public final class CustomRenderers {
          * text accumulators may hold buffered geometry — call
          * {@code batcher.flush(projection)} before changing global GL
          * state (depth test, scissor, blend, etc.) and again after
-         * restoring it. The framebuffer height is provided so renderers
-         * can construct their own scissor rects with the same Y-flip
-         * convention {@code ScissorStack} uses.
+         * restoring it. The framebuffer dimensions are provided so
+         * renderers can apply a viewport transform that maps NDC
+         * coordinates to their rect (essential for 3D content whose NDC
+         * centre would otherwise land at the framebuffer centre
+         * regardless of where the component's rect actually is), and
+         * can restore {@code glViewport} to cover the whole framebuffer
+         * before returning.
          */
-        void render(Component c, PixelRect rect, Batcher batcher, float[] projection, int framebufferHeightPx);
+        void render(Component c, PixelRect rect, Batcher batcher, float[] projection,
+                    int framebufferWidthPx, int framebufferHeightPx);
     }
 
     private static final Map<Class<? extends Component>, Renderer> RENDERERS = new IdentityHashMap<>();

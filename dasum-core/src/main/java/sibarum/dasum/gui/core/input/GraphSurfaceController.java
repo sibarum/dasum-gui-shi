@@ -15,20 +15,34 @@ import java.util.List;
 /**
  * Drag dispatch for {@link Component.GraphSurface} direct children. A press
  * anywhere inside an interactive GraphSurface walks the hit path; the direct
- * child of the surface in that path becomes the drag target. Cursor moves
- * rewrite its {@link GraphSurfacePositions} entry; mouse up ends the drag.
+ * child of the surface in that path becomes the press target. Cursor moves
+ * past the drag threshold begin rewriting its {@link GraphSurfacePositions}
+ * entry; mouse-up ends the interaction.
  * <p>
- * No drag threshold — drag begins on mouse-down. Clicks on a GraphSurface
- * child without cursor movement still won't fire registered click handlers
- * because the App-level dispatcher suppresses click activation while
- * {@link #isDragging()} is true.
+ * Click vs drag: a press-and-release without crossing {@link #DRAG_THRESHOLD_PX}
+ * resolves as a click and fires {@link Handlers#activate} on the pressed
+ * direct child. This lets apps attach {@code Handlers.onClick} to a node and
+ * have it work intuitively — short clicks open dialogs / fire actions, sustained
+ * presses drag. Threshold matches the {@code PointCloudController} for
+ * consistency.
  */
 public final class GraphSurfaceController {
 
-    private static Component.GraphSurface draggingSurface = null;
-    private static Component               draggingChild  = null;
-    private static float dragOffsetX = 0f;
-    private static float dragOffsetY = 0f;
+    /**
+     * Squared cursor-displacement threshold (px²) that distinguishes a
+     * node click from a drag. Movement strictly below this stays a press
+     * and resolves on mouse-up as a click; movement past it commits to a
+     * drag (position updates flowing into
+     * {@link GraphSurfacePositions}) and the eventual mouse-up does not
+     * fire a click.
+     */
+    private static final float DRAG_THRESHOLD_PX_SQ = 4f * 4f;
+
+    private static Component.GraphSurface pressedSurface = null;
+    private static Component               pressedChild  = null;
+    private static double pressX = 0d, pressY = 0d;
+    private static float  dragOffsetX = 0f, dragOffsetY = 0f;
+    private static boolean dragStarted = false;
 
     private GraphSurfaceController() {}
 
@@ -50,10 +64,15 @@ public final class GraphSurfaceController {
                 Component directChild = path.get(i + 1);
                 PixelRect childRect = lr.rectOf(directChild);
                 if (childRect == null) continue;
-                draggingSurface = surface;
-                draggingChild   = directChild;
-                dragOffsetX     = (float) cursorX - childRect.x();
-                dragOffsetY     = (float) cursorY - childRect.y();
+                pressedSurface = surface;
+                pressedChild   = directChild;
+                pressX         = cursorX;
+                pressY         = cursorY;
+                dragOffsetX    = (float) cursorX - childRect.x();
+                dragOffsetY    = (float) cursorY - childRect.y();
+                dragStarted    = false;
+                // Bring to front on any press — matches user expectation that
+                // touching a node surfaces it, click or drag either way.
                 GraphSurfaceZOrder.bumpToTop(surface, directChild);
                 return true;
             }
@@ -62,12 +81,20 @@ public final class GraphSurfaceController {
     }
 
     public static void onCursorMove(double cursorX, double cursorY) {
-        if (draggingSurface == null || draggingChild == null) return;
+        if (pressedSurface == null || pressedChild == null) return;
+
+        if (!dragStarted) {
+            double dx = cursorX - pressX;
+            double dy = cursorY - pressY;
+            if (dx * dx + dy * dy < DRAG_THRESHOLD_PX_SQ) return;
+            dragStarted = true;
+        }
+
         LayoutResult lr = LatestLayout.result();
         if (lr == null) return;
-        PixelRect surfaceRect = lr.rectOf(draggingSurface);
+        PixelRect surfaceRect = lr.rectOf(pressedSurface);
         if (surfaceRect == null) return;
-        PixelRect childRect = lr.rectOf(draggingChild);
+        PixelRect childRect = lr.rectOf(pressedChild);
         if (childRect == null) return;
 
         float pxPerEm = EmContext.pixelsPerEm();
@@ -88,20 +115,37 @@ public final class GraphSurfaceController {
         newEmX = Math.max(0f, Math.min(maxEmX, newEmX));
         newEmY = Math.max(0f, Math.min(maxEmY, newEmY));
 
-        GraphSurfacePositions.set(draggingSurface, draggingChild, newEmX, newEmY);
+        GraphSurfacePositions.set(pressedSurface, pressedChild, newEmX, newEmY);
     }
 
     public static void onMouseUp() {
-        draggingSurface = null;
-        draggingChild   = null;
+        if (pressedSurface != null && pressedChild != null && !dragStarted) {
+            // Press resolved without crossing the drag threshold — fire
+            // a click on the pressed child so {@code Handlers.onClick} on
+            // graph-surface children works.
+            Component dispatchRoot = OverlayStack.activeInputRoot(LatestLayout.root());
+            Handlers.activate(pressedChild, dispatchRoot);
+        }
+        pressedSurface = null;
+        pressedChild   = null;
+        dragStarted    = false;
     }
 
+    /**
+     * True while a press is active on a graph-surface child, whether or
+     * not the drag threshold has been crossed. The App-level mouse-up
+     * dispatcher uses this to suppress its generic click activation —
+     * graph-surface clicks are dispatched from inside this controller
+     * instead, so a {@code Handlers.onClick} on a node fires exactly
+     * once.
+     */
     public static boolean isDragging() {
-        return draggingSurface != null;
+        return pressedSurface != null;
     }
 
     public static void cancelDrag() {
-        draggingSurface = null;
-        draggingChild   = null;
+        pressedSurface = null;
+        pressedChild   = null;
+        dragStarted    = false;
     }
 }

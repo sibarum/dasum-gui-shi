@@ -38,6 +38,13 @@ final class MsdfTextAccumulator {
     private int drawCalls = 0;
     private int vertices = 0;
 
+    /**
+     * Identity of the currently-bound atlas + distance range. Used by
+     * {@link #willAtlasChange} so callers can flush before switching.
+     */
+    private Texture currentAtlas = null;
+    private float   currentDistanceRange = 0f;
+
     void init() {
         material.init();
         vao = Gl.glGenVertexArray();
@@ -59,12 +66,36 @@ final class MsdfTextAccumulator {
 
     void setAtlas(Texture atlas, float distanceRange) {
         material.setAtlas(atlas, distanceRange);
+        currentAtlas = atlas;
+        currentDistanceRange = distanceRange;
+    }
+
+    /**
+     * Returns true if calling {@link #setAtlas} with these arguments
+     * would change the currently-bound atlas or distance range. The
+     * {@link Batcher} uses this to skip a redundant flush when the
+     * caller re-binds the same atlas it already had.
+     */
+    boolean willAtlasChange(Texture atlas, float distanceRange) {
+        return atlas != currentAtlas || distanceRange != currentDistanceRange;
+    }
+
+    /** Pending glyph quads — non-zero means a flush is needed before atlas swap. */
+    boolean hasPendingGeometry() {
+        return vertexCount > 0;
     }
 
     void beginFrame() {
         vertexCount = 0;
         drawCalls = 0;
         vertices = 0;
+        // Clear cached atlas identity at frame start so the first
+        // setAtlas call this frame always counts as a change. Without
+        // this, a frame that ends with atlas A and starts the next with
+        // a setAtlas(A) call would skip the (correct) no-op rebind and
+        // could miss state changes around test/instrumented atlases.
+        currentAtlas = null;
+        currentDistanceRange = 0f;
     }
 
     void submit(DrawCommand.GlyphQuad q) {

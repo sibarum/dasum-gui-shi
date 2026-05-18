@@ -76,7 +76,8 @@ public final class PointCloudRenderer implements AutoCloseable {
         buffers.scheduleDelete(c);
     }
 
-    private void render(Component cmp, PixelRect rect, Batcher batcher, float[] projection, int framebufferHeightPx) {
+    private void render(Component cmp, PixelRect rect, Batcher batcher, float[] projection,
+                        int framebufferWidthPx, int framebufferHeightPx) {
         if (!(cmp instanceof Component.PointCloud pc)) return;
         if (rect == null || rect.width() <= 0f || rect.height() <= 0f) return;
 
@@ -98,6 +99,18 @@ public final class PointCloudRenderer implements AutoCloseable {
         batcher.flush(projection);
         batcher.scissor().push(rect);
 
+        // Re-aim glViewport at this component's rect so NDC [-1,1] maps to
+        // the rect (rather than the whole framebuffer that App.java set up).
+        // Without this, a small-rect viewport (e.g. a node thumbnail off in
+        // a corner) would have all its points scissored away — NDC center
+        // lands at framebuffer center, which is outside the rect. OpenGL
+        // viewport Y is bottom-up, so flip our top-left rect.
+        int vpX = (int) rect.x();
+        int vpY = framebufferHeightPx - (int) (rect.y() + rect.height());
+        int vpW = (int) rect.width();
+        int vpH = (int) rect.height();
+        Gl.glViewport(vpX, vpY, vpW, vpH);
+
         boolean perspective = cam.mode() == CameraMode.PERSPECTIVE;
         if (perspective) {
             // Scissored clear of just the viewport rect's depth slice — leaves
@@ -118,6 +131,11 @@ public final class PointCloudRenderer implements AutoCloseable {
             Gl.glDisable(GL_DEPTH_TEST);
         }
         Gl.glUseProgram(0);
+
+        // Restore the framebuffer-wide viewport before handing control back
+        // to the 2D batcher, whose glScissor + glDraw calls all assume NDC
+        // maps to the full framebuffer.
+        Gl.glViewport(0, 0, framebufferWidthPx, framebufferHeightPx);
 
         batcher.flush(projection); // ensure point draws are committed before scissor pop
         batcher.scissor().pop();

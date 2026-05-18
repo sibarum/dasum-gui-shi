@@ -8,6 +8,8 @@ import sibarum.dasum.gui.vis.math.CameraMode;
 import sibarum.dasum.gui.vis.math.CameraSpec;
 import sibarum.dasum.gui.vis.math.Vec3;
 
+import java.util.function.Consumer;
+
 /**
  * Mouse-driven camera updates for {@code Component.PointCloud}
  * viewports. Mirrors the {@code SliderController} static pattern: app
@@ -32,60 +34,119 @@ public final class PointCloudController {
     private static final float MAX_PITCH            = (float) (Math.PI * 0.5 - 0.01);
     private static final float ZOOM_FACTOR_PER_NOTCH = 1.15f;
 
-    private static Component.PointCloud dragging = null;
-    private static double lastX = 0d;
-    private static double lastY = 0d;
+    /**
+     * Squared cursor-displacement threshold (px²) that distinguishes a
+     * click from a drag. Movement strictly below this stays a "press"
+     * and resolves on mouse-up as a click; movement past it commits to
+     * a drag (camera rotation in perspective, pan in ortho) and the
+     * eventual mouse-up does not fire a click.
+     */
+    private static final float DRAG_THRESHOLD_PX_SQ = 4f * 4f;
+
+    /** Screen-pixel tolerance for picking a point under the cursor. */
+    private static final float PICK_TOLERANCE_PX = 8f;
+
+    private static Component.PointCloud pressed = null;
+    private static boolean dragStarted = false;
+    private static double pressX = 0d, pressY = 0d;
+    private static double lastX  = 0d, lastY  = 0d;
 
     private PointCloudController() {}
 
     public static boolean onMouseDown(Component hit, double cursorX, double cursorY) {
         if (!(hit instanceof Component.PointCloud pc) || !pc.interactive()) return false;
-        dragging = pc;
-        lastX = cursorX;
-        lastY = cursorY;
+        pressed = pc;
+        dragStarted = false;
+        pressX = cursorX; pressY = cursorY;
+        lastX = cursorX;  lastY = cursorY;
         return true;
     }
 
     public static void onCursorMove(double cursorX, double cursorY) {
-        if (dragging == null) return;
+        if (pressed == null) return;
+
+        if (!dragStarted) {
+            double dxPress = cursorX - pressX;
+            double dyPress = cursorY - pressY;
+            if (dxPress * dxPress + dyPress * dyPress < DRAG_THRESHOLD_PX_SQ) {
+                // Still potentially a click — don't move the camera yet.
+                return;
+            }
+            dragStarted = true;
+            // Reset the per-step deltas so the first drag frame doesn't
+            // snap by the entire press-to-now displacement.
+            lastX = cursorX; lastY = cursorY;
+            return;
+        }
+
         float dx = (float) (cursorX - lastX);
         float dy = (float) (cursorY - lastY);
         lastX = cursorX;
         lastY = cursorY;
 
-        CameraSpec cam = PointCloudStates.cameraOf(dragging);
+        CameraSpec cam = PointCloudStates.cameraOf(pressed);
         if (cam.mode() == CameraMode.PERSPECTIVE) {
             float yaw   = cam.yawRad() - dx * YAW_RAD_PER_PIXEL;
             float pitch = cam.pitchRad() + dy * PITCH_RAD_PER_PIXEL;
             pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
-            PointCloudStates.setCamera(dragging, cam.withYaw(yaw).withPitch(pitch));
+            PointCloudStates.setCamera(pressed, cam.withYaw(yaw).withPitch(pitch));
         } else {
             // Pan the orbit target in viewport space. orthoScale is the
             // half-height of the visible world in y; per-pixel pan distance
             // is (2 * orthoScale) / viewport-height. We don't have the
             // viewport height here without a layout lookup, so approximate
-            // via the dragging component's most recent layout rect.
-            float worldPerPixel = panWorldPerPixel(dragging, cam);
+            // via the pressed component's most recent layout rect.
+            float worldPerPixel = panWorldPerPixel(pressed, cam);
             Vec3 t = cam.target();
             Vec3 t2 = new Vec3(
                 t.x() - dx * worldPerPixel,
                 t.y() + dy * worldPerPixel,  // screen-Y-down, world-Y-up
                 t.z()
             );
-            PointCloudStates.setCamera(dragging, cam.withTarget(t2));
+            PointCloudStates.setCamera(pressed, cam.withTarget(t2));
         }
     }
 
     public static void onMouseUp() {
-        dragging = null;
+        if (pressed != null && !dragStarted) {
+            // Press resolved without crossing the drag threshold — treat
+            // as a click. Pick the nearest point under the press position
+            // and fire any registered handler.
+            firePointClick(pressed, pressX, pressY);
+        }
+        pressed = null;
+        dragStarted = false;
     }
 
     public static void cancelDrag() {
-        dragging = null;
+        pressed = null;
+        dragStarted = false;
     }
 
+    /**
+     * True iff the mouse is currently pressed on a point-cloud viewport,
+     * regardless of whether the drag threshold has been crossed yet. The
+     * App-level mouse-up dispatcher uses this to suppress the standard
+     * "click activation" path so a press-and-release on a viewport is
+     * routed through {@link PointHandlers} instead of
+     * {@code Handlers.activate}.
+     */
     public static boolean isDragging() {
-        return dragging != null;
+        return pressed != null;
+    }
+
+    private static void firePointClick(Component.PointCloud pc, double mouseX, double mouseY) {
+        Consumer<PointHandlers.PointHit> handler = PointHandlers.handlerFor(pc);
+        if (handler == null) return;
+        LayoutResult lr = LatestLayout.result();
+        if (lr == null) return;
+        PixelRect rect = lr.rectOf(pc);
+        int idx = PointPicker.pickNearest(pc, rect, mouseX, mouseY, PICK_TOLERANCE_PX);
+        if (idx < 0) return;
+        PointCloudSnapshot snap = PointCloudStates.snapshotOf(pc);
+        if (snap == null) return;
+        Vec3 worldPos = PointPicker.projectedPositionOf(snap, idx);
+        handler.accept(new PointHandlers.PointHit(idx, worldPos));
     }
 
     /**

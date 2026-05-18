@@ -27,7 +27,7 @@ mvn install
 mvn -pl dasum-mvp-demo exec:exec
 ```
 
-A 1280×800 window opens with three top-level tabs: **Node Editor**, **Widgets**, **Text**.
+A 1280×800 window opens with three top-level tabs: **Node Editor**, **Widgets**, **Text**. The Node Editor tab includes a Point Cloud node — click to expand it into a full-screen modal viewport with orbit / zoom / point-pick.
 
 ### Run the demo (native-image)
 
@@ -44,8 +44,10 @@ Produces a single executable with no JVM dependency.
 |---|---|
 | `dasum-natives` | Hand-rolled Panama bindings for GLFW + a minimal OpenGL 3.3 core subset. `NativeLibLoader` extracts native libs from classpath resources at startup. |
 | `dasum-glfw` | Holds the GLFW dynamic library (`glfw3.dll` etc.) as a classpath resource. Split out from `dasum-natives` so the bindings can be vendored / replaced without the binary. |
+| `dasum-nfd` | Native file-dialog wrapper. Exposes `FileDialog.open` / `save` / `pickFolder` backed by [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended); the platform's native picker, not an in-process imitation. |
 | `dasum-core` | The framework. All packages under `sibarum.dasum.gui.core`. See below. |
-| `dasum-msdf-maven-plugin` | Build-time MSDF atlas generation. Two modes: regenerate-from-TTF (`generate-atlas` goal) and use-prebuilt (skip generation via `msdf-prebuilt` profile). |
+| `dasum-vis` | Optional visualization module — n-dimensional point-cloud viewport with orbit/zoom camera, click-to-pick, thumbnail-or-expanded layout. Uses JOML internally, exposes immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md). |
+| `dasum-msdf-maven-plugin` | Build-time MSDF atlas generation. Text atlases from charset presets, icon atlases from named glyph subsets of icon fonts (Lucide / Material) with generated Java constants. See [`dasum-msdf-maven-plugin/README.md`](dasum-msdf-maven-plugin/README.md). |
 | `dasum-mvp-demo` | The reference / showcase app. The best place to look when learning the API. |
 
 ### `dasum-core` packages
@@ -132,6 +134,7 @@ All under `sibarum.dasum.gui.core.component.Component` (sealed):
 - **`Slider`** — horizontal or vertical, bound to a `Property<Float>`.
 - **`Tabs`** — tab strip with header cells, content panes, active-index bound to a `Property<Integer>`.
 - **`GraphSurface`** — 2D positioning container for the node editor. Children float at em positions from `GraphSurfacePositions`. Distinct from a future drawing-canvas component (which would be called `Canvas`).
+- **`PointCloud`** — leaf 3D viewport whose data and camera state live in `PointCloudStates` (in `dasum-vis`). The variant lives in `dasum-core` so layout / hit-test treat it as a first-class component; the renderer is registered via `CustomRenderers` from `dasum-vis` so `dasum-core` stays 2D-only. See [`dasum-vis/README.md`](dasum-vis/README.md).
 
 Variants are immutable; instance methods like `Flex.withFlexGrow(int)` return a new record with the field changed.
 
@@ -172,6 +175,14 @@ State sidecars (`HoverState`, `FocusState`, `InputState`) track the current mous
 ### Em context
 
 `EmContext` is process-global state: `rootEmPx` (default 16), `zoom`, `dpiScale`. `pixelsPerEm() = rootEmPx × zoom × dpiScale`. Set DPI scale at startup from `Window.contentScaleX()`. Ctrl+= / Ctrl+- / Ctrl+0 in the demo bind to `multiplyZoom` / `setZoom(1f)`.
+
+### Point-cloud visualization (`dasum-vis`)
+
+Optional module — depend on `dasum-vis` to render n-dimensional point clouds as 3D scenes inside any GUI panel. Each viewport is a `Component.PointCloud` with snapshot + camera state held in a per-component `AtomicReference`, so worker threads can publish data (typical for ML / training visualizations) without blocking the render thread. Drag-orbit, scroll-zoom, click-pick handlers. Same `Component.PointCloud` instance can be moved between a thumbnail location and a modal overlay via `DynamicChildren` — snapshot, camera, and GPU buffer all follow the component identity. JOML lives entirely inside `dasum-vis`; the public API is immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md).
+
+### Icon fonts
+
+`dasum-msdf-maven-plugin` accepts an `<icons>` block per atlas. Point it at an icon font's TTF + manifest (Lucide `info.json`, Material `codepoints`, etc.), list the icons you actually use by name, and the plugin bakes a focused atlas + generates a Java `Icons` class with one `public static final int` per glyph. The icon atlas registers as a second `FontGroup` (default name `"icons"`) at app startup; `Icon.of(Icons.SEARCH, em, color)` produces a `Component.Text` that renders the glyph. See [`dasum-msdf-maven-plugin/README.md`](dasum-msdf-maven-plugin/README.md) for the manifest formats, name-normalization rules, and the collision policy.
 
 ### Context menus
 
@@ -273,6 +284,10 @@ Look at **`dasum-mvp-demo/src/main/java/sibarum/dasum/gui/demo/App.java`** for t
 ### A custom widget
 
 The component sealed type is `permits`-restricted, so you can't add a new variant from outside `dasum-core`. Compose from `Flex` / `Box` / `Text` / etc. and register click/focus/context handlers via `Handlers` — this gets you 90% of "custom widgets" in practice.
+
+### A custom 3D / GPU component
+
+If you need a new component variant that draws via OpenGL outside the 2D batcher (point clouds, mesh viewers, custom shaders), add the variant to `Component`'s sealed `permits` clause and register a `CustomRenderers.Renderer` for it from a separate module. The renderer receives the component, its layout rect, the batcher, the 2D projection, and the framebuffer dimensions; it's responsible for flushing the batcher, scissoring/viewport-ing to its rect, drawing, and restoring GL state. `dasum-vis`'s `PointCloudRenderer` is the worked example.
 
 ### A custom port type
 

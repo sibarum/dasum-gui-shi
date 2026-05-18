@@ -6,7 +6,9 @@ import sibarum.dasum.gui.core.command.EverythingMenu;
 import sibarum.dasum.gui.core.dialog.FileDialog;
 import sibarum.dasum.gui.core.component.AlignItems;
 import sibarum.dasum.gui.core.component.Component;
+import sibarum.dasum.gui.core.component.Components;
 import sibarum.dasum.gui.core.component.Direction;
+import sibarum.dasum.gui.core.component.DynamicChildren;
 import sibarum.dasum.gui.core.component.JustifyContent;
 import sibarum.dasum.gui.core.em.Em;
 import sibarum.dasum.gui.core.em.EmContext;
@@ -55,6 +57,8 @@ import sibarum.dasum.gui.core.render.Texture;
 import sibarum.dasum.gui.core.text.AtlasData;
 import sibarum.dasum.gui.core.text.FontGroup;
 import sibarum.dasum.gui.core.text.FontGroups;
+import sibarum.dasum.gui.core.text.Icon;
+import sibarum.dasum.gui.demo.generated.Icons;
 import sibarum.dasum.gui.core.theme.Themed;
 import sibarum.dasum.gui.core.theme.Variant;
 import sibarum.dasum.gui.core.window.Window;
@@ -66,6 +70,7 @@ import sibarum.dasum.gui.vis.math.CameraSpec;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudController;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudSnapshot;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
+import sibarum.dasum.gui.vis.pointcloud.PointHandlers;
 
 import java.util.List;
 
@@ -144,9 +149,12 @@ public final class App {
             DasumVis.init();
             EmContext.setDpiScale(window.contentScaleX());
 
-            try (Texture primaryTexture = Texture.fromPngResource("/dasum/atlas/primary.png")) {
+            try (Texture primaryTexture = Texture.fromPngResource("/dasum/atlas/primary.png");
+                 Texture iconsTexture   = Texture.fromPngResource("/dasum/atlas/icons.png")) {
                 AtlasData primaryAtlas = AtlasData.loadFromResource("/dasum/atlas/primary.json");
+                AtlasData iconsAtlas   = AtlasData.loadFromResource("/dasum/atlas/icons.json");
                 FontGroups.register(FontGroup.of(FontGroups.DEFAULT, primaryAtlas, primaryTexture));
+                FontGroups.register(FontGroup.of(Icon.DEFAULT_FONT_GROUP, iconsAtlas, iconsTexture));
 
                 Component root = buildUi();
                 wireInput(window, cursors);
@@ -174,7 +182,7 @@ public final class App {
                     LatestLayout.store(root, layout);
 
                     batcher.beginFrame(fbH);
-                    Render.render(root, layout, batcher, projection);
+                    Render.render(root, layout, batcher, projection, fbW, fbH);
                     // The batcher's per-material two-pass flush (solid fills,
                     // then MSDF text) means within a single batched frame, text
                     // from anywhere drawn on top of solid fills from anywhere.
@@ -192,7 +200,7 @@ public final class App {
                             batcher.flush(projection);
                         }
                         for (OverlayStack.Overlay o : OverlayStack.active()) {
-                            Render.render(o.component(), layout, batcher, projection);
+                            Render.render(o.component(), layout, batcher, projection, fbW, fbH);
                             batcher.flush(projection);
                         }
                     }
@@ -218,6 +226,18 @@ public final class App {
         ).withFlexGrow(flexGrow);
     }
 
+    /** Toolbar-style button with a Lucide icon to the left of the label. */
+    private static Component iconButton(int iconCp, String label, Em width, Color bg, int flexGrow) {
+        Component iconComp  = Icon.of(iconCp, Em.of(1.05f), LABEL_FG);
+        Component labelComp = new Component.Text(label, Em.of(0.85f), LABEL_FG);
+        return new Component.Flex(
+            width, Em.of(2f), Em.of(0.3f), bg,
+            Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.of(0.4f),
+            List.of(iconComp, labelComp),
+            true, 0
+        ).withFlexGrow(flexGrow);
+    }
+
     private static Component buildUi() {
         return new Component.Flex(
             null, null, Em.of(0.5f), FRAME_BG,
@@ -228,10 +248,10 @@ public final class App {
     }
 
     private static Component buildToolbar() {
-        Component file    = button("File",    Em.of(4.5f), BTN_RED,    0);
-        Component edit    = button("Edit",    Em.of(4.5f), BTN_ORANGE, 0);
-        Component view    = button("View",    Em.of(4.5f), BTN_GREEN,  0);
-        Component help    = button("Help",    Em.of(4.5f), BTN_BLUE,   0);
+        Component file    = iconButton(Icons.FOLDER,      "File",    Em.of(5.5f), BTN_RED,    0);
+        Component edit    = iconButton(Icons.EDIT,        "Edit",    Em.of(5.5f), BTN_ORANGE, 0);
+        Component view    = iconButton(Icons.EYE,         "View",    Em.of(5.5f), BTN_GREEN,  0);
+        Component help    = iconButton(Icons.HELP_CIRCLE, "Help",    Em.of(5.5f), BTN_BLUE,   0);
         Component account = button("Account", Em.of(0f),   BTN_PURPLE, 1);
 
         Handlers.onClick(file,    () -> CommandRegistry.invoke("file.open"));
@@ -260,8 +280,7 @@ public final class App {
             List.of(
                 new Component.Tabs.TabPanel("Node Editor", buildNodeEditorPane()),
                 new Component.Tabs.TabPanel("Widgets",     buildWidgetsPane()),
-                new Component.Tabs.TabPanel("Text",        buildTextPane()),
-                new Component.Tabs.TabPanel("Point Cloud", buildPointCloudPane())
+                new Component.Tabs.TabPanel("Text",        buildTextPane())
             ),
             activeTab,
             Variant.PRIMARY
@@ -280,18 +299,20 @@ public final class App {
         Component constantNode = CONSTANT_FACTORY.get();
         Component multiplyNode = MULTIPLY_FACTORY.get();
         Component tagNode      = TAG_FACTORY.get();
+        Component pointCloudNode = buildPointCloudNode();
 
         // null width/height = fill the tab pane (Layout.childExtentOrFill
         // for GraphSurface returns max(explicit, fillExtent)). interactive=true
         // so right-clicks on empty surface area land on the surface itself.
         Component.GraphSurface surface = new Component.GraphSurface(
             null, null, surfaceBg,
-            List.of(constantNode, multiplyNode, tagNode), true, 0
+            List.of(constantNode, multiplyNode, tagNode, pointCloudNode), true, 0
         );
         DEMO_SURFACE = surface;
         GraphSurfacePositions.set(surface, constantNode,  2f, 2f);
         GraphSurfacePositions.set(surface, multiplyNode, 18f, 2f);
         GraphSurfacePositions.set(surface, tagNode,      36f, 2f);
+        GraphSurfacePositions.set(surface, pointCloudNode, 2f, 12f);
 
         // Hardcoded data-only connection: Constant.value → Multiply.a.
         Connections.add(surface,
@@ -452,19 +473,34 @@ public final class App {
     }
 
     /**
-     * Point-cloud pane — a unit-cube scatter rendered through dasum-vis.
-     * Left-click drag orbits the camera; scroll wheel zooms; a perspective /
-     * orthographic toggle lives in the top-right of the pane.
+     * Build a graph node containing a small point-cloud thumbnail. Clicking
+     * the node (without dragging) opens the same viewport in a full-screen
+     * modal overlay; dragging on the node moves it around the surface as
+     * any other node.
+     *
+     * <p>The thumbnail and the expanded view share the same
+     * {@link Component.PointCloud} instance — snapshot, camera, click
+     * handler, and GPU buffer all follow the component because every
+     * piece of state is identity-keyed off it. The node's body is a
+     * {@code DynamicChildren}-backed slot so we can swap the viewport
+     * out for a placeholder while it's in the overlay.
      */
-    private static Component buildPointCloudPane() {
+    private static Component buildPointCloudNode() {
         Color cloudBg = new Color(0.04f, 0.05f, 0.08f, 1f);
+        Color nodeBg  = new Color(0.18f, 0.22f, 0.28f, 1f);
 
+        // Explicit em dimensions on the viewport give it a real intrinsic
+        // size for the thumbnail context (12em x 8em). Inside the overlay's
+        // STRETCH-aligned flex the explicit cross size is overridden by
+        // crossAvail and the flexGrow=1 takes all remaining main-axis
+        // space, so the same record renders at thumbnail size in the node
+        // and full-overlay size in the popup.
         Component.PointCloud viewport = new Component.PointCloud(
-            null, null, Em.ZERO, cloudBg, true, 1
+            Em.of(12f), Em.of(8f), Em.ZERO, cloudBg, true, 1
         );
 
-        // Build a 1000-point unit cube; a small per-axis colour bias makes
-        // rotation/depth easy to read visually (red ~ x, green ~ y, blue ~ z).
+        // 1000-point unit cube; per-axis colour bias makes rotation +
+        // depth ordering easy to read (red~x, green~y, blue~z).
         final int N = 1000;
         float[] positions = new float[N * 3];
         float[] colors    = new float[N * 3];
@@ -484,7 +520,57 @@ public final class App {
         PointCloudStates.publish(viewport, snap);
         PointCloudStates.setCamera(viewport, CameraSpec.defaultPerspective());
 
-        // Mode toggle button row.
+        PointHandlers.onPointClick(viewport, hit ->
+            System.out.printf("Point %d clicked at world (%.3f, %.3f, %.3f)%n",
+                hit.pointIndex(),
+                hit.worldPosition().x(), hit.worldPosition().y(), hit.worldPosition().z()));
+
+        // Slot for swap; viewport added via DynamicChildren so it can be
+        // moved out into the overlay without rebuilding the slot record.
+        Component.Flex slot = new Component.Flex(
+            Em.of(12f), Em.of(8f), Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.COLUMN, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
+            List.of(), false, 0
+        );
+        DynamicChildren.add(slot, viewport);
+
+        Component titleIcon = Icon.of(Icons.BOX, Em.of(1.1f), LABEL_FG);
+        Component titleText = new Component.Text("Point Cloud", Em.of(1.05f), LABEL_FG);
+        Component title = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.of(0.4f),
+            List.of(titleIcon, titleText), false, 0
+        );
+        Component subtitle = new Component.Text("click to expand · drag to move",
+            Em.of(0.75f), new Color(0.65f, 0.70f, 0.85f, 0.75f));
+
+        Component.Flex node = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.6f), nodeBg,
+            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
+            List.of(title, slot, subtitle), true, 0
+        );
+
+        Handlers.onClick(node, () -> openPointCloudOverlay(viewport, slot));
+        return node;
+    }
+
+    /**
+     * Move the viewport into a modal overlay, leaving a placeholder behind
+     * in the {@code slot} so the node doesn't collapse to title-only height
+     * while expanded. Dismissal (Close button, ESC, click-outside) restores
+     * the viewport to its slot and detaches the overlay's transient widgets.
+     */
+    private static void openPointCloudOverlay(Component.PointCloud viewport,
+                                              Component slot) {
+        Component placeholder = new Component.Box(
+            Em.of(12f), Em.of(8f), Em.ZERO,
+            new Color(0.04f, 0.05f, 0.08f, 0.6f),
+            List.of(new Component.Text("Viewing in popup", Em.of(0.85f),
+                new Color(0.65f, 0.70f, 0.85f, 0.85f)))
+        );
+        DynamicChildren.remove(slot, viewport);
+        DynamicChildren.add(slot, placeholder);
+
         Component perspectiveBtn = button("Perspective", Em.of(8f), BTN_BLUE, 0);
         Component orthoBtn       = button("Orthographic", Em.of(8f), BTN_NEUTRAL, 0);
         Handlers.onClick(perspectiveBtn,
@@ -496,20 +582,37 @@ public final class App {
                   PointCloudStates.cameraOf(viewport).withMode(
                       sibarum.dasum.gui.vis.math.CameraMode.ORTHOGRAPHIC)));
 
-        Component toolbar = new Component.Flex(
-            null, Em.of(2.4f), Em.of(0.4f), TOOLBAR_BG,
+        Component closeBtn = Themed.button("Close", Em.of(6f), Variant.PRIMARY, 0);
+        Component title    = new Component.Text("Point Cloud — Expanded", Em.of(1.1f), LABEL_FG);
+        Component spacer   = new Component.Box(Em.of(1f), Em.of(0f), Em.ZERO, new Color(0f, 0f, 0f, 0f))
+                                  .withFlexGrow(1);
+
+        Component header = new Component.Flex(
+            null, Em.of(2.6f), Em.of(0.5f), TOOLBAR_BG,
             Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
-            List.of(perspectiveBtn, orthoBtn,
-                    new Component.Text("Drag to rotate · Scroll to zoom", Em.of(0.9f), LABEL_FG)),
+            List.of(title, perspectiveBtn, orthoBtn, spacer, closeBtn),
             false, 0
         );
 
-        return new Component.Flex(
-            null, null, Em.ZERO, CONTENT_BG,
+        // 1000em width/height is clamped to the viewport by
+        // OverlayStack.computeOverlayRect, giving us a full-screen modal.
+        // Replace with Em.of(60f), Em.of(40f) for a smaller dialog.
+        Component.Flex overlayRoot = new Component.Flex(
+            Em.of(1000f), Em.of(1000f), Em.of(0.4f), CONTENT_BG,
             Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
-            List.of(toolbar, viewport),
-            false, 1
+            List.of(header), false, 0
         );
+        DynamicChildren.add(overlayRoot, viewport);
+
+        Runnable restore = () -> {
+            DynamicChildren.remove(overlayRoot, viewport);
+            DynamicChildren.remove(slot, placeholder);
+            DynamicChildren.add(slot, viewport);
+            Components.detach(overlayRoot);
+            Components.detach(placeholder);
+        };
+        Handlers.onClick(closeBtn, OverlayStack::pop);
+        OverlayStack.push(new OverlayStack.Overlay(overlayRoot, Anchor.CENTER, true, restore));
     }
 
     /** Text pane — the editable paragraph and its caret/selection/clipboard demo. */

@@ -36,4 +36,12 @@ public class AtlasConfig {
 
     /** SDF distance range in output pixels. */
     public int pxRange = 4;
+
+    /**
+     * Optional icon-mode configuration. When non-null, the atlas is
+     * generated from a named glyph subset of an icon font and a Java
+     * {@code Icons} class is emitted alongside the PNG/JSON. The
+     * {@link #charset} field is ignored in this mode.
+     */
+    public IconConfig icons;
 }

@@ -48,17 +48,19 @@ public final class Render {
     public static void render(Component root, LayoutResult layout, Batcher batcher, float[] projection) {
         Component hovered = HoverState.hovered();
         Component focused = FocusState.focused();
-        renderInOrder(root, layout, batcher, projection, hovered, focused, 0);
+        renderInOrder(root, layout, batcher, projection, hovered, focused, 0, 0);
     }
 
-    public static void render(Component root, LayoutResult layout, Batcher batcher, float[] projection, int framebufferHeightPx) {
+    public static void render(Component root, LayoutResult layout, Batcher batcher, float[] projection,
+                              int framebufferWidthPx, int framebufferHeightPx) {
         Component hovered = HoverState.hovered();
         Component focused = FocusState.focused();
-        renderInOrder(root, layout, batcher, projection, hovered, focused, framebufferHeightPx);
+        renderInOrder(root, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
     }
 
     private static void renderInOrder(Component c, LayoutResult layout, Batcher batcher, float[] projection,
-                                       Component hovered, Component focused, int framebufferHeightPx) {
+                                       Component hovered, Component focused,
+                                       int framebufferWidthPx, int framebufferHeightPx) {
         PixelRect r = layout.rectOf(c);
         if (r != null && r.width() > 0f && r.height() > 0f) {
             Color color = backgroundColorOf(c);
@@ -79,7 +81,7 @@ public final class Render {
         }
 
         if (c instanceof Component.Scroll scroll && scroll.child() != null) {
-            renderScrollContents(scroll, r, layout, batcher, projection, hovered, focused, framebufferHeightPx);
+            renderScrollContents(scroll, r, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
         } else if (c instanceof Component.Text text) {
             renderText(text, r, batcher, projection);
         } else if (c instanceof Component.Checkbox cb) {
@@ -89,17 +91,17 @@ public final class Render {
         } else if (c instanceof Component.Slider sl) {
             renderSlider(sl, r, batcher);
         } else if (c instanceof Component.Tabs tabs) {
-            renderTabs(tabs, r, layout, batcher, projection, hovered, focused, framebufferHeightPx);
+            renderTabs(tabs, r, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
         } else if (c instanceof Component.GraphSurface surface) {
-            renderGraphSurface(surface, layout, batcher, projection, hovered, focused, framebufferHeightPx);
+            renderGraphSurface(surface, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
         } else if (c instanceof Component.PointCloud pc) {
             CustomRenderers.Renderer ext = CustomRenderers.find(pc);
             if (ext != null && r != null) {
-                ext.render(pc, r, batcher, projection, framebufferHeightPx);
+                ext.render(pc, r, batcher, projection, framebufferWidthPx, framebufferHeightPx);
             }
         } else {
             for (Component child : childrenOf(c)) {
-                renderInOrder(child, layout, batcher, projection, hovered, focused, framebufferHeightPx);
+                renderInOrder(child, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
             }
         }
     }
@@ -114,9 +116,10 @@ public final class Render {
      * just works.
      */
     private static void renderGraphSurface(Component.GraphSurface surface, LayoutResult layout, Batcher batcher,
-                                      float[] projection, Component hovered, Component focused, int framebufferHeightPx) {
+                                      float[] projection, Component hovered, Component focused,
+                                      int framebufferWidthPx, int framebufferHeightPx) {
         for (Component child : sibarum.dasum.gui.core.graph.GraphSurfaceZOrder.orderedChildren(surface)) {
-            renderInOrder(child, layout, batcher, projection, hovered, focused, framebufferHeightPx);
+            renderInOrder(child, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
         }
         // Connections sit on top of nodes so the curve visually emerges from
         // each port. The renderer is data-driven from the Connections sidecar
@@ -127,7 +130,8 @@ public final class Render {
     }
 
     private static void renderTabs(Component.Tabs tabs, PixelRect rect, LayoutResult layout, Batcher batcher,
-                                    float[] projection, Component hovered, Component focused, int framebufferHeightPx) {
+                                    float[] projection, Component hovered, Component focused,
+                                    int framebufferWidthPx, int framebufferHeightPx) {
         if (rect == null) return;
         // The Tabs's own backgroundColorOf returned contentBg; that's already
         // painted over the whole rect. Overlay the header strip on top.
@@ -150,7 +154,7 @@ public final class Render {
         }
 
         // Labels.
-        batcher.setTextAtlas(fg.texture(), fg.distanceRange());
+        batcher.setTextAtlas(fg.texture(), fg.distanceRange(), projection);
         for (int i = 0; i < tabs.tabs().size(); i++) {
             PixelRect cell = TabsController.tabCellRect(tabs, i, rect);
             String label = tabs.tabs().get(i).label();
@@ -170,7 +174,7 @@ public final class Render {
         // Active content (recurse).
         Component activeContent = tabs.activeContent();
         if (activeContent != null) {
-            renderInOrder(activeContent, layout, batcher, projection, hovered, focused, framebufferHeightPx);
+            renderInOrder(activeContent, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
         }
     }
 
@@ -256,7 +260,7 @@ public final class Render {
         }
 
         // Glyphs — iterate visual lines (LineBreaker handles both wrap and '\n').
-        batcher.setTextAtlas(fg.texture(), fg.distanceRange());
+        batcher.setTextAtlas(fg.texture(), fg.distanceRange(), projection);
         float fontPx     = text.fontSize().toPixels();
         float padPx      = text.padding().toPixels();
         float lineHeight = fg.atlas().metrics().lineHeight() * fontPx;
@@ -297,13 +301,14 @@ public final class Render {
 
     private static void renderScrollContents(Component.Scroll scroll, PixelRect outer,
                                               LayoutResult layout, Batcher batcher, float[] projection,
-                                              Component hovered, Component focused, int framebufferHeightPx) {
+                                              Component hovered, Component focused,
+                                              int framebufferWidthPx, int framebufferHeightPx) {
         PixelRect interior = padInset(outer, scroll.padding());
 
         batcher.flush(projection);
         batcher.scissor().push(interior);
 
-        renderInOrder(scroll.child(), layout, batcher, projection, hovered, focused, framebufferHeightPx);
+        renderInOrder(scroll.child(), layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
 
         batcher.flush(projection);
         batcher.scissor().pop();

@@ -4,6 +4,7 @@ import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.component.Components;
 import sibarum.dasum.gui.core.render.CustomRenderers;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
+import sibarum.dasum.gui.vis.pointcloud.PointHandlers;
 import sibarum.dasum.gui.vis.render.PointCloudRenderer;
 
 /**
@@ -39,6 +40,7 @@ public final class DasumVis implements AutoCloseable {
         CustomRenderers.register(Component.PointCloud.class, v.renderer.asRenderer());
         Components.registerCleaner(c -> {
             PointCloudStates.clear(c);
+            PointHandlers.clear(c);
             v.renderer.onComponentDetached(c);
         });
         instance = v;

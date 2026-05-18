@@ -76,6 +76,31 @@
                             <fontSize>32</fontSize>
                             <pxRange>4</pxRange>
                         </atlas>
+                        <atlas>
+                            <name>icons</name>
+                            <font>${project.basedir}/fonts/lucide/lucide.ttf</font>
+                            <atlasSize>1024</atlasSize>
+                            <fontSize>40</fontSize>
+                            <pxRange>4</pxRange>
+                            <icons>
+                                <manifest>${project.basedir}/fonts/lucide/info.json</manifest>
+                                <manifestFormat>lucide</manifestFormat>
+                                <glyphList>
+                                    search, settings, home, trash-2, plus, minus,
+                                    x, check, chevron-down, chevron-up, chevron-left, chevron-right,
+                                    folder, file, save, copy, clipboard, edit, eye, eye-off,
+                                    play, pause, square, circle, triangle, layers,
+                                    sun, moon, star, heart, bell, bookmark,
+                                    info, alert-triangle, alert-circle, help-circle,
+                                    arrow-up, arrow-down, arrow-left, arrow-right,
+                                    zoom-in, zoom-out, maximize-2, minimize-2, expand, shrink,
+                                    box, layout-grid, sliders, brain, network
+                                </glyphList>
+                                <generatedSourcesDir>${project.build.directory}/generated-sources/dasum-msdf</generatedSourcesDir>
+                                <packageName>sibarum.dasum.gui.demo.generated</packageName>
+                                <className>Icons</className>
+                            </icons>
+                        </atlas>
                     </atlases>
                 </configuration>
             </plugin>

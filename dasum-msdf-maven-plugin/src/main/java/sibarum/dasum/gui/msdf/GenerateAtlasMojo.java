@@ -5,6 +5,7 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.MavenProject;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -15,7 +16,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Generates MSDF (multi-channel signed distance field) atlases from TTF/OTF
@@ -47,6 +50,14 @@ public class GenerateAtlasMojo extends AbstractMojo {
     /** Working directory for extracted binary and intermediate charset files. */
     @Parameter(defaultValue = "${project.build.directory}/dasum-msdf")
     private File workDir;
+
+    /**
+     * Injected so we can register generated icon-class source roots with
+     * the project's compile-source path. Optional — only used when an
+     * atlas has an {@code <icons>} block.
+     */
+    @Parameter(defaultValue = "${project}", readonly = true)
+    private MavenProject project;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -130,12 +141,22 @@ public class GenerateAtlasMojo extends AbstractMojo {
             throw new MojoExecutionException("Atlas '" + cfg.name + "' font not found: " + cfg.font);
         }
 
-        if (isUpToDate(cfg, pngOut, jsonOut)) {
+        // Resolve the glyph selection up front. For icon-mode atlases the
+        // selection drives BOTH the msdf charset file AND the generated
+        // Java constants class — keep them in sync by computing once.
+        Map<String, Integer> selectedIcons = (cfg.icons != null) ? resolveIconSelection(cfg) : null;
+
+        if (isUpToDate(cfg, pngOut, jsonOut, selectedIcons)) {
             getLog().info("Atlas '" + cfg.name + "' is up to date — skipping.");
+            // Even when skipping the atlas regeneration, ensure the
+            // generated-sources root is registered so the Java compiler
+            // picks up the previously-emitted Icons class on incremental
+            // builds.
+            if (cfg.icons != null) registerGeneratedSourceRoot(cfg.icons);
             return;
         }
 
-        File charsetFile = writeCharsetFile(cfg);
+        File charsetFile = writeCharsetFile(cfg, selectedIcons);
         runMsdfAtlasGen(binary, cfg, charsetFile, pngOut, jsonOut);
 
         if (!pngOut.isFile() || !jsonOut.isFile()) {
@@ -145,27 +166,137 @@ public class GenerateAtlasMojo extends AbstractMojo {
         }
         getLog().info("Atlas '" + cfg.name + "' generated: " +
             pngOut.length() + " bytes png + " + jsonOut.length() + " bytes json");
+
+        if (cfg.icons != null) {
+            File java = IconsCodegen.generate(cfg.icons, selectedIcons, cfg.icons.manifestFormat);
+            getLog().info("Icons class generated: " + java + " (" + selectedIcons.size() + " constants)");
+            registerGeneratedSourceRoot(cfg.icons);
+        }
     }
 
-    private boolean isUpToDate(AtlasConfig cfg, File pngOut, File jsonOut) {
+    /**
+     * Parse the icon manifest and filter to the user's requested glyph
+     * list. Result preserves manifest order so atlas + codegen output is
+     * deterministic. Names not present in the manifest fail loudly with
+     * the full list of offenders — silently dropping unknown icons would
+     * be far too easy to miss.
+     */
+    private Map<String, Integer> resolveIconSelection(AtlasConfig cfg) throws MojoExecutionException {
+        IconConfig ic = cfg.icons;
+        Map<String, Integer> manifest = IconManifestParser.parse(ic.manifest, ic.manifestFormat);
+
+        List<String> requested = readGlyphList(ic);
+        if (requested.isEmpty()) {
+            throw new MojoExecutionException(
+                "Atlas '" + cfg.name + "' icons block has no glyphs configured " +
+                "(set <glyphList> or <glyphListFile>).");
+        }
+
+        Map<String, Integer> selected = new LinkedHashMap<>();
+        List<String> missing = new ArrayList<>();
+        for (String name : requested) {
+            Integer cp = manifest.get(name);
+            if (cp == null) missing.add(name);
+            else selected.put(name, cp);
+        }
+        if (!missing.isEmpty()) {
+            throw new MojoExecutionException(
+                "Icon names not found in manifest " + ic.manifest.getName() + ": " + missing);
+        }
+        return selected;
+    }
+
+    private List<String> readGlyphList(IconConfig ic) throws MojoExecutionException {
+        List<String> out = new ArrayList<>();
+        if (ic.glyphList != null) {
+            for (String entry : ic.glyphList) {
+                if (entry == null) continue;
+                // Inline <glyphList> entries can be comma-separated for
+                // convenience: a single <glyph>search, settings, home</glyph>
+                // splits as the user expects.
+                for (String part : entry.split(",")) {
+                    String trimmed = part.trim();
+                    if (!trimmed.isEmpty()) out.add(trimmed);
+                }
+            }
+        }
+        if (ic.glyphListFile != null) {
+            if (!ic.glyphListFile.isFile()) {
+                throw new MojoExecutionException("glyphListFile not found: " + ic.glyphListFile);
+            }
+            try {
+                for (String raw : Files.readAllLines(ic.glyphListFile.toPath(), StandardCharsets.UTF_8)) {
+                    String line = raw.trim();
+                    if (line.isEmpty() || line.startsWith("#")) continue;
+                    out.add(line);
+                }
+            } catch (IOException e) {
+                throw new MojoExecutionException("Failed reading glyphListFile " + ic.glyphListFile, e);
+            }
+        }
+        return out;
+    }
+
+    private void registerGeneratedSourceRoot(IconConfig ic) {
+        if (project == null || ic.generatedSourcesDir == null) return;
+        String path = ic.generatedSourcesDir.getAbsolutePath();
+        if (!project.getCompileSourceRoots().contains(path)) {
+            project.addCompileSourceRoot(path);
+            getLog().info("Added generated-sources root: " + path);
+        }
+    }
+
+    private boolean isUpToDate(AtlasConfig cfg, File pngOut, File jsonOut,
+                               Map<String, Integer> selectedIcons) {
         if (!pngOut.isFile() || !jsonOut.isFile()) return false;
         long outputMtime = Math.min(pngOut.lastModified(), jsonOut.lastModified());
-        return cfg.font.lastModified() <= outputMtime;
+        if (cfg.font.lastModified() > outputMtime) return false;
+        if (cfg.icons != null) {
+            // The icon manifest is part of the input, as is the generated
+            // Icons.java (re-emit if it's missing or stale even when the
+            // PNG/JSON would otherwise be considered fresh).
+            if (cfg.icons.manifest != null && cfg.icons.manifest.lastModified() > outputMtime) return false;
+            if (cfg.icons.glyphListFile != null && cfg.icons.glyphListFile.lastModified() > outputMtime) return false;
+            File icoJava = expectedIconsJavaFile(cfg.icons);
+            if (icoJava != null && (!icoJava.isFile() || icoJava.lastModified() < outputMtime)) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    private File writeCharsetFile(AtlasConfig cfg) throws MojoExecutionException {
+    private File expectedIconsJavaFile(IconConfig ic) {
+        if (ic.generatedSourcesDir == null || ic.packageName == null) return null;
+        String className = (ic.className == null || ic.className.isBlank()) ? "Icons" : ic.className;
+        File pkgDir = new File(ic.generatedSourcesDir, ic.packageName.replace('.', '/'));
+        return new File(pkgDir, className + ".java");
+    }
+
+    private File writeCharsetFile(AtlasConfig cfg, Map<String, Integer> selectedIcons) throws MojoExecutionException {
         File charsetsDir = new File(workDir, "charsets");
         if (!charsetsDir.exists() && !charsetsDir.mkdirs()) {
             throw new MojoExecutionException("Failed to create charsets work dir: " + charsetsDir);
         }
         File f = new File(charsetsDir, cfg.name + ".txt");
 
-        String preset = cfg.charset == null ? "ascii" : cfg.charset.trim();
-        String content = switch (preset.toLowerCase()) {
-            case "ascii"   -> "[0x20, 0x7E]\n";
-            case "latin-1", "latin1" -> "[0x20, 0x7E]\n[0xA0, 0xFF]\n";
-            default        -> preset.endsWith("\n") ? preset : preset + "\n";
-        };
+        String content;
+        if (selectedIcons != null) {
+            // Icon mode — emit one explicit codepoint per line.
+            // msdf-atlas-gen accepts hex (0x...) or decimal individual
+            // codepoints separated by whitespace/newlines.
+            StringBuilder sb = new StringBuilder(selectedIcons.size() * 8);
+            for (Integer cp : selectedIcons.values()) {
+                sb.append("0x").append(Integer.toHexString(cp).toUpperCase()).append('\n');
+            }
+            content = sb.toString();
+        } else {
+            String preset = cfg.charset == null ? "ascii" : cfg.charset.trim();
+            content = switch (preset.toLowerCase()) {
+                case "ascii"   -> "[0x20, 0x7E]\n";
+                case "latin-1", "latin1" -> "[0x20, 0x7E]\n[0xA0, 0xFF]\n";
+                default        -> preset.endsWith("\n") ? preset : preset + "\n";
+            };
+        }
 
         try {
             Files.writeString(f.toPath(), content, StandardCharsets.UTF_8);
