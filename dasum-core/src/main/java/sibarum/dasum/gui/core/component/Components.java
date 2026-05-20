@@ -1,18 +1,22 @@
 package sibarum.dasum.gui.core.component;
 
 import sibarum.dasum.gui.core.event.Invalidator;
+import sibarum.dasum.gui.core.data.DataTableStates;
 import sibarum.dasum.gui.core.graph.ConnectionSelection;
 import sibarum.dasum.gui.core.graph.Connections;
 import sibarum.dasum.gui.core.graph.GraphSurfaceChildren;
 import sibarum.dasum.gui.core.graph.GraphSurfacePositions;
 import sibarum.dasum.gui.core.graph.GraphSurfaceZOrder;
+import sibarum.dasum.gui.core.graph.NodeInstances;
 import sibarum.dasum.gui.core.graph.Ports;
+import sibarum.dasum.gui.core.graph.SubgraphNodes;
 import sibarum.dasum.gui.core.input.ContextMenuStates;
 import sibarum.dasum.gui.core.input.FocusState;
 import sibarum.dasum.gui.core.input.Handlers;
 import sibarum.dasum.gui.core.input.HoverState;
 import sibarum.dasum.gui.core.input.ScrollStates;
 import sibarum.dasum.gui.core.input.TextStates;
+import sibarum.dasum.gui.core.overlay.Tooltips;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -135,7 +139,11 @@ public final class Components {
         GraphSurfacePositions.migrate(from, to);
         GraphSurfaceZOrder.migrate(from, to);
         GraphSurfaceChildren.migrate(from, to);
+        NodeInstances.migrate(from, to);
+        SubgraphNodes.migrate(from, to);
+        DataTableStates.migrate(from, to);
         DynamicChildren.migrate(from, to);
+        Tooltips.migrate(from, to);
         for (BiConsumer<Component, Component> ext : EXTERNAL_MIGRATORS) {
             ext.accept(from, to);
         }
@@ -191,6 +199,7 @@ public final class Components {
             case Component.Radio<?> r -> List.of();
             case Component.Slider sl  -> List.of();
             case Component.PointCloud pc -> List.of();
+            case Component.DataTable dt -> List.of();
         };
     }
 
@@ -225,6 +234,20 @@ public final class Components {
         GraphSurfacePositions.clear(c);
         GraphSurfaceZOrder.clear(c);
         GraphSurfaceChildren.clear(c);
+        NodeInstances.clear(c);
+        // SubgraphNodes.clear cascades: detaching an outer subgraph node
+        // also detaches its inner surface (and everything on it). This
+        // sidecar must run LAST among the graph-package clears so the
+        // recursive Components.detach call sees a clean slate for the
+        // outer node itself (Ports / Connections already cleared above).
+        SubgraphNodes.clear(c);
+        DataTableStates.clear(c);
         DynamicChildren.clear(c);
+        // Tooltips: clear last so its onComponentDetached → hideAll
+        // sees an already-cleared state for the component. Order doesn't
+        // strictly matter (sidecars are independent) but keeping it at
+        // the tail mirrors the convention "cleanup the rendering-side
+        // pieces last".
+        Tooltips.clear(c);
     }
 }

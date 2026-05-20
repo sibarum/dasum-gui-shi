@@ -193,6 +193,15 @@ public final class Layout {
                     w, h
                 );
             }
+            case Component.DataTable dt -> {
+                float w = dt.width()  != null ? dt.width().toPixels()  : viewport.width();
+                float h = dt.height() != null ? dt.height().toPixels() : viewport.height();
+                yield new PixelRect(
+                    viewport.x() + (viewport.width()  - w) * 0.5f,
+                    viewport.y() + (viewport.height() - h) * 0.5f,
+                    w, h
+                );
+            }
         };
     }
 
@@ -209,6 +218,7 @@ public final class Layout {
             case Component.Tabs tabs    -> layoutTabs(tabs, rect, rects);
             case Component.GraphSurface cv    -> layoutGraphSurface(cv, rect, rects);
             case Component.PointCloud pc -> { /* leaf — point data is in PointCloudStates, not children */ }
+            case Component.DataTable dt -> { /* leaf — rows/cells are virtualized inside DataTableRenderer */ }
         }
     }
 
@@ -303,6 +313,11 @@ public final class Layout {
                 float explicit = e != null ? e.toPixels() : 0f;
                 yield Math.max(explicit, fillExtent);
             }
+            case Component.DataTable dt -> {
+                Em e = width ? dt.width() : dt.height();
+                float explicit = e != null ? e.toPixels() : 0f;
+                yield Math.max(explicit, fillExtent);
+            }
         };
     }
 
@@ -330,6 +345,10 @@ public final class Layout {
             }
             case Component.PointCloud pc -> {
                 Em e = width ? pc.width() : pc.height();
+                yield e != null ? e.toPixels() : 0f;
+            }
+            case Component.DataTable dt -> {
+                Em e = width ? dt.width() : dt.height();
                 yield e != null ? e.toPixels() : 0f;
             }
         };
@@ -443,6 +462,15 @@ public final class Layout {
                     w, h
                 );
             }
+            case Component.DataTable dt -> {
+                float w = dt.width()  != null ? dt.width().toPixels()  : interior.width();
+                float h = dt.height() != null ? dt.height().toPixels() : interior.height();
+                yield new PixelRect(
+                    interior.x() + (interior.width()  - w) * 0.5f,
+                    interior.y() + (interior.height() - h) * 0.5f,
+                    w, h
+                );
+            }
         };
     }
 
@@ -543,6 +571,10 @@ public final class Layout {
                 Em e = row ? pc.width() : pc.height();
                 yield e != null ? e.toPixels() : 0f;
             }
+            case Component.DataTable dt -> {
+                Em e = row ? dt.width() : dt.height();
+                yield e != null ? e.toPixels() : 0f;
+            }
         };
     }
 
@@ -570,6 +602,10 @@ public final class Layout {
             }
             case Component.PointCloud pc -> {
                 Em e = row ? pc.height() : pc.width();
+                yield e != null ? e.toPixels() : 0f;
+            }
+            case Component.DataTable dt -> {
+                Em e = row ? dt.height() : dt.width();
                 yield e != null ? e.toPixels() : 0f;
             }
         };

@@ -68,6 +68,7 @@ public final class Window implements AutoCloseable {
         Glfw.glfwSetCharCallback(handle, GlfwCallbacks.CHAR_CALLBACK_STUB);
         Glfw.glfwSetWindowFocusCallback(handle, GlfwCallbacks.WINDOW_FOCUS_CALLBACK_STUB);
         Glfw.glfwSetCursorEnterCallback(handle, GlfwCallbacks.CURSOR_ENTER_CALLBACK_STUB);
+        Glfw.glfwSetWindowCloseCallback(handle, GlfwCallbacks.WINDOW_CLOSE_CALLBACK_STUB);
 
         return w;
     }

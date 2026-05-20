@@ -22,7 +22,7 @@ import java.util.List;
  * and both can carry a {@code flexGrow} weight for when they're a child of
  * a Flex parent.
  */
-public sealed interface Component permits Component.Box, Component.Flex, Component.Scroll, Component.Text, Component.Checkbox, Component.Radio, Component.Slider, Component.Tabs, Component.GraphSurface, Component.PointCloud {
+public sealed interface Component permits Component.Box, Component.Flex, Component.Scroll, Component.Text, Component.Checkbox, Component.Radio, Component.Slider, Component.Tabs, Component.GraphSurface, Component.PointCloud, Component.DataTable {
 
     /** Per-child flex weight; default 0 means the child takes its intrinsic size. */
     int flexGrow();
@@ -374,5 +374,61 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
 
         public PointCloud withFlexGrow(int g)        { return new PointCloud(width, height, padding, color, interactive, g); }
         public PointCloud withInteractive(boolean v) { return new PointCloud(width, height, padding, color, v, flexGrow); }
+    }
+
+    /**
+     * Spreadsheet-style data grid — virtualized rows / columns backed by a
+     * {@link sibarum.dasum.gui.core.data.DataTableSource}. The variant
+     * carries only layout + appearance; selection, scroll, edit, and hover
+     * state live in {@code DataTableStates} keyed by component identity.
+     * <p>
+     * Rendering is delegated to a {@code DataTableRenderer} registered via
+     * {@link sibarum.dasum.gui.core.render.CustomRenderers}, mirroring the
+     * PointCloud variant's hook. The framework treats DataTable as a leaf
+     * for hit-test + layout — internal row / column / region resolution
+     * happens inside the table's own controllers.
+     *
+     * @param width / height       null = fill parent's available extent on that axis
+     * @param headerHeight         em height of the column-header strip (sticky top)
+     * @param rowHeight            em height of each body row (uniform)
+     * @param rowNumberColumnWidth em width of the row-number gutter (sticky left)
+     * @param source               adapter providing row count + cell strings + mutators
+     * @param headerBg / cellBgEven / cellBgOdd / gridLine / selectionFill / textColor — appearance
+     * @param fontGroup            registered FontGroup name for cell glyphs (e.g. "primary")
+     * @param fontSize             em size for cell + header text
+     * @param selection            observable selection state — apps subscribe for change events;
+     *                             the renderer + selection controller publish via this property
+     */
+    record DataTable(
+        Em width, Em height,
+        Em headerHeight, Em rowHeight, Em rowNumberColumnWidth,
+        sibarum.dasum.gui.core.data.DataTableSource source,
+        Color headerBg, Color cellBgEven, Color cellBgOdd,
+        Color gridLine, Color selectionFill, Color textColor,
+        String fontGroup, Em fontSize,
+        Property<sibarum.dasum.gui.core.data.TableSelection> selection,
+        boolean interactive, int flexGrow
+    ) implements Component {
+
+        /** Convenience constructor with sensible defaults. */
+        public DataTable(Em width, Em height,
+                         sibarum.dasum.gui.core.data.DataTableSource source,
+                         Property<sibarum.dasum.gui.core.data.TableSelection> selection) {
+            this(width, height,
+                Em.of(1.8f), Em.of(1.6f), Em.of(3.5f),
+                source,
+                new Color(0.16f, 0.18f, 0.22f, 1f),
+                new Color(0.10f, 0.12f, 0.15f, 1f),
+                new Color(0.08f, 0.10f, 0.13f, 1f),
+                new Color(0.22f, 0.24f, 0.30f, 1f),
+                new Color(0.30f, 0.55f, 0.85f, 0.35f),
+                new Color(0.92f, 0.94f, 0.97f, 1f),
+                sibarum.dasum.gui.core.text.FontGroups.DEFAULT, Em.of(0.95f),
+                selection, true, 0
+            );
+        }
+
+        public DataTable withFlexGrow(int g)        { return new DataTable(width, height, headerHeight, rowHeight, rowNumberColumnWidth, source, headerBg, cellBgEven, cellBgOdd, gridLine, selectionFill, textColor, fontGroup, fontSize, selection, interactive, g); }
+        public DataTable withInteractive(boolean v) { return new DataTable(width, height, headerHeight, rowHeight, rowNumberColumnWidth, source, headerBg, cellBgEven, cellBgOdd, gridLine, selectionFill, textColor, fontGroup, fontSize, selection, v, flexGrow); }
     }
 }

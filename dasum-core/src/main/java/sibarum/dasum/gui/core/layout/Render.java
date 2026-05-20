@@ -12,6 +12,7 @@ import sibarum.dasum.gui.core.render.Batcher;
 import sibarum.dasum.gui.core.render.Color;
 import sibarum.dasum.gui.core.render.CustomRenderers;
 import sibarum.dasum.gui.core.render.DrawCommand;
+import sibarum.dasum.gui.core.render.GlStateGuard;
 import sibarum.dasum.gui.core.text.FontGroup;
 import sibarum.dasum.gui.core.text.FontGroups;
 import sibarum.dasum.gui.core.text.LineBreaker;
@@ -48,31 +49,41 @@ public final class Render {
     public static void render(Component root, LayoutResult layout, Batcher batcher, float[] projection) {
         Component hovered = HoverState.hovered();
         Component focused = FocusState.focused();
-        renderInOrder(root, layout, batcher, projection, hovered, focused, 0, 0);
+        renderInOrder(root, layout, batcher, projection, hovered, focused);
     }
 
+    /**
+     * Backwards-compatible alias for callers that picked up the
+     * short-lived 6-arg signature from an in-progress framework
+     * version. The framebuffer dimensions are now redundant — custom
+     * renderers query GL state directly via
+     * {@code Gl.glGetIntegerv4(GL_VIEWPORT)} — so this overload simply
+     * ignores them and delegates to the 4-arg version. Prefer the
+     * 4-arg form in new code; this exists so existing apps don't break
+     * on upgrade.
+     */
     public static void render(Component root, LayoutResult layout, Batcher batcher, float[] projection,
                               int framebufferWidthPx, int framebufferHeightPx) {
-        Component hovered = HoverState.hovered();
-        Component focused = FocusState.focused();
-        renderInOrder(root, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
+        render(root, layout, batcher, projection);
     }
 
     private static void renderInOrder(Component c, LayoutResult layout, Batcher batcher, float[] projection,
-                                       Component hovered, Component focused,
-                                       int framebufferWidthPx, int framebufferHeightPx) {
+                                       Component hovered, Component focused) {
         PixelRect r = layout.rectOf(c);
         if (r != null && r.width() > 0f && r.height() > 0f) {
             Color color = backgroundColorOf(c);
             if (color.a() > 0f) {
                 batcher.submit(new DrawCommand.ColoredQuad(r.x(), r.y(), r.width(), r.height(), color));
             }
-            if (c == hovered && !(c instanceof Component.Tabs) && !(c instanceof Component.GraphSurface)) {
+            if (c == hovered && !(c instanceof Component.Tabs) && !(c instanceof Component.GraphSurface) && !(c instanceof Component.PointCloud)) {
                 // Tabs does its own per-cell hover inside renderTabs — skip the
                 // generic whole-rect tint so it doesn't wash the header strip.
                 // GraphSurface is interactive (so right-clicks land on its
                 // empty area) but it isn't "clickable" in a UI-feedback sense;
                 // tinting the whole canvas on hover is wrong.
+                // PointCloud is interactive for orbit-drag + click-pick, but
+                // the whole-viewport tint washes the 3D content and gives no
+                // useful feedback — the cursor change to HAND is enough.
                 batcher.submit(new DrawCommand.ColoredQuad(r.x(), r.y(), r.width(), r.height(), HOVER_TINT));
             }
             if (c == focused) {
@@ -81,7 +92,7 @@ public final class Render {
         }
 
         if (c instanceof Component.Scroll scroll && scroll.child() != null) {
-            renderScrollContents(scroll, r, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
+            renderScrollContents(scroll, r, layout, batcher, projection, hovered, focused);
         } else if (c instanceof Component.Text text) {
             renderText(text, r, batcher, projection);
         } else if (c instanceof Component.Checkbox cb) {
@@ -91,17 +102,32 @@ public final class Render {
         } else if (c instanceof Component.Slider sl) {
             renderSlider(sl, r, batcher);
         } else if (c instanceof Component.Tabs tabs) {
-            renderTabs(tabs, r, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
+            renderTabs(tabs, r, layout, batcher, projection, hovered, focused);
         } else if (c instanceof Component.GraphSurface surface) {
-            renderGraphSurface(surface, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
+            renderGraphSurface(surface, layout, batcher, projection, hovered, focused);
         } else if (c instanceof Component.PointCloud pc) {
             CustomRenderers.Renderer ext = CustomRenderers.find(pc);
             if (ext != null && r != null) {
-                ext.render(pc, r, batcher, projection, framebufferWidthPx, framebufferHeightPx);
+                // Wrap the extension call with a GL-state guard so a
+                // renderer that forgets to restore viewport / depth /
+                // scissor / current-program shows up as a stderr diff
+                // when -Ddasum.debug.gl=true. Zero cost when the flag
+                // is off — snapshot() returns null and assertUnchanged
+                // is a no-op on null.
+                GlStateGuard.Snapshot before = GlStateGuard.snapshot();
+                ext.render(pc, r, batcher, projection);
+                GlStateGuard.assertUnchanged(before, "CustomRenderer<" + pc.getClass().getSimpleName() + ">");
+            }
+        } else if (c instanceof Component.DataTable dt) {
+            CustomRenderers.Renderer ext = CustomRenderers.find(dt);
+            if (ext != null && r != null) {
+                GlStateGuard.Snapshot before = GlStateGuard.snapshot();
+                ext.render(dt, r, batcher, projection);
+                GlStateGuard.assertUnchanged(before, "CustomRenderer<" + dt.getClass().getSimpleName() + ">");
             }
         } else {
             for (Component child : childrenOf(c)) {
-                renderInOrder(child, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
+                renderInOrder(child, layout, batcher, projection, hovered, focused);
             }
         }
     }
@@ -116,10 +142,9 @@ public final class Render {
      * just works.
      */
     private static void renderGraphSurface(Component.GraphSurface surface, LayoutResult layout, Batcher batcher,
-                                      float[] projection, Component hovered, Component focused,
-                                      int framebufferWidthPx, int framebufferHeightPx) {
+                                      float[] projection, Component hovered, Component focused) {
         for (Component child : sibarum.dasum.gui.core.graph.GraphSurfaceZOrder.orderedChildren(surface)) {
-            renderInOrder(child, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
+            renderInOrder(child, layout, batcher, projection, hovered, focused);
         }
         // Connections sit on top of nodes so the curve visually emerges from
         // each port. The renderer is data-driven from the Connections sidecar
@@ -130,8 +155,7 @@ public final class Render {
     }
 
     private static void renderTabs(Component.Tabs tabs, PixelRect rect, LayoutResult layout, Batcher batcher,
-                                    float[] projection, Component hovered, Component focused,
-                                    int framebufferWidthPx, int framebufferHeightPx) {
+                                    float[] projection, Component hovered, Component focused) {
         if (rect == null) return;
         // The Tabs's own backgroundColorOf returned contentBg; that's already
         // painted over the whole rect. Overlay the header strip on top.
@@ -174,7 +198,7 @@ public final class Render {
         // Active content (recurse).
         Component activeContent = tabs.activeContent();
         if (activeContent != null) {
-            renderInOrder(activeContent, layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
+            renderInOrder(activeContent, layout, batcher, projection, hovered, focused);
         }
     }
 
@@ -301,14 +325,13 @@ public final class Render {
 
     private static void renderScrollContents(Component.Scroll scroll, PixelRect outer,
                                               LayoutResult layout, Batcher batcher, float[] projection,
-                                              Component hovered, Component focused,
-                                              int framebufferWidthPx, int framebufferHeightPx) {
+                                              Component hovered, Component focused) {
         PixelRect interior = padInset(outer, scroll.padding());
 
         batcher.flush(projection);
         batcher.scissor().push(interior);
 
-        renderInOrder(scroll.child(), layout, batcher, projection, hovered, focused, framebufferWidthPx, framebufferHeightPx);
+        renderInOrder(scroll.child(), layout, batcher, projection, hovered, focused);
 
         batcher.flush(projection);
         batcher.scissor().pop();
@@ -352,6 +375,11 @@ public final class Render {
             case Component.Tabs t      -> t.contentBg();
             case Component.GraphSurface cv   -> cv.color();
             case Component.PointCloud pc -> pc.color();
+            // DataTable paints its own background (banded rows, header strip,
+            // row-number gutter) inside the custom renderer — emit transparent
+            // here so the generic pass doesn't draw a single color over the
+            // whole table rect.
+            case Component.DataTable dt -> new Color(0f, 0f, 0f, 0f);
         };
     }
 
@@ -365,8 +393,9 @@ public final class Render {
             case Component.Radio<?> r  -> List.of();
             case Component.Slider sl   -> List.of();
             case Component.Tabs t      -> t.activeContent() != null ? List.of(t.activeContent()) : List.of();
-            case Component.GraphSurface cv   -> cv.children();
+            case Component.GraphSurface cv   -> sibarum.dasum.gui.core.graph.GraphSurfaceChildren.all(cv);
             case Component.PointCloud pc -> List.of();
+            case Component.DataTable dt -> List.of();
         };
     }
 

@@ -215,6 +215,15 @@ public final class TextInputController {
         // doesn't reach this callback through GLFW char events anyway; it comes
         // via the key callback. Other control chars are rejected here.
         if (codepoint < 32 || codepoint == 0x7F /* DEL */) return false;
+        // Reject characters that arrived as a side effect of a Ctrl-chord
+        // keypress. Windows fires a char event with codepoint 32 (space)
+        // when the user presses Ctrl+Space, which would otherwise insert
+        // a space into whatever editable text was focused (e.g. the
+        // EverythingMenu's query field that was just focused by the
+        // overlay push that Ctrl+Space triggered). Same logic protects
+        // against any future Ctrl+letter that happens to emit a printable
+        // codepoint on some platform.
+        if (InputState.ctrlHeld()) return false;
         TextState ts = TextStates.of(text);
         // Selection-replacing inserts can't coalesce with prior typing.
         UndoStack.EditKind kind = ts.hasSelection() ? UndoStack.EditKind.OTHER : UndoStack.EditKind.INSERT_CHAR;

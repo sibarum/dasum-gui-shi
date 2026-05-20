@@ -14,8 +14,10 @@ import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
 
 import static sibarum.dasum.gui.natives.gl.Gl.GL_DEPTH_BUFFER_BIT;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_DEPTH_TEST;
+import static sibarum.dasum.gui.natives.gl.Gl.GL_LINES;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_POINTS;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_PROGRAM_POINT_SIZE;
+import static sibarum.dasum.gui.natives.gl.Gl.GL_VIEWPORT;
 
 /**
  * The actual point-cloud draw routine. Registered into
@@ -47,8 +49,9 @@ public final class PointCloudRenderer implements AutoCloseable {
     /** Default point diameter in pixels — adjustable later via per-component state. */
     private static final float DEFAULT_POINT_SIZE_PX = 5f;
 
-    private final PointCloudMaterial material = new PointCloudMaterial();
-    private final PointCloudGlBuffers buffers = new PointCloudGlBuffers();
+    private final PointCloudMaterial material      = new PointCloudMaterial();
+    private final LineSegmentMaterial lineMaterial = new LineSegmentMaterial();
+    private final PointCloudGlBuffers buffers      = new PointCloudGlBuffers();
 
     /** Scratch buffers — reused across frames; main-thread only. */
     private final Matrix4f scratchMvp     = new Matrix4f();
@@ -64,6 +67,7 @@ public final class PointCloudRenderer implements AutoCloseable {
     public void init() {
         if (initialized) return;
         material.init();
+        lineMaterial.init();
         initialized = true;
     }
 
@@ -76,8 +80,7 @@ public final class PointCloudRenderer implements AutoCloseable {
         buffers.scheduleDelete(c);
     }
 
-    private void render(Component cmp, PixelRect rect, Batcher batcher, float[] projection,
-                        int framebufferWidthPx, int framebufferHeightPx) {
+    private void render(Component cmp, PixelRect rect, Batcher batcher, float[] projection) {
         if (!(cmp instanceof Component.PointCloud pc)) return;
         if (rect == null || rect.width() <= 0f || rect.height() <= 0f) return;
 
@@ -85,7 +88,8 @@ public final class PointCloudRenderer implements AutoCloseable {
         buffers.drainPendingDeletes();
 
         PointCloudSnapshot snap = PointCloudStates.snapshotOf(pc);
-        if (snap == null || snap.pointCount() == 0) return;
+        if (snap == null) return;
+        if (snap.pointCount() == 0 && snap.segmentCount() == 0) return;
 
         CameraSpec cam = PointCloudStates.cameraOf(pc);
         PointCloudGlBuffers.Entry buf = buffers.ensure(pc, snap);
@@ -99,14 +103,24 @@ public final class PointCloudRenderer implements AutoCloseable {
         batcher.flush(projection);
         batcher.scissor().push(rect);
 
-        // Re-aim glViewport at this component's rect so NDC [-1,1] maps to
-        // the rect (rather than the whole framebuffer that App.java set up).
-        // Without this, a small-rect viewport (e.g. a node thumbnail off in
-        // a corner) would have all its points scissored away — NDC center
-        // lands at framebuffer center, which is outside the rect. OpenGL
-        // viewport Y is bottom-up, so flip our top-left rect.
+        // Save the current viewport so we restore EXACTLY what the caller
+        // set, not a guessed (0, 0, fbW, fbH). Querying GL state avoids
+        // a previous footgun: a caller that didn't pass valid framebuffer
+        // dimensions would have left the viewport at (0, 0, 0, 0) and
+        // every component drawn after the point cloud that frame would
+        // be invisible (= zero-size viewport).
+        int[] savedViewport = Gl.glGetIntegerv4(GL_VIEWPORT);
+        int saveH = savedViewport[3];
+
+        // Re-aim glViewport at this component's rect so NDC [-1,1] maps
+        // to the rect (rather than the whole framebuffer that App.java
+        // set up). Without this, a small-rect viewport (e.g. a node
+        // thumbnail off in a corner) would have all its points scissored
+        // away — NDC centre lands at framebuffer centre, which is outside
+        // the rect. OpenGL viewport Y is bottom-up, so flip our top-left
+        // rect using the saved viewport height.
         int vpX = (int) rect.x();
-        int vpY = framebufferHeightPx - (int) (rect.y() + rect.height());
+        int vpY = saveH - (int) (rect.y() + rect.height());
         int vpW = (int) rect.width();
         int vpH = (int) rect.height();
         Gl.glViewport(vpX, vpY, vpW, vpH);
@@ -120,22 +134,35 @@ public final class PointCloudRenderer implements AutoCloseable {
             Gl.glClear(GL_DEPTH_BUFFER_BIT);
         }
 
-        Gl.glEnable(GL_PROGRAM_POINT_SIZE);
-        material.bind(scratchMatrix, DEFAULT_POINT_SIZE_PX);
-        Gl.glBindVertexArray(buf.vao);
-        Gl.glDrawArrays(GL_POINTS, 0, buf.uploadedPointCount);
-        Gl.glBindVertexArray(0);
-        Gl.glDisable(GL_PROGRAM_POINT_SIZE);
+        // ---- point layer ----
+        if (buf.uploadedPointCount > 0) {
+            Gl.glEnable(GL_PROGRAM_POINT_SIZE);
+            material.bind(scratchMatrix, DEFAULT_POINT_SIZE_PX);
+            Gl.glBindVertexArray(buf.pointVao);
+            Gl.glDrawArrays(GL_POINTS, 0, buf.uploadedPointCount);
+            Gl.glBindVertexArray(0);
+            Gl.glDisable(GL_PROGRAM_POINT_SIZE);
+        }
+
+        // ---- line layer ----
+        // Drawn AFTER points so a line on the same depth wins z-order ties
+        // (lines are typically scaffolding — axes, edges — meant to sit on
+        // top of point dots). Both layers use the same MVP / scissor /
+        // viewport / depth state, so just swap programs + VAO.
+        if (buf.uploadedLineVertexCount > 0) {
+            lineMaterial.bind(scratchMatrix);
+            Gl.glBindVertexArray(buf.lineVao);
+            Gl.glDrawArrays(GL_LINES, 0, buf.uploadedLineVertexCount);
+            Gl.glBindVertexArray(0);
+        }
 
         if (perspective) {
             Gl.glDisable(GL_DEPTH_TEST);
         }
         Gl.glUseProgram(0);
 
-        // Restore the framebuffer-wide viewport before handing control back
-        // to the 2D batcher, whose glScissor + glDraw calls all assume NDC
-        // maps to the full framebuffer.
-        Gl.glViewport(0, 0, framebufferWidthPx, framebufferHeightPx);
+        // Restore EXACTLY what the caller had — not a constructed value.
+        Gl.glViewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3]);
 
         batcher.flush(projection); // ensure point draws are committed before scissor pop
         batcher.scissor().pop();
@@ -183,5 +210,6 @@ public final class PointCloudRenderer implements AutoCloseable {
         // tree — for MVP, on JVM exit the OS reclaims GL objects).
         buffers.drainPendingDeletes();
         material.close();
+        lineMaterial.close();
     }
 }

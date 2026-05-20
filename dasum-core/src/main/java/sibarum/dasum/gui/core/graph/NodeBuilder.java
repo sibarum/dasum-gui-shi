@@ -52,7 +52,8 @@ public final class NodeBuilder {
     private Em rowGap        = Em.of(0.4f);
     private Em columnGap     = Em.of(1.2f);
 
-    private record PortSpec(PortType type, String label) {}
+    /** Package-private — consumed by {@link SubgraphNodeBuilder} to mirror specs onto inner stub nodes. */
+    record PortSpec(PortType type, String label) {}
 
     private NodeBuilder(String title) { this.title = title; }
 

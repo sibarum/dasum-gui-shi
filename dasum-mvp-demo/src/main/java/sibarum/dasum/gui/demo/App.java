@@ -19,12 +19,22 @@ import sibarum.dasum.gui.core.graph.ConnectionRule;
 import sibarum.dasum.gui.core.graph.Connections;
 import sibarum.dasum.gui.core.graph.GraphSurfacePositions;
 import sibarum.dasum.gui.core.graph.NodeBuilder;
+import sibarum.dasum.gui.core.graph.NodeInstances;
 import sibarum.dasum.gui.core.graph.PortType;
 import sibarum.dasum.gui.core.graph.Ports;
 import sibarum.dasum.gui.core.graph.ConnectionSelection;
 import sibarum.dasum.gui.core.graph.GraphSurfaceChildren;
+import sibarum.dasum.gui.core.graph.SubgraphNodeBuilder;
+import sibarum.dasum.gui.core.graph.SubgraphNodes;
+import sibarum.dasum.gui.core.data.DataTableClipboard;
+import sibarum.dasum.gui.core.data.DataTableSource;
+import sibarum.dasum.gui.core.data.DataTableStates;
+import sibarum.dasum.gui.core.data.DataTables;
+import sibarum.dasum.gui.core.data.TableContextMenu;
+import sibarum.dasum.gui.core.data.TableSelection;
 import sibarum.dasum.gui.core.input.ConnectionDragController;
 import sibarum.dasum.gui.core.input.ConnectionSelectionController;
+import sibarum.dasum.gui.core.input.DataTableSelectionController;
 import sibarum.dasum.gui.core.input.GraphSurfaceController;
 import sibarum.dasum.gui.core.input.PortContextMenu;
 import sibarum.dasum.gui.core.input.ContextMenuController;
@@ -50,6 +60,10 @@ import sibarum.dasum.gui.core.layout.PixelRect;
 import sibarum.dasum.gui.core.layout.Render;
 import sibarum.dasum.gui.core.overlay.Anchor;
 import sibarum.dasum.gui.core.overlay.OverlayStack;
+import sibarum.dasum.gui.core.overlay.TooltipController;
+import sibarum.dasum.gui.core.overlay.TooltipRenderer;
+import sibarum.dasum.gui.core.overlay.TooltipTrigger;
+import sibarum.dasum.gui.core.overlay.Tooltips;
 import sibarum.dasum.gui.core.render.Batcher;
 import sibarum.dasum.gui.core.render.Color;
 import sibarum.dasum.gui.core.render.RenderStats;
@@ -130,6 +144,25 @@ public final class App {
         .bidirectional(PortType.ANY, "ref")
         .background(new Color(0.32f, 0.22f, 0.32f, 1f))
         .build();
+    // Subgraph (group) node — runtime-creatable type whose contents are an
+    // inner GraphSurface. Click the outer node to expand into a modal
+    // overlay that hosts the inner surface; close to collapse. Inner
+    // sub-graphs are queryable via NodeInstances + SubgraphNodes for
+    // app-side serialization.
+    private static final java.util.function.Supplier<Component> SUBGRAPH_FACTORY = () -> {
+        Component outer = SubgraphNodeBuilder.titled("Group")
+            .input(NUMBER, "x")
+            .input(NUMBER, "y")
+            .output(NUMBER, "out")
+            .outerBackground(new Color(0.24f, 0.28f, 0.40f, 1f))
+            .innerSurfaceBg(new Color(0.04f, 0.06f, 0.10f, 1f))
+            .stubBackground(new Color(0.18f, 0.22f, 0.30f, 1f))
+            .build();
+        // Wire single-click to expand the inner surface in a modal overlay,
+        // mirroring the PointCloud thumbnail-to-modal pattern.
+        Handlers.onClick(outer, () -> openSubgraphOverlay(outer));
+        return outer;
+    };
 
     /** Set by {@link #buildNodeEditorPane()} so command-registry actions can spawn onto it. */
     private static Component.GraphSurface DEMO_SURFACE = null;
@@ -147,6 +180,7 @@ public final class App {
             batcher.init();
             cursors.init();
             DasumVis.init();
+            DataTables.init();
             EmContext.setDpiScale(window.contentScaleX());
 
             try (Texture primaryTexture = Texture.fromPngResource("/dasum/atlas/primary.png");
@@ -182,7 +216,7 @@ public final class App {
                     LatestLayout.store(root, layout);
 
                     batcher.beginFrame(fbH);
-                    Render.render(root, layout, batcher, projection, fbW, fbH);
+                    Render.render(root, layout, batcher, projection);
                     // The batcher's per-material two-pass flush (solid fills,
                     // then MSDF text) means within a single batched frame, text
                     // from anywhere drawn on top of solid fills from anywhere.
@@ -200,9 +234,27 @@ public final class App {
                             batcher.flush(projection);
                         }
                         for (OverlayStack.Overlay o : OverlayStack.active()) {
-                            Render.render(o.component(), layout, batcher, projection, fbW, fbH);
+                            Render.render(o.component(), layout, batcher, projection);
                             batcher.flush(projection);
                         }
+                    }
+                    // Tooltip rides above every previous z-layer. The
+                    // controller re-resolves hover against the freshly-
+                    // computed layout each frame so a UI rebuild that
+                    // moves components under a stationary cursor still
+                    // produces the correct anchor/text. Resolve scope is
+                    // the active overlay tree when an overlay is up so
+                    // tooltips don't leak through modals.
+                    {
+                        Component ttRoot = OverlayStack.activeInputRoot(root);
+                        TooltipController.resolveBeforeRender(
+                            layout, ttRoot, InputState.mouseX(), InputState.mouseY());
+                        // Hard flush before drawing — the batcher's two-pass
+                        // solids/text flush would otherwise sandwich the
+                        // tooltip's text underneath any later z-layer's
+                        // solid quads.
+                        batcher.flush(projection);
+                        TooltipRenderer.render(batcher, projection, viewport);
                     }
                     batcher.endFrame(projection);
 
@@ -260,6 +312,12 @@ public final class App {
         Handlers.onClick(help,    () -> openHelpDialog());
         Handlers.onClick(account, () -> System.out.println("Account clicked"));
 
+        Tooltips.set(file,    "Open / save / create files (Ctrl+O / Ctrl+S)");
+        Tooltips.set(edit,    "Undo, redo, cut, copy, paste — Ctrl+Z to undo");
+        Tooltips.set(view,    "Toggle view options");
+        Tooltips.set(help,    "Open the Help dialog");
+        Tooltips.set(account, "Account & profile");
+
         return new Component.Flex(
             null, Em.of(3f), Em.of(0.5f), TOOLBAR_BG,
             Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
@@ -280,7 +338,9 @@ public final class App {
             List.of(
                 new Component.Tabs.TabPanel("Node Editor", buildNodeEditorPane()),
                 new Component.Tabs.TabPanel("Widgets",     buildWidgetsPane()),
-                new Component.Tabs.TabPanel("Text",        buildTextPane())
+                new Component.Tabs.TabPanel("Text",        buildTextPane()),
+                new Component.Tabs.TabPanel("Stress",      buildStressPane()),
+                new Component.Tabs.TabPanel("Tables",      buildTablesPane())
             ),
             activeTab,
             Variant.PRIMARY
@@ -335,6 +395,7 @@ public final class App {
                 new ContextMenuItem("Add Constant Here", () -> spawnNode(CONSTANT_FACTORY, emX, emY)),
                 new ContextMenuItem("Add Multiply Here", () -> spawnNode(MULTIPLY_FACTORY, emX, emY)),
                 new ContextMenuItem("Add Tag Here",      () -> spawnNode(TAG_FACTORY,      emX, emY)),
+                new ContextMenuItem("Add Subgraph Here", () -> spawnNode(SUBGRAPH_FACTORY, emX, emY)),
                 ContextMenuItem.separator(),
                 new ContextMenuItem("Clear All Connections",
                     () -> {
@@ -366,10 +427,21 @@ public final class App {
 
     private static void wireNodeContextMenu(Component node) {
         Handlers.onContextMenu(node, event -> List.of(
-            new ContextMenuItem("Delete Node",
-                () -> System.out.println("Delete node (placeholder)")),
+            new ContextMenuItem("Delete Node", () -> deleteNode(node)),
             new ContextMenuItem("Duplicate Node", false, () -> {})
         ));
+    }
+
+    /**
+     * Remove {@code node} from the demo surface. Detach cascades through every
+     * sidecar — including {@link SubgraphNodes}, which recursively detaches a
+     * subgraph node's inner surface so it doesn't linger as zombie state.
+     */
+    private static void deleteNode(Component node) {
+        Component.GraphSurface surface = DEMO_SURFACE;
+        if (surface == null) return;
+        GraphSurfaceChildren.remove(surface, node);
+        Components.detach(node);
     }
 
     /** Widgets pane — scrollable column with the basic interactive widgets. */
@@ -452,6 +524,19 @@ public final class App {
             new Component.Text("Volume:", Em.of(1.0f), LABEL_FG), volumeSlider
         ));
 
+        // Hook a few tooltips onto the widgets above so the user can hover
+        // a checkbox/radio/slider and see help text.
+        Tooltips.set(darkCb,  "Toggle the dark color scheme");
+        Tooltips.set(autoCb,  "Auto-save every few seconds");
+        Tooltips.set(statsCb, "Show frame statistics overlay");
+        Tooltips.set(rbLight, "Use light theme");
+        Tooltips.set(rbDark,  "Use dark theme");
+        Tooltips.set(rbAuto,  "Follow system theme preference");
+        Tooltips.set(volumeSlider, "Drag to set volume (0 — 100)");
+
+        // ---- Tooltip showcase section: trigger mode + edge-overflow + long-text ----
+        Component tooltipSection = buildTooltipShowcase();
+
         // ---- Assemble sectioned column ----
         Component.Flex column = new Component.Flex(
             null, Em.AUTO, Em.of(1.2f), new Color(0f, 0f, 0f, 0f),
@@ -461,7 +546,8 @@ public final class App {
                 section("Variant checkboxes", variantCheckboxRow),
                 section("Checkboxes",         checkboxRow),
                 section("Radio group",        radioRow),
-                section("Slider",             sliderRow)
+                section("Slider",             sliderRow),
+                section("Tooltips",           tooltipSection)
             ),
             false, 0
         );
@@ -516,7 +602,55 @@ public final class App {
             colors[i*3 + 1] = 0.5f + 0.5f * y;
             colors[i*3 + 2] = 0.5f + 0.5f * z;
         }
-        PointCloudSnapshot snap = new PointCloudSnapshot(3, N, positions, colors, null, null);
+        // Line-segment layer alongside the points:
+        //   3 axes through the origin (X red↔white, Y green↔white, Z blue↔white)
+        //   + a wireframe unit cube outline (12 edges) for context.
+        // Demonstrates per-endpoint gradient: each axis fades from its dim's
+        // saturated colour at one end to white at the other; cube edges use
+        // a single colour at both endpoints.
+        float[] segEndpoints = new float[(3 + 12) * 2 * 3];
+        float[] segColors    = new float[(3 + 12) * 2 * 3];
+        int si = 0;
+        // X axis: red → white
+        segEndpoints[si*6    ] = -1.4f; segEndpoints[si*6 + 1] =  0f;   segEndpoints[si*6 + 2] = 0f;
+        segEndpoints[si*6 + 3] =  1.4f; segEndpoints[si*6 + 4] =  0f;   segEndpoints[si*6 + 5] = 0f;
+        segColors   [si*6    ] = 1f;    segColors   [si*6 + 1] = 0.2f;  segColors   [si*6 + 2] = 0.2f;
+        segColors   [si*6 + 3] = 1f;    segColors   [si*6 + 4] = 1f;    segColors   [si*6 + 5] = 1f;
+        si++;
+        // Y axis: green → white
+        segEndpoints[si*6    ] =  0f;   segEndpoints[si*6 + 1] = -1.4f; segEndpoints[si*6 + 2] = 0f;
+        segEndpoints[si*6 + 3] =  0f;   segEndpoints[si*6 + 4] =  1.4f; segEndpoints[si*6 + 5] = 0f;
+        segColors   [si*6    ] = 0.2f;  segColors   [si*6 + 1] = 1f;    segColors   [si*6 + 2] = 0.2f;
+        segColors   [si*6 + 3] = 1f;    segColors   [si*6 + 4] = 1f;    segColors   [si*6 + 5] = 1f;
+        si++;
+        // Z axis: blue → white
+        segEndpoints[si*6    ] =  0f;   segEndpoints[si*6 + 1] =  0f;   segEndpoints[si*6 + 2] = -1.4f;
+        segEndpoints[si*6 + 3] =  0f;   segEndpoints[si*6 + 4] =  0f;   segEndpoints[si*6 + 5] =  1.4f;
+        segColors   [si*6    ] = 0.3f;  segColors   [si*6 + 1] = 0.5f;  segColors   [si*6 + 2] = 1f;
+        segColors   [si*6 + 3] = 1f;    segColors   [si*6 + 4] = 1f;    segColors   [si*6 + 5] = 1f;
+        si++;
+        // Unit-cube edges — 12 edges, all the same dim colour at both endpoints
+        // (cyan-grey). Vertices at ±1 in each axis.
+        float[][] verts = {
+            {-1,-1,-1}, { 1,-1,-1}, { 1, 1,-1}, {-1, 1,-1},
+            {-1,-1, 1}, { 1,-1, 1}, { 1, 1, 1}, {-1, 1, 1}
+        };
+        int[][] edges = {
+            {0,1},{1,2},{2,3},{3,0},   // bottom
+            {4,5},{5,6},{6,7},{7,4},   // top
+            {0,4},{1,5},{2,6},{3,7}    // verticals
+        };
+        for (int[] e : edges) {
+            float[] a = verts[e[0]];
+            float[] b = verts[e[1]];
+            segEndpoints[si*6    ] = a[0]; segEndpoints[si*6 + 1] = a[1]; segEndpoints[si*6 + 2] = a[2];
+            segEndpoints[si*6 + 3] = b[0]; segEndpoints[si*6 + 4] = b[1]; segEndpoints[si*6 + 5] = b[2];
+            segColors   [si*6    ] = 0.45f; segColors   [si*6 + 1] = 0.70f; segColors   [si*6 + 2] = 0.80f;
+            segColors   [si*6 + 3] = 0.45f; segColors   [si*6 + 4] = 0.70f; segColors   [si*6 + 5] = 0.80f;
+            si++;
+        }
+        PointCloudSnapshot snap = new PointCloudSnapshot(3, N, positions, colors, null, null)
+            .withSegments(3 + 12, segEndpoints, segColors);
         PointCloudStates.publish(viewport, snap);
         PointCloudStates.setCamera(viewport, CameraSpec.defaultPerspective());
 
@@ -615,6 +749,218 @@ public final class App {
         OverlayStack.push(new OverlayStack.Overlay(overlayRoot, Anchor.CENTER, true, restore));
     }
 
+    /**
+     * Mount the inner GraphSurface of a subgraph node into a full-screen
+     * modal overlay so the user can inspect / edit the sub-graph. Inner
+     * stub ports are already declared on the inner surface (with the
+     * inverse direction to the outer port they proxy) so connection-drag
+     * inside the modal "just works."
+     *
+     * <p>Mirrors {@link #openPointCloudOverlay} structurally but skips the
+     * placeholder swap — the outer node visually stays put behind the
+     * modal backdrop because we don't move it into the overlay.
+     */
+    private static void openSubgraphOverlay(Component outerNode) {
+        SubgraphNodes.Subgraph sg = SubgraphNodes.of(outerNode);
+        if (sg == null) return;
+        Component.GraphSurface innerSurface = sg.innerSurface();
+        NodeInstances.NodeInstance ni = NodeInstances.of(outerNode);
+        String title = (ni != null && ni.params().get("title") instanceof String t) ? t : "Subgraph";
+
+        Component closeBtn = Themed.button("Close", Em.of(6f), Variant.PRIMARY, 0);
+        Component titleText = new Component.Text(title + " — Subgraph", Em.of(1.1f), LABEL_FG);
+        Component spacer = new Component.Box(Em.of(1f), Em.of(0f), Em.ZERO, new Color(0f, 0f, 0f, 0f))
+            .withFlexGrow(1);
+
+        Component header = new Component.Flex(
+            null, Em.of(2.6f), Em.of(0.5f), TOOLBAR_BG,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
+            List.of(titleText, spacer, closeBtn),
+            false, 0
+        );
+
+        // 1000em w/h → OverlayStack clamps to viewport → full-screen modal.
+        // The inner surface fills the area below the header via a wrapper
+        // Flex with flexGrow=1. We can't call innerSurface.withFlexGrow(1)
+        // directly because that would create a NEW Component identity and
+        // every inner sidecar (positions, children, ports) is keyed by the
+        // original identity — the layout walk of a clone'd identity would
+        // see an empty surface.
+        Component.Flex innerFrame = new Component.Flex(
+            null, null, Em.ZERO, CONTENT_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            List.of(innerSurface), false, 1
+        );
+        Component.Flex overlayRoot = new Component.Flex(
+            Em.of(1000f), Em.of(1000f), Em.of(0.4f), CONTENT_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            List.of(header, innerFrame), false, 0
+        );
+
+        // Only detach the header (close button's onClick handler + title
+        // text). Do NOT detach overlayRoot or innerFrame because
+        // Components.detach walks the subtree pre-order and would clear
+        // innerSurface's sidecars (port declarations, GraphSurfaceChildren,
+        // Connections, etc.) — exactly the state we need to survive until
+        // outerNode itself is deleted. overlayRoot and innerFrame are
+        // plain Flexes with no sidecar entries; letting them GC silently
+        // is fine.
+        Runnable restore = () -> Components.detach(header);
+        Handlers.onClick(closeBtn, OverlayStack::pop);
+        OverlayStack.push(new OverlayStack.Overlay(overlayRoot, Anchor.CENTER, true, restore));
+    }
+
+    /**
+     * Stress pane — deliberately exercises configurations that have
+     * caught bugs in the past. Every feature in the framework that
+     * could plausibly fail when used in an "unexpected" layout shows
+     * up here in at least one such layout. Catch what the showcase
+     * tabs miss.
+     *
+     * <p>Today's coverage:
+     * <ul>
+     *   <li>Three small point-cloud viewports side-by-side in a flex
+     *       row, none of them centred on the framebuffer — catches
+     *       NDC-mapping bugs that only surface for off-centre rects.</li>
+     *   <li>A point-cloud viewport inside a {@link Component.Scroll} —
+     *       catches scissor-stack interactions with the renderer's own
+     *       scissor push.</li>
+     *   <li>An inline mix of icons and text inside a single flex row,
+     *       at varying sizes — catches MSDF atlas-swap bugs that only
+     *       manifest when two font groups interleave within a frame.</li>
+     * </ul>
+     *
+     * <p>Run with {@code -Ddasum.debug.gl=true} to surface GL-state
+     * leaks from any custom renderer across this tab (the framework
+     * wraps every {@code CustomRenderers.Renderer} call with a
+     * before/after snapshot when the flag is set).
+     */
+    private static Component buildStressPane() {
+        // Three small viewports side by side. Each gets its own data so
+        // they look visually distinct — if any of them renders empty
+        // or the wrong content, the bug is layout-position-dependent.
+        Component triple = new Component.Flex(
+            null, Em.AUTO, Em.of(0.5f), CONTENT_BG,
+            Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
+            List.of(
+                buildSmallPointCloud(7,  CameraSpec.defaultPerspective(),                            "Cube"),
+                buildSmallPointCloud(13, CameraSpec.defaultPerspective().withYaw((float) Math.toRadians(60)),  "Rotated"),
+                buildSmallPointCloud(21, CameraSpec.defaultOrtho(),                                  "Ortho")
+            ),
+            false, 0
+        );
+
+        // Mixed icon + text in one row, varied sizes. Atlas-swap is hit
+        // multiple times per frame here.
+        Component iconRowSmall = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, new Color(0f,0f,0f,0f),
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
+            List.of(
+                Icon.of(Icons.SEARCH,   Em.of(1.0f), LABEL_FG),
+                new Component.Text("Search",   Em.of(0.95f), LABEL_FG),
+                Icon.of(Icons.SETTINGS, Em.of(1.0f), LABEL_FG),
+                new Component.Text("Settings", Em.of(0.95f), LABEL_FG),
+                Icon.of(Icons.HOME,     Em.of(1.0f), LABEL_FG),
+                new Component.Text("Home",     Em.of(0.95f), LABEL_FG),
+                Icon.of(Icons.FOLDER,   Em.of(1.0f), LABEL_FG),
+                new Component.Text("Folder",   Em.of(0.95f), LABEL_FG)
+            ),
+            false, 0
+        );
+
+        Component iconRowLarge = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, new Color(0f,0f,0f,0f),
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
+            List.of(
+                Icon.of(Icons.PLAY,    Em.of(1.6f), LABEL_FG),
+                new Component.Text("Play",    Em.of(1.3f), LABEL_FG),
+                Icon.of(Icons.PAUSE,   Em.of(1.6f), LABEL_FG),
+                new Component.Text("Pause",   Em.of(1.3f), LABEL_FG),
+                Icon.of(Icons.SAVE,    Em.of(1.6f), LABEL_FG),
+                new Component.Text("Save",    Em.of(1.3f), LABEL_FG)
+            ),
+            false, 0
+        );
+
+        // Point cloud inside a scroll. Surrounding text content forces
+        // the cloud's rect to be somewhere mid-viewport, and the scroll's
+        // own scissor wraps the renderer's scissor push.
+        Component scrollContent = new Component.Flex(
+            null, Em.AUTO, Em.of(1f), new Color(0f,0f,0f,0f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.8f),
+            List.of(
+                new Component.Text("Pre-cloud text — fills space above the embedded viewport so its rect isn't framebuffer-aligned.",
+                    Em.of(0.95f), LABEL_FG).withWrapWidth(Em.of(40f)),
+                buildSmallPointCloud(99, CameraSpec.defaultPerspective(), "In a Scroll"),
+                new Component.Text("Post-cloud text — if the viewport leaked scissor or viewport state, this paragraph would render wrong (clipped, in the wrong place, or invisible).",
+                    Em.of(0.95f), LABEL_FG).withWrapWidth(Em.of(40f)),
+                new Component.Text("Extra line A.", Em.of(0.95f), LABEL_FG),
+                new Component.Text("Extra line B.", Em.of(0.95f), LABEL_FG),
+                new Component.Text("Extra line C.", Em.of(0.95f), LABEL_FG),
+                new Component.Text("Extra line D.", Em.of(0.95f), LABEL_FG)
+            ),
+            false, 0
+        );
+        Component scrollBlock = new Component.Scroll(
+            null, Em.of(18f), Em.of(0.5f), new Color(0.06f, 0.08f, 0.11f, 1f),
+            scrollContent, false, 0
+        );
+
+        Component column = new Component.Flex(
+            null, Em.AUTO, Em.of(1.2f), CONTENT_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(1.2f),
+            List.of(
+                section("Three viewports, off-centre rects", triple),
+                section("Icon + text inline (small)",        iconRowSmall),
+                section("Icon + text inline (large)",        iconRowLarge),
+                section("Viewport inside Scroll",            scrollBlock)
+            ),
+            false, 0
+        );
+
+        return new Component.Scroll(
+            null, null, Em.ZERO, CONTENT_BG, column, false, 1
+        );
+    }
+
+    /**
+     * One small point-cloud viewport, with a seeded random point cloud
+     * so each call produces visually distinct content (helps spot
+     * cross-renders / wrong-data bugs at a glance). Used by the Stress
+     * tab to build several configurations in one shot.
+     */
+    private static Component buildSmallPointCloud(int seed, CameraSpec cam, String labelText) {
+        Color cloudBg = new Color(0.04f, 0.05f, 0.08f, 1f);
+        Component.PointCloud viewport = new Component.PointCloud(
+            Em.of(10f), Em.of(7f), Em.ZERO, cloudBg, true, 0
+        );
+
+        final int N = 800;
+        float[] positions = new float[N * 3];
+        float[] colors    = new float[N * 3];
+        java.util.Random rng = new java.util.Random(seed);
+        for (int i = 0; i < N; i++) {
+            float x = (rng.nextFloat() - 0.5f) * 2f;
+            float y = (rng.nextFloat() - 0.5f) * 2f;
+            float z = (rng.nextFloat() - 0.5f) * 2f;
+            positions[i*3    ] = x;
+            positions[i*3 + 1] = y;
+            positions[i*3 + 2] = z;
+            colors[i*3    ] = 0.5f + 0.5f * x;
+            colors[i*3 + 1] = 0.5f + 0.5f * y;
+            colors[i*3 + 2] = 0.5f + 0.5f * z;
+        }
+        PointCloudStates.publish(viewport, new PointCloudSnapshot(3, N, positions, colors, null, null));
+        PointCloudStates.setCamera(viewport, cam);
+
+        Component label = new Component.Text(labelText, Em.of(0.85f), LABEL_FG);
+        return new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
+            List.of(label, viewport), false, 0
+        );
+    }
+
     /** Text pane — the editable paragraph and its caret/selection/clipboard demo. */
     private static Component buildTextPane() {
         String paragraph =
@@ -642,7 +988,252 @@ public final class App {
         );
     }
 
+    /**
+     * Tables pane — two DataTables side by side. Left is a 1,000,000-row
+     * synthetic read-only source (proves virtualized rendering); right is a
+     * tiny in-memory editable source (proves selection / edit / copy-paste
+     * / row+col insert+delete and the "multiple tables at once" requirement).
+     */
+    private static Component buildTablesPane() {
+        Property<TableSelection> leftSel  = new Property<>(null);
+        Property<TableSelection> rightSel = new Property<>(null);
+
+        Component.DataTable leftTable = new Component.DataTable(
+            null, null,
+            new SyntheticDataTableSource(1_000_000L, 20),
+            leftSel
+        ).withFlexGrow(1);
+        Component.DataTable rightTable = new Component.DataTable(
+            null, null,
+            new EditableDataTableSource(new String[][] {
+                {"Alice", "30", "Engineer"},
+                {"Bob",   "27", "Designer"},
+                {"Cara",  "41", "PM"},
+                {"Dan",   "35", "Engineer"},
+                {"Eli",   "29", "QA"},
+            }, new String[] {"Name", "Age", "Role"}),
+            rightSel
+        ).withFlexGrow(1);
+
+        TableContextMenu.registerDefaults(leftTable);
+        TableContextMenu.registerDefaults(rightTable);
+
+        Component leftLabel  = new Component.Text("Synthetic 1M × 20 (read-only)", Em.of(0.95f), LABEL_FG);
+        Component rightLabel = new Component.Text("Editable 5 × 3 — try F2, Enter, Tab", Em.of(0.95f), LABEL_FG);
+
+        Component leftCol = new Component.Flex(
+            null, null, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.4f),
+            List.of(leftLabel, leftTable), false, 1
+        );
+        Component rightCol = new Component.Flex(
+            null, null, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.4f),
+            List.of(rightLabel, rightTable), false, 1
+        );
+
+        return new Component.Flex(
+            null, null, Em.of(0.8f), CONTENT_BG,
+            Direction.ROW, JustifyContent.START, AlignItems.STRETCH, Em.of(0.8f),
+            List.of(leftCol, rightCol),
+            false, 1
+        );
+    }
+
+    /**
+     * Simple synthetic source — formula-generated cell values, no storage.
+     * Cheap {@code get} returns {@code "R<row>C<col>"} so 1M rows costs
+     * O(visible window) per frame.
+     */
+    private static final class SyntheticDataTableSource implements DataTableSource {
+        private final long rows;
+        private final int  cols;
+        SyntheticDataTableSource(long rows, int cols) { this.rows = rows; this.cols = cols; }
+        @Override public int columnCount() { return cols; }
+        @Override public String columnHeader(int col) { return "Col " + col; }
+        @Override public Em columnWidth(int col) { return Em.of(7f); }
+        @Override public java.util.OptionalLong rowCount() { return java.util.OptionalLong.of(rows); }
+        @Override public String get(int row, int col) { return "R" + row + "C" + col; }
+    }
+
+    /**
+     * Tiny mutable source backed by an {@code ArrayList<String[]>}. Validates
+     * the "Age" column (col=1) as a non-negative integer; rejects other
+     * inputs by returning {@code false} from {@link #trySet}.
+     */
+    private static final class EditableDataTableSource implements DataTableSource {
+        private final java.util.List<String[]> data;
+        private final String[] headers;
+        EditableDataTableSource(String[][] initial, String[] headers) {
+            this.headers = headers;
+            this.data = new java.util.ArrayList<>(initial.length);
+            for (String[] row : initial) this.data.add(row.clone());
+        }
+        @Override public int columnCount() { return headers.length; }
+        @Override public String columnHeader(int col) { return headers[col]; }
+        @Override public Em columnWidth(int col) { return Em.of(col == 0 ? 8f : col == 1 ? 5f : 10f); }
+        @Override public java.util.OptionalLong rowCount() { return java.util.OptionalLong.of(data.size()); }
+        @Override public String get(int row, int col) {
+            if (row < 0 || row >= data.size()) return null;
+            String[] r = data.get(row);
+            return col < r.length ? r[col] : "";
+        }
+        @Override public boolean trySet(int row, int col, String value) {
+            if (row < 0 || row >= data.size()) return false;
+            if (col == 1 && !value.isEmpty()) {
+                try { int n = Integer.parseInt(value); if (n < 0) return false; }
+                catch (NumberFormatException ex) { return false; }
+            }
+            String[] r = data.get(row);
+            if (col >= r.length) {
+                String[] grown = new String[col + 1];
+                System.arraycopy(r, 0, grown, 0, r.length);
+                java.util.Arrays.fill(grown, r.length, col + 1, "");
+                data.set(row, grown);
+                r = grown;
+            }
+            r[col] = value;
+            Invalidator.invalidate();
+            return true;
+        }
+        @Override public void insertRowAbove(int row) {
+            int idx = Math.max(0, Math.min(row, data.size()));
+            String[] empty = new String[headers.length];
+            java.util.Arrays.fill(empty, "");
+            data.add(idx, empty);
+            Invalidator.invalidate();
+        }
+        @Override public void deleteRows(int from, int toExclusive) {
+            int lo = Math.max(0, from), hi = Math.min(data.size(), toExclusive);
+            for (int i = hi - 1; i >= lo; i--) data.remove(i);
+            Invalidator.invalidate();
+        }
+        @Override public boolean canInsertRows() { return true; }
+        @Override public boolean canDeleteRows() { return true; }
+    }
+
     // ---------- pane composition helpers ----------
+
+    /**
+     * Adversarial tooltip showcase. Exercises every corner the controller
+     * is supposed to handle:
+     * <ul>
+     *   <li>Trigger toggle (Always / Alt / Ctrl / Shift) via a radio
+     *       group — also covers "no key held" → tooltips never show under
+     *       the mod variants.</li>
+     *   <li>Edge-overflow flip: four buttons positioned at the corners of
+     *       a wide row so the cursor lands near each viewport edge and
+     *       the popup has to flip to the opposite side.</li>
+     *   <li>Multiline / very-long text wrapping.</li>
+     *   <li>Tooltip on a non-interactive {@link Component.Text} (the
+     *       label has no {@code interactive()}; the controller's
+     *       {@link sibarum.dasum.gui.core.layout.HitTest#testAny} surfaces
+     *       it anyway).</li>
+     *   <li>Self-detach button: clicking it removes itself via
+     *       {@link Components#detach}, exercising the
+     *       {@code Tooltips.clear} hook that calls into
+     *       {@link TooltipController#onComponentDetached}.</li>
+     *   <li>Mutate-tooltip button: clicking it changes the tooltip's
+     *       registered text so the controller's "text changed → restart
+     *       dwell" path runs even though the cursor is stationary.</li>
+     * </ul>
+     */
+    private static Component buildTooltipShowcase() {
+        // Trigger toggle — Property<TooltipTrigger> driving radios.
+        Property<TooltipTrigger> triggerProp = new Property<>(TooltipController.getTrigger());
+        triggerProp.subscribe(t -> {
+            TooltipController.setTrigger(t);
+            System.out.println("Tooltip trigger: " + t);
+        });
+        Component.Radio<TooltipTrigger> rAlways = new Component.Radio<>(
+            Em.of(1.1f), RB_BOX, RB_DOT, triggerProp, TooltipTrigger.ALWAYS);
+        Component.Radio<TooltipTrigger> rAlt = new Component.Radio<>(
+            Em.of(1.1f), RB_BOX, RB_DOT, triggerProp, TooltipTrigger.MOD_ALT);
+        Component.Radio<TooltipTrigger> rCtrl = new Component.Radio<>(
+            Em.of(1.1f), RB_BOX, RB_DOT, triggerProp, TooltipTrigger.MOD_CTRL);
+        Component.Radio<TooltipTrigger> rShift = new Component.Radio<>(
+            Em.of(1.1f), RB_BOX, RB_DOT, triggerProp, TooltipTrigger.MOD_SHIFT);
+        Tooltips.set(rAlways, "Tooltips show on hover (default)");
+        Tooltips.set(rAlt,    "Tooltips show only while Alt is held");
+        Tooltips.set(rCtrl,   "Tooltips show only while Ctrl is held");
+        Tooltips.set(rShift,  "Tooltips show only while Shift is held");
+
+        Component triggerRow = inlineRow(List.of(
+            new Component.Text("Trigger:", Em.of(0.95f), LABEL_FG),
+            rAlways, new Component.Text("Always", Em.of(0.95f), LABEL_FG),
+            rAlt,    new Component.Text("Alt",    Em.of(0.95f), LABEL_FG),
+            rCtrl,   new Component.Text("Ctrl",   Em.of(0.95f), LABEL_FG),
+            rShift,  new Component.Text("Shift",  Em.of(0.95f), LABEL_FG)
+        ));
+
+        // Four buttons on a wide row to provoke viewport-edge flips.
+        Component edgeTL = Themed.button("Edge ↖",  Em.of(7f), Variant.PRIMARY, 0);
+        Component edgeTR = Themed.button("Edge ↗",  Em.of(7f), Variant.PRIMARY, 0);
+        Component edgeBL = Themed.button("Edge ↙",  Em.of(7f), Variant.PRIMARY, 0);
+        Component edgeBR = Themed.button("Edge ↘",  Em.of(7f), Variant.PRIMARY, 0);
+        Tooltips.set(edgeTL, "Top-left corner button — pointer placement should flip to the bottom-right of the cursor automatically.");
+        Tooltips.set(edgeTR, "Top-right corner button — popup should flip to the LEFT of the cursor when there's no room on the right.");
+        Tooltips.set(edgeBL, "Bottom-left button — popup should flip ABOVE when there's no room below.");
+        Tooltips.set(edgeBR, "Bottom-right button — popup should flip up-and-left when both edges are tight.");
+
+        Component edgeRow = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.ROW, JustifyContent.SPACE_BETWEEN, AlignItems.CENTER, Em.of(0.5f),
+            List.of(edgeTL, edgeTR, edgeBL, edgeBR), false, 0
+        );
+
+        // Long / multi-line tooltip — exercise wrap + multi-line rendering.
+        Component longBtn = Themed.button("Long tooltip", Em.of(9f), Variant.INFO, 0);
+        Tooltips.set(longBtn,
+            "This tooltip text is intentionally long to make sure the wrap-width " +
+            "limit keeps the popup readable on narrow viewports.\n\n" +
+            "It also has a hard newline in the middle to verify '\\n' is honoured " +
+            "(not collapsed to a space) by the renderer.");
+
+        // Tooltip on a non-interactive Text label — verifies HitTest.testAny
+        // surfaces it even though Text.interactive() defaults to false.
+        Component.Text label = new Component.Text("Hover this non-interactive label",
+            Em.of(0.95f), BODY_TEXT);
+        Tooltips.set(label, "Static labels can carry tooltips too — interactive() is irrelevant.");
+
+        // Self-detaching button — exercises Tooltips.clear → TooltipController.onComponentDetached.
+        // Wraps in a one-child Box that we DynamicChildren.add into, so a click can detach
+        // the inner component without rebuilding the parent.
+        Property<Boolean> showSelfDetach = new Property<>(true);
+        Component selfDetachBtn = Themed.button("Detach me (clears tooltip)", Em.of(14f), Variant.WARNING, 0);
+        Tooltips.set(selfDetachBtn, "Clicking removes this button via Components.detach — the tooltip should disappear instantly.");
+        Component.Flex selfDetachSlot = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
+            List.of(selfDetachBtn), false, 0
+        );
+        Handlers.onClick(selfDetachBtn, () -> {
+            if (Boolean.TRUE.equals(showSelfDetach.get())) {
+                DynamicChildren.remove(selfDetachSlot, selfDetachBtn);
+                Components.detach(selfDetachBtn);
+                showSelfDetach.set(false);
+                System.out.println("Self-detach button removed; tooltip should be gone.");
+            }
+        });
+
+        // Mutate-tooltip button — text changes on each click. Verifies the
+        // controller's "text changed under stationary cursor → restart dwell"
+        // path.
+        Component mutateBtn = Themed.button("Click to mutate my tooltip", Em.of(14f), Variant.SUCCESS, 0);
+        int[] mutateCounter = { 0 };
+        Tooltips.set(mutateBtn, "Initial tooltip text — click to mutate (count=0)");
+        Handlers.onClick(mutateBtn, () -> {
+            mutateCounter[0]++;
+            Tooltips.set(mutateBtn, "Tooltip mutated " + mutateCounter[0] + " times — keep hovering to see dwell restart");
+        });
+
+        return new Component.Flex(
+            null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.7f),
+            List.of(triggerRow, edgeRow, longBtn, label, selfDetachSlot, mutateBtn),
+            false, 0
+        );
+    }
 
     /** A horizontal row of items used as the body of a section. */
     private static Component inlineRow(List<Component> items) {
@@ -666,6 +1257,16 @@ public final class App {
 
     private static void wireInput(Window window, CursorManager cursors) {
         GlfwCallbacks.setKeyListener((win, key, scancode, action, mods) -> {
+            // Track modifier state for InputState consumers (e.g. the
+            // TextInputController's char-input filter uses ctrlHeld()
+            // to drop spurious space chars from Ctrl+Space chords).
+            // Set on every callback — including key release — so the
+            // state is accurate for char events firing right after.
+            InputState.setMods(mods);
+            // Notify the tooltip controller so a mod-key transition that
+            // crosses the trigger threshold causes a re-resolve next
+            // frame. No-op when trigger is ALWAYS.
+            TooltipController.onModsChanged(mods);
             if (action != Glfw.GLFW_PRESS && action != Glfw.GLFW_REPEAT) return;
             boolean ctrl  = (mods & Glfw.GLFW_MOD_CONTROL) != 0;
             boolean shift = (mods & Glfw.GLFW_MOD_SHIFT)   != 0;
@@ -689,12 +1290,15 @@ public final class App {
             // GLFW key codes for letters match ASCII uppercase ('A'..'Z' = 65..90).
             if (ctrl && key == 'C') {
                 if (TextInputController.onCopy(window.handle())) return;
+                if (DataTableSelectionController.onCopy(window.handle())) return;
             }
             if (ctrl && key == 'X') {
                 if (TextInputController.onCut(window.handle())) return;
+                if (DataTableSelectionController.onCut(window.handle())) return;
             }
             if (ctrl && key == 'V') {
                 if (TextInputController.onPaste(window.handle())) return;
+                if (DataTableSelectionController.onPaste(window.handle())) return;
             }
             if (ctrl && key == 'A') {
                 if (TextInputController.onSelectAll()) return;
@@ -739,6 +1343,10 @@ public final class App {
 
             // Navigation keys (arrows / Home / End, optionally with Ctrl).
             if (TextInputController.onKey(key, shift, ctrl)) return;
+            // DataTable owns arrows / Tab / F2 / Enter / Esc / Delete when
+            // a table is the active receiver. Runs AFTER TextInputController
+            // so a focused editable Text still wins.
+            if (DataTableSelectionController.onKey(key, mods, window.handle())) return;
             if (SliderController.onKey(key)) return;
             if (TabsController.onKey(key))   return;
 
@@ -779,6 +1387,11 @@ public final class App {
 
         GlfwCallbacks.setCursorPosListener((win, x, y) -> {
             InputState.updateMousePos(x, y);
+            // Tooltip's lightweight per-move bookkeeping. The actual
+            // hit-test + show/hide decision happens in
+            // TooltipController.resolveBeforeRender at the top of the
+            // render lambda, where we have the live LayoutResult.
+            TooltipController.onCursorMove(x, y);
             ScrollbarController.onCursorMove(x, y);
             if (ScrollbarController.isDragging()) return;
             ConnectionDragController.onCursorMove(x, y);
@@ -787,6 +1400,8 @@ public final class App {
             if (GraphSurfaceController.isDragging()) return;
             PointCloudController.onCursorMove(x, y);
             if (PointCloudController.isDragging()) return;
+            DataTableSelectionController.onCursorMove(x, y);
+            if (DataTableSelectionController.isDragging()) return;
             // Hover-follow keyboard selection when the context menu is open.
             ContextMenuController.onCursorMove(x, y);
 
@@ -807,6 +1422,8 @@ public final class App {
         });
 
         GlfwCallbacks.setMouseButtonListener((win, button, action, mods) -> {
+            InputState.setMods(mods);
+            TooltipController.onModsChanged(mods);
             // Right-click opens a context menu on press; nothing to do on release.
             if (button == Glfw.GLFW_MOUSE_BUTTON_RIGHT) {
                 if (action == Glfw.GLFW_PRESS) {
@@ -854,6 +1471,11 @@ public final class App {
                     FocusState.set(HoverState.hovered());
                     return;
                 }
+                // DataTable cells: claim the press for selection / drag-extend.
+                if (DataTableSelectionController.onMouseDown(InputState.mouseX(), InputState.mouseY(), shift)) {
+                    pressTarget = null;
+                    return;
+                }
                 // Connection selection — only fires when the click's deepest
                 // hit IS the GraphSurface (i.e., on empty surface area), so
                 // it can't steal a curve hit from a node-body drag.
@@ -894,11 +1516,13 @@ public final class App {
                 boolean canvasDrag = GraphSurfaceController.isDragging();
                 boolean connectionDrag = ConnectionDragController.isDragging();
                 boolean pointCloudDrag = PointCloudController.isDragging();
+                boolean tableDrag = DataTableSelectionController.isDragging();
                 ScrollbarController.onMouseUp();
                 SliderController.onMouseUp();
                 GraphSurfaceController.onMouseUp();
                 ConnectionDragController.onMouseUp();
                 PointCloudController.onMouseUp();
+                DataTableSelectionController.onMouseUp();
 
                 // Release-on-same-target fires the click. Re-hit-test rather
                 // than reading HoverState — HoverState only updates on cursor-
@@ -912,7 +1536,7 @@ public final class App {
                 Component released = (lr2 != null && dispatchRoot != null)
                     ? HitTest.test(dispatchRoot, lr2, (float) InputState.mouseX(), (float) InputState.mouseY())
                     : null;
-                if (!scrollDrag && !sliderDrag && !canvasDrag && !connectionDrag && !pointCloudDrag && pressTarget != null && released == pressTarget) {
+                if (!scrollDrag && !sliderDrag && !canvasDrag && !connectionDrag && !pointCloudDrag && !tableDrag && pressTarget != null && released == pressTarget) {
                     Handlers.activate(pressTarget, dispatchRoot);
                 }
                 pressTarget = null;
@@ -920,7 +1544,11 @@ public final class App {
         });
 
         GlfwCallbacks.setCharListener((win, codepoint) -> {
-            TextInputController.onCharInput(codepoint);
+            // Text input owns the focused editable Text. If nothing took the
+            // codepoint, route to the active DataTable (so typing starts /
+            // continues a cell edit).
+            if (TextInputController.onCharInput(codepoint)) return;
+            DataTableSelectionController.onCharInput(codepoint);
         });
 
         GlfwCallbacks.setCursorEnterListener((win, entered) -> {
@@ -934,6 +1562,7 @@ public final class App {
                 TextStates.clearAllHoverCarets();
                 ScrollbarController.clearHover();
                 TabsController.clearHover();
+                TooltipController.hideAll();
                 cursors.setShape(CursorManager.CursorShape.ARROW);
                 Invalidator.invalidate();
             }
@@ -952,6 +1581,7 @@ public final class App {
                 // a reference window and back without losing their selection.
                 HoverState.clear();
                 TextStates.clearAllHoverCarets();
+                TooltipController.hideAll();
                 InputState.setLeftButtonHeld(false);
             }
             Invalidator.invalidate();
@@ -965,11 +1595,16 @@ public final class App {
             // viewport zooms its camera rather than scrolling a container.
             Component pcHit = HitTest.test(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
             if (PointCloudController.onScroll(pcHit, yOff)) return;
-            Component.Scroll target = HitTest.findScroll(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
-            if (target == null) return;
 
             boolean shift = Glfw.glfwGetKey(window.handle(), Glfw.GLFW_KEY_LEFT_SHIFT)  == Glfw.GLFW_PRESS
                         || Glfw.glfwGetKey(window.handle(), Glfw.GLFW_KEY_RIGHT_SHIFT) == Glfw.GLFW_PRESS;
+            // DataTable gets second refusal — scroll over a table moves its
+            // virtualized viewport rather than nested-container scroll.
+            if (DataTableSelectionController.onScroll(
+                    InputState.mouseX(), InputState.mouseY(), xOff, yOff, shift)) return;
+
+            Component.Scroll target = HitTest.findScroll(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
+            if (target == null) return;
             double dx, dy;
             if (shift) { dx = -yOff * WHEEL_PIXELS_PER_STEP; dy = 0; }
             else        { dx = -xOff * WHEEL_PIXELS_PER_STEP; dy = -yOff * WHEEL_PIXELS_PER_STEP; }
@@ -1011,6 +1646,7 @@ public final class App {
         CommandRegistry.register("node.add.constant", "Add Constant Node", () -> spawnNode(CONSTANT_FACTORY, 3f, 3f));
         CommandRegistry.register("node.add.multiply", "Add Multiply Node", () -> spawnNode(MULTIPLY_FACTORY, 3f, 3f));
         CommandRegistry.register("node.add.tag",      "Add Tag Node",      () -> spawnNode(TAG_FACTORY,      3f, 3f));
+        CommandRegistry.register("node.add.subgraph", "Add Subgraph Node", () -> spawnNode(SUBGRAPH_FACTORY, 3f, 3f));
         CommandRegistry.register("view.stats",  "View: Toggle Stats",     () -> System.out.println("View: Toggle Stats"));
         CommandRegistry.register("view.theme",  "View: Switch Theme",     () -> System.out.println("View: Switch Theme"));
         CommandRegistry.register("quit",        "Quit DasumGUIshi",       () -> {
@@ -1056,6 +1692,10 @@ public final class App {
         // empty surface area. Nodes and ports inside the surface are still
         // interactive components and still show HAND on hover.
         if (hit instanceof Component.GraphSurface) return CursorManager.CursorShape.ARROW;
+        // DataTable: spreadsheets traditionally show ARROW over cells, not
+        // HAND. The "click to select" affordance reads as cell-grid, not
+        // button-click.
+        if (hit instanceof Component.DataTable) return CursorManager.CursorShape.ARROW;
         if (hit != null) return CursorManager.CursorShape.HAND;
         return CursorManager.CursorShape.ARROW;
     }

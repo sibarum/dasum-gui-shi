@@ -21,10 +21,25 @@ public final class HitTest {
     private HitTest() {}
 
     public static Component test(Component root, LayoutResult layout, float px, float py) {
-        return testInOrder(root, layout, px, py, null);
+        return testInOrder(root, layout, px, py, null, true);
     }
 
-    private static Component testInOrder(Component c, LayoutResult layout, float px, float py, PixelRect clip) {
+    /**
+     * Like {@link #test} but returns the deepest containing component
+     * regardless of its {@code interactive()} flag. Used by passive overlays
+     * (tooltips) that may need to surface help text for purely decorative
+     * components — labels, banners, icon boxes — that the regular
+     * hit-tester filters out.
+     * <p>
+     * Scroll clipping is still respected: a child whose rect lies outside
+     * the visible scroll viewport cannot register as a hit.
+     */
+    public static Component testAny(Component root, LayoutResult layout, float px, float py) {
+        return testInOrder(root, layout, px, py, null, false);
+    }
+
+    private static Component testInOrder(Component c, LayoutResult layout, float px, float py,
+                                          PixelRect clip, boolean requireInteractive) {
         PixelRect newClip = clip;
         if (c instanceof Component.Scroll) {
             PixelRect r = layout.rectOf(c);
@@ -32,11 +47,11 @@ public final class HitTest {
         }
         List<Component> kids = childrenOf(c);
         for (int i = kids.size() - 1; i >= 0; i--) {
-            Component hit = testInOrder(kids.get(i), layout, px, py, newClip);
+            Component hit = testInOrder(kids.get(i), layout, px, py, newClip, requireInteractive);
             if (hit != null) return hit;
         }
         PixelRect r = layout.rectOf(c);
-        if (r != null && c.interactive() && r.contains(px, py)
+        if (r != null && (!requireInteractive || c.interactive()) && r.contains(px, py)
             && (clip == null || clip.contains(px, py))) {
             return c;
         }
@@ -117,6 +132,7 @@ public final class HitTest {
             case Component.Tabs t      -> t.activeContent() != null ? List.of(t.activeContent()) : List.of();
             case Component.GraphSurface gs   -> sibarum.dasum.gui.core.graph.GraphSurfaceZOrder.orderedChildren(gs);
             case Component.PointCloud pc -> List.of();
+            case Component.DataTable dt -> List.of();
         };
     }
 

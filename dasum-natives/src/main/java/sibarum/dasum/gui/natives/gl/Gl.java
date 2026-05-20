@@ -28,7 +28,12 @@ public final class Gl {
     public static final int GL_TRUE                 = 1;
 
     public static final int GL_POINTS               = 0x0000;
+    public static final int GL_LINES                = 0x0001;
     public static final int GL_TRIANGLES            = 0x0004;
+    public static final int GL_VIEWPORT             = 0x0BA2;
+    public static final int GL_SCISSOR_BOX          = 0x0C10;
+    public static final int GL_CURRENT_PROGRAM      = 0x8B8D;
+    public static final int GL_VERTEX_ARRAY_BINDING = 0x85B5;
     public static final int GL_UNSIGNED_BYTE        = 0x1401;
     public static final int GL_UNSIGNED_INT         = 0x1405;
     public static final int GL_FLOAT                = 0x1406;
@@ -71,9 +76,10 @@ public final class Gl {
 
     private static MethodHandle GL_CLEAR;
     private static MethodHandle GL_CLEAR_COLOR;
-    private static MethodHandle GL_VIEWPORT;
+    private static MethodHandle GL_VIEWPORT_FN;
     private static MethodHandle GL_SCISSOR;
     private static MethodHandle GL_GET_ERROR;
+    private static MethodHandle GL_GET_INTEGERV;
     private static MethodHandle GL_ENABLE;
     private static MethodHandle GL_DISABLE;
     private static MethodHandle GL_BLEND_FUNC;
@@ -130,9 +136,10 @@ public final class Gl {
 
         GL_CLEAR              = h("glClear",            FunctionDescriptor.ofVoid(JAVA_INT));
         GL_CLEAR_COLOR        = h("glClearColor",       FunctionDescriptor.ofVoid(JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT));
-        GL_VIEWPORT           = h("glViewport",         FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT));
+        GL_VIEWPORT_FN        = h("glViewport",         FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT));
         GL_SCISSOR            = h("glScissor",          FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT));
         GL_GET_ERROR          = h("glGetError",         FunctionDescriptor.of(JAVA_INT));
+        GL_GET_INTEGERV       = h("glGetIntegerv",      FunctionDescriptor.ofVoid(JAVA_INT, ADDRESS));
         GL_ENABLE             = h("glEnable",           FunctionDescriptor.ofVoid(JAVA_INT));
         GL_DISABLE            = h("glDisable",          FunctionDescriptor.ofVoid(JAVA_INT));
         GL_BLEND_FUNC         = h("glBlendFunc",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT));
@@ -200,7 +207,7 @@ public final class Gl {
     }
 
     public static void glViewport(int x, int y, int w, int h) {
-        try { GL_VIEWPORT.invokeExact(x, y, w, h); } catch (Throwable t) { throw rt(t); }
+        try { GL_VIEWPORT_FN.invokeExact(x, y, w, h); } catch (Throwable t) { throw rt(t); }
     }
 
     public static void glScissor(int x, int y, int w, int h) {
@@ -209,6 +216,36 @@ public final class Gl {
 
     public static int glGetError() {
         try { return (int) GL_GET_ERROR.invokeExact(); } catch (Throwable t) { throw rt(t); }
+    }
+
+    /**
+     * Query a 4-component integer GL state value (e.g. {@link #GL_VIEWPORT}).
+     * Returns a freshly-allocated {@code int[4]}; allocate-per-call is fine
+     * because callers use this on rare paths (component renderers saving
+     * viewport state on entry, restoring on exit), not every frame.
+     */
+    public static int[] glGetIntegerv4(int pname) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(JAVA_INT, 4);
+            GL_GET_INTEGERV.invokeExact(pname, out);
+            int[] result = new int[4];
+            for (int i = 0; i < 4; i++) result[i] = out.getAtIndex(JAVA_INT, i);
+            return result;
+        } catch (Throwable t) { throw rt(t); }
+    }
+
+    /**
+     * Query a single integer GL state value (e.g. {@link #GL_CURRENT_PROGRAM},
+     * {@link #GL_VERTEX_ARRAY_BINDING}, or a capability-enable like
+     * {@link #GL_DEPTH_TEST} which returns 1 / 0). For multi-component
+     * state, use {@link #glGetIntegerv4}.
+     */
+    public static int glGetInteger(int pname) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(JAVA_INT);
+            GL_GET_INTEGERV.invokeExact(pname, out);
+            return out.get(JAVA_INT, 0);
+        } catch (Throwable t) { throw rt(t); }
     }
 
     public static void glEnable(int cap)  { try { GL_ENABLE.invokeExact(cap);  } catch (Throwable t) { throw rt(t); } }

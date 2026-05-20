@@ -34,6 +34,7 @@ public final class GlfwCallbacks {
     private static volatile CharListener charListener;
     private static volatile WindowFocusListener windowFocusListener;
     private static volatile CursorEnterListener cursorEnterListener;
+    private static volatile WindowCloseListener windowCloseListener;
 
     public static final MemorySegment ERROR_CALLBACK_STUB;
     public static final MemorySegment KEY_CALLBACK_STUB;
@@ -44,6 +45,7 @@ public final class GlfwCallbacks {
     public static final MemorySegment CHAR_CALLBACK_STUB;
     public static final MemorySegment WINDOW_FOCUS_CALLBACK_STUB;
     public static final MemorySegment CURSOR_ENTER_CALLBACK_STUB;
+    public static final MemorySegment WINDOW_CLOSE_CALLBACK_STUB;
 
     static {
         try {
@@ -84,6 +86,10 @@ public final class GlfwCallbacks {
             MethodHandle cursorEnterHandle = lookup.findStatic(
                 GlfwCallbacks.class, "onCursorEnter",
                 MethodType.methodType(void.class, MemorySegment.class, int.class)
+            );
+            MethodHandle windowCloseHandle = lookup.findStatic(
+                GlfwCallbacks.class, "onWindowClose",
+                MethodType.methodType(void.class, MemorySegment.class)
             );
 
             ERROR_CALLBACK_STUB = LINKER.upcallStub(
@@ -131,6 +137,11 @@ public final class GlfwCallbacks {
                 FunctionDescriptor.ofVoid(ADDRESS, JAVA_INT),
                 UPCALL_ARENA
             );
+            WINDOW_CLOSE_CALLBACK_STUB = LINKER.upcallStub(
+                windowCloseHandle,
+                FunctionDescriptor.ofVoid(ADDRESS),
+                UPCALL_ARENA
+            );
         } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new ExceptionInInitializerError(e);
         }
@@ -147,6 +158,7 @@ public final class GlfwCallbacks {
     public static void setCharListener(CharListener l) { charListener = l; }
     public static void setWindowFocusListener(WindowFocusListener l) { windowFocusListener = l; }
     public static void setCursorEnterListener(CursorEnterListener l) { cursorEnterListener = l; }
+    public static void setWindowCloseListener(WindowCloseListener l) { windowCloseListener = l; }
 
     private static void onError(int code, MemorySegment messagePtr) {
         ErrorListener l = errorListener;
@@ -212,6 +224,13 @@ public final class GlfwCallbacks {
         catch (Throwable t) { t.printStackTrace(); }
     }
 
+    private static void onWindowClose(MemorySegment window) {
+        WindowCloseListener l = windowCloseListener;
+        if (l == null) return;
+        try { l.onWindowClose(window.address()); }
+        catch (Throwable t) { t.printStackTrace(); }
+    }
+
     private static String readCString(MemorySegment ptr) {
         if (ptr == null || ptr.address() == 0L) return "";
         MemorySegment reinterpreted = ptr.reinterpret(Long.MAX_VALUE);
@@ -231,4 +250,13 @@ public final class GlfwCallbacks {
     @FunctionalInterface public interface CharListener            { void onChar(long window, int codepoint); }
     @FunctionalInterface public interface WindowFocusListener     { void onWindowFocus(long window, boolean focused); }
     @FunctionalInterface public interface CursorEnterListener     { void onCursorEnter(long window, boolean entered); }
+
+    /**
+     * Fires when the user clicks the window's X button (or the OS sends
+     * a close request). GLFW flips {@code windowShouldClose} to true
+     * after the callback returns; to veto the close, call
+     * {@link Glfw#glfwSetWindowShouldClose} with {@code false} from
+     * inside the listener.
+     */
+    @FunctionalInterface public interface WindowCloseListener     { void onWindowClose(long window); }
 }

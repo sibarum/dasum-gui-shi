@@ -129,6 +129,7 @@ public final class Glfw {
     private static final MethodHandle GLFW_SET_CHAR_CALLBACK       = dc("glfwSetCharCallback",         FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS));
     private static final MethodHandle GLFW_SET_WINDOW_FOCUS_CALLBACK = dc("glfwSetWindowFocusCallback", FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS));
     private static final MethodHandle GLFW_SET_CURSOR_ENTER_CALLBACK = dc("glfwSetCursorEnterCallback", FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS));
+    private static final MethodHandle GLFW_SET_WINDOW_CLOSE_CALLBACK = dc("glfwSetWindowCloseCallback", FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS));
     private static final MethodHandle GLFW_CREATE_STANDARD_CURSOR  = dc("glfwCreateStandardCursor",    FunctionDescriptor.of(ADDRESS, JAVA_INT));
     private static final MethodHandle GLFW_DESTROY_CURSOR          = dc("glfwDestroyCursor",           FunctionDescriptor.ofVoid(ADDRESS));
     private static final MethodHandle GLFW_SET_CURSOR              = dc("glfwSetCursor",               FunctionDescriptor.ofVoid(ADDRESS, ADDRESS));
@@ -267,6 +268,19 @@ public final class Glfw {
     public static void glfwSetCursorEnterCallback(MemorySegment window, MemorySegment callbackStub) {
         try {
             MemorySegment ignored = (MemorySegment) GLFW_SET_CURSOR_ENTER_CALLBACK.invokeExact(window, callbackStub);
+        } catch (Throwable t) { throw rethrow(t); }
+    }
+
+    /**
+     * Install the window-close callback. Fires when the user clicks the
+     * window's X button (or the OS sends a close request) — before GLFW
+     * flips {@code windowShouldClose} to true. Inside the callback,
+     * {@link #glfwSetWindowShouldClose} can be called with {@code false}
+     * to veto the close (e.g. prompt the user to save first).
+     */
+    public static void glfwSetWindowCloseCallback(MemorySegment window, MemorySegment callbackStub) {
+        try {
+            MemorySegment ignored = (MemorySegment) GLFW_SET_WINDOW_CLOSE_CALLBACK.invokeExact(window, callbackStub);
         } catch (Throwable t) { throw rethrow(t); }
     }
 

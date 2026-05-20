@@ -40,16 +40,22 @@ public final class CustomRenderers {
          * text accumulators may hold buffered geometry — call
          * {@code batcher.flush(projection)} before changing global GL
          * state (depth test, scissor, blend, etc.) and again after
-         * restoring it. The framebuffer dimensions are provided so
-         * renderers can apply a viewport transform that maps NDC
-         * coordinates to their rect (essential for 3D content whose NDC
-         * centre would otherwise land at the framebuffer centre
-         * regardless of where the component's rect actually is), and
-         * can restore {@code glViewport} to cover the whole framebuffer
-         * before returning.
+         * restoring it.
+         *
+         * <p>Renderers that change {@code glViewport} (essential for 3D
+         * content so NDC maps to the rect rather than the framebuffer
+         * centre) must save the previous viewport via
+         * {@code Gl.glGetIntegerv4(GL_VIEWPORT)} on entry and restore
+         * the saved values before returning. The framework does NOT
+         * pass the framebuffer dimensions through this interface — they
+         * came in once via {@code Gl.glViewport(0, 0, fbW, fbH)} at
+         * the start of the frame and the GL state holds the source of
+         * truth. This avoids a footgun where a caller of
+         * {@code Render.render} that didn't pass valid dimensions would
+         * silently corrupt the viewport for every component rendered
+         * after the 3D one.
          */
-        void render(Component c, PixelRect rect, Batcher batcher, float[] projection,
-                    int framebufferWidthPx, int framebufferHeightPx);
+        void render(Component c, PixelRect rect, Batcher batcher, float[] projection);
     }
 
     private static final Map<Class<? extends Component>, Renderer> RENDERERS = new IdentityHashMap<>();
