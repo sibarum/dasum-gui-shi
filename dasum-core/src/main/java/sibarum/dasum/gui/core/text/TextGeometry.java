@@ -120,12 +120,30 @@ public final class TextGeometry {
         return caretBounds(text, content, rect, caretIndex).x() + 1f;
     }
 
-    // ---------- selection rectangles ----------
+    // ---------- range rectangles (selection + style) ----------
 
-    public static List<PixelRect> selectionRects(Component.Text text, String content, PixelRect rect, int startIdx, int endIdx) {
+    /**
+     * Per-visual-line {@link PixelRect}s covering the half-open character
+     * range {@code [startIdx, endIdx)}. Used both by the selection fill
+     * (via {@link #selectionRects}) and by the background-style sidecar
+     * to paint per-range fills behind glyphs.
+     * <p>
+     * Indices that fall outside any visible line, or where
+     * {@code startIdx >= endIdx} after normalization, produce an empty
+     * list. On a fully-empty middle line the resulting rect gets a small
+     * positive width so the range is still visible — matches how
+     * selection highlights an empty line inside a multi-line drag.
+     */
+    public static List<PixelRect> styleRects(Component.Text text, String content, PixelRect rect, int startIdx, int endIdx) {
         List<PixelRect> out = new ArrayList<>();
         if (startIdx == endIdx) return out;
         if (startIdx > endIdx) { int t = startIdx; startIdx = endIdx; endIdx = t; }
+        // Clip to live content so stale ranges (worker published before
+        // the user deleted characters) don't ghost past the end.
+        int len = content.length();
+        if (startIdx < 0) startIdx = 0;
+        if (endIdx   > len) endIdx = len;
+        if (startIdx >= endIdx) return out;
 
         FontGroup fg = FontGroups.getOrDefault(text.fontGroup());
         float fontPx = text.fontSize().toPixels();
@@ -151,6 +169,11 @@ public final class TextGeometry {
             out.add(new PixelRect(fromX, y, Math.max(0f, toX - fromX), lineH));
         }
         return out;
+    }
+
+    /** Per-visual-line selection-highlight rectangles. Delegates to {@link #styleRects}. */
+    public static List<PixelRect> selectionRects(Component.Text text, String content, PixelRect rect, int startIdx, int endIdx) {
+        return styleRects(text, content, rect, startIdx, endIdx);
     }
 
     public static int clampIndex(String s, int idx) {

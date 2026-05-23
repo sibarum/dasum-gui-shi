@@ -16,6 +16,7 @@ import sibarum.dasum.gui.core.input.Handlers;
 import sibarum.dasum.gui.core.input.HoverState;
 import sibarum.dasum.gui.core.input.ScrollStates;
 import sibarum.dasum.gui.core.input.TextStates;
+import sibarum.dasum.gui.core.input.TextStyleStates;
 import sibarum.dasum.gui.core.overlay.Tooltips;
 
 import java.util.ArrayList;
@@ -130,6 +131,7 @@ public final class Components {
         Handlers.migrate(from, to);
         ContextMenuStates.migrate(from, to);
         TextStates.migrate(from, to);
+        TextStyleStates.migrate(from, to);
         ScrollStates.migrate(from, to);
         FocusState.migrate(from, to);
         HoverState.migrate(from, to);
@@ -222,6 +224,7 @@ public final class Components {
         Handlers.clear(c);
         ContextMenuStates.clear(c);
         TextStates.clear(c);
+        TextStyleStates.clear(c);
         ScrollStates.clear(c);
         FocusState.clear(c);
         HoverState.clear(c);

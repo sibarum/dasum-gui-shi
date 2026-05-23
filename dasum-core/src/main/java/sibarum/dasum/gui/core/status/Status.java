@@ -6,9 +6,13 @@ import sibarum.dasum.gui.core.component.Direction;
 import sibarum.dasum.gui.core.component.DynamicChildren;
 import sibarum.dasum.gui.core.component.JustifyContent;
 import sibarum.dasum.gui.core.em.Em;
+import sibarum.dasum.gui.core.em.EmContext;
 import sibarum.dasum.gui.core.event.Invalidator;
 import sibarum.dasum.gui.core.input.Handlers;
 import sibarum.dasum.gui.core.input.TextStates;
+import sibarum.dasum.gui.core.layout.LatestLayout;
+import sibarum.dasum.gui.core.layout.LayoutResult;
+import sibarum.dasum.gui.core.layout.PixelRect;
 import sibarum.dasum.gui.core.overlay.Anchor;
 import sibarum.dasum.gui.core.overlay.OverlayStack;
 import sibarum.dasum.gui.core.render.Color;
@@ -67,8 +71,19 @@ public final class Status {
     public static final int MAX_HISTORY = 1000;
 
     private static final Em RIBBON_HEIGHT_EM = Em.of(1.7f);
-    private static final Em LOG_DIALOG_WIDTH = Em.of(60f);
-    private static final Em LOG_DIALOG_HEIGHT = Em.of(28f);
+    /** Fraction of the viewport the log dialog occupies when one is open. */
+    private static final float LOG_DIALOG_W_FRACTION = 0.80f;
+    private static final float LOG_DIALOG_H_FRACTION = 0.70f;
+    /** Clamps so the dialog stays readable on tiny windows and reasonable on huge ones. */
+    private static final float LOG_DIALOG_MIN_W_EM = 28f;
+    private static final float LOG_DIALOG_MIN_H_EM = 14f;
+    private static final float LOG_DIALOG_MAX_W_EM = 120f;
+    private static final float LOG_DIALOG_MAX_H_EM = 60f;
+    /** Reserve some em of the dialog's width for padding when wrapping the textarea. */
+    private static final float LOG_DIALOG_PADDING_EM = 2f;
+    /** Used only if no layout has been computed yet (pre-first-frame click — shouldn't happen). */
+    private static final Em LOG_DIALOG_FALLBACK_W = Em.of(60f);
+    private static final Em LOG_DIALOG_FALLBACK_H = Em.of(28f);
     private static final Color RIBBON_BG       = new Color(0.07f, 0.09f, 0.12f, 1f);
     private static final Color RIBBON_BG_HOVER = new Color(0.10f, 0.12f, 0.16f, 1f);
     private static final Color DIALOG_BG       = new Color(0.10f, 0.12f, 0.16f, 1f);
@@ -301,15 +316,48 @@ public final class Status {
     }
 
     private static void openLogs() {
-        Component textarea = buildLogsTextArea();
+        Em dialogW;
+        Em dialogH;
+        Em wrapW;
+        LayoutResult lr = LatestLayout.result();
+        Component appRoot = LatestLayout.root();
+        if (lr != null && appRoot != null && EmContext.pixelsPerEm() > 0f) {
+            PixelRect viewport = lr.rectOf(appRoot);
+            if (viewport != null && viewport.width() > 0f && viewport.height() > 0f) {
+                float ppe = EmContext.pixelsPerEm();
+                float emW = viewport.width()  / ppe;
+                float emH = viewport.height() / ppe;
+                float w = clamp(emW * LOG_DIALOG_W_FRACTION, LOG_DIALOG_MIN_W_EM, LOG_DIALOG_MAX_W_EM);
+                // Hard cap to the viewport so we never produce a dialog that
+                // overflows; the OverlayStack would clamp anyway but a too-large
+                // intrinsic size still hurts internal layout (caret math, scroll).
+                w = Math.min(w, emW - 0.5f);
+                float h = clamp(emH * LOG_DIALOG_H_FRACTION, LOG_DIALOG_MIN_H_EM, LOG_DIALOG_MAX_H_EM);
+                h = Math.min(h, emH - 0.5f);
+                dialogW = Em.of(w);
+                dialogH = Em.of(h);
+                wrapW   = Em.of(Math.max(LOG_DIALOG_MIN_W_EM - LOG_DIALOG_PADDING_EM,
+                                         w - LOG_DIALOG_PADDING_EM));
+            } else {
+                dialogW = LOG_DIALOG_FALLBACK_W;
+                dialogH = LOG_DIALOG_FALLBACK_H;
+                wrapW   = Em.of(LOG_DIALOG_FALLBACK_W.value() - LOG_DIALOG_PADDING_EM);
+            }
+        } else {
+            dialogW = LOG_DIALOG_FALLBACK_W;
+            dialogH = LOG_DIALOG_FALLBACK_H;
+            wrapW   = Em.of(LOG_DIALOG_FALLBACK_W.value() - LOG_DIALOG_PADDING_EM);
+        }
+
+        Component textarea = buildLogsTextArea(wrapW);
         Component scroll = new Component.Scroll(
-            LOG_DIALOG_WIDTH, LOG_DIALOG_HEIGHT, Em.of(0.6f), DIALOG_BG,
+            dialogW, dialogH, Em.of(0.6f), DIALOG_BG,
             textarea, false, 0);
         Component header = new Component.Text("Event Log", Em.of(1.15f), LABEL_FG);
         Component hint   = new Component.Text(
             "click outside or press ESC to dismiss", Em.of(0.85f), HINT_FG);
         Component dialog = new Component.Flex(
-            LOG_DIALOG_WIDTH, Em.AUTO, Em.of(1.0f), DIALOG_BG,
+            dialogW, Em.AUTO, Em.of(1.0f), DIALOG_BG,
             Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.5f),
             List.of(header, hint, scroll), false, 0);
         Component framed = new Component.Flex(
@@ -323,11 +371,17 @@ public final class Status {
         sibarum.dasum.gui.core.input.ScrollStates.of(scroll).scrollByPx(0f, 1_000_000f);
     }
 
+    private static float clamp(float v, float lo, float hi) {
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return v;
+    }
+
     /**
      * Build a single selectable Text containing every event in history,
      * one row per event, with optional details indented underneath.
      */
-    private static Component buildLogsTextArea() {
+    private static Component buildLogsTextArea(Em wrapWidth) {
         StringBuilder sb = new StringBuilder();
         List<StatusEvent> snapshot;
         synchronized (LOCK) {
@@ -353,7 +407,7 @@ public final class Status {
         return new Component.Text(
             sb.toString(), FontGroups.DEFAULT, Em.of(0.9f), LABEL_FG,
             null, null, Em.of(0.5f),
-            Em.of(58f),     // wrap to dialog width
+            wrapWidth,      // wrap to dialog width (passed in from openLogs)
             true,           // clip to viewport
             true, true, false, false, 0
         );

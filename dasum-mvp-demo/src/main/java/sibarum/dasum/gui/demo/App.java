@@ -51,6 +51,8 @@ import sibarum.dasum.gui.core.input.TabsController;
 import sibarum.dasum.gui.core.input.TextInputController;
 import sibarum.dasum.gui.core.input.TextState;
 import sibarum.dasum.gui.core.input.TextStates;
+import sibarum.dasum.gui.core.input.TextStyle;
+import sibarum.dasum.gui.core.input.TextStyleStates;
 import sibarum.dasum.gui.core.reactive.Property;
 import sibarum.dasum.gui.core.layout.HitTest;
 import sibarum.dasum.gui.core.layout.LatestLayout;
@@ -984,7 +986,105 @@ public final class App {
 
         return new Component.Scroll(
             null, null, Em.of(1f), CONTENT_BG,
-            paragraphText, false, 1
+            buildStyledColumn(paragraphText), false, 1
+        );
+    }
+
+    /**
+     * Column wrapping the existing paragraph (kept first) and a "Styled text"
+     * subsection that exercises {@link TextStyleStates}: a read-only label
+     * with static foreground + background ranges, and an editable Text with
+     * a content-change listener that re-highlights {@code TODO} / {@code FIXME}
+     * tokens live as the user types. Demonstrates both the static-publisher
+     * and incremental-publisher API patterns; wrap-aware bg rendering is
+     * visible on the editable input when the user types past the wrap point.
+     */
+    private static Component buildStyledColumn(Component.Text paragraphText) {
+        // Static-styled label — one Text, both fg + bg ranges set once.
+        String diag = "error: undefined symbol 'foo' in main.c:42";
+        Color red    = new Color(1.00f, 0.45f, 0.45f, 1f);
+        Color yellow = new Color(1.00f, 0.85f, 0.35f, 1f);
+        Color cyan   = new Color(0.45f, 0.85f, 1.00f, 1f);
+        Color errBg  = new Color(0.50f, 0.10f, 0.10f, 0.55f);
+        Color fooBg  = new Color(0.45f, 0.45f, 0.10f, 0.55f);
+
+        Component.Text staticStyled = new Component.Text(
+            diag, FontGroups.DEFAULT, Em.of(1.1f), BODY_TEXT,
+            null, null, Em.of(0.6f),
+            null, false,
+            true, true, false, false, 0  // interactive + selectable, NOT editable
+        );
+        int errStart  = 0;
+        int errEnd    = "error:".length();
+        int fooStart  = diag.indexOf("'foo'");
+        int fooEnd    = fooStart + "'foo'".length();
+        int fileStart = diag.indexOf("main.c:42");
+        int fileEnd   = fileStart + "main.c:42".length();
+        TextStyleStates.setForeground(staticStyled, List.of(
+            new TextStyle(errStart,  errEnd,  red),
+            new TextStyle(fooStart,  fooEnd,  yellow),
+            new TextStyle(fileStart, fileEnd, cyan)
+        ));
+        TextStyleStates.setBackground(staticStyled, List.of(
+            new TextStyle(errStart, errEnd, errBg),
+            new TextStyle(fooStart, fooEnd, fooBg)
+        ));
+
+        // Live-highlight editable Text — content-change listener re-publishes
+        // ranges as the user types. Demonstrates the canonical
+        // "recompute-from-scratch-per-content-change" pattern; no RMW races
+        // possible because there's exactly one publisher (this listener).
+        String initial =
+            "Type here. Highlights update as you type.\n" +
+            "Try inserting TODO or FIXME — they get tagged.\n" +
+            "Long lines wrap, and background fills follow the wrap correctly.";
+        Component.Text liveStyled = new Component.Text(
+            initial, FontGroups.DEFAULT, Em.of(1.1f), BODY_TEXT,
+            null, null, Em.of(0.6f),
+            Em.of(36f), false,
+            true, true, true, false, 0  // editable
+        );
+        Color todoBg  = new Color(0.55f, 0.45f, 0.05f, 0.55f);
+        Color fixmeFg = new Color(1.00f, 0.40f, 0.40f, 1f);
+        TextStates.onContentChange(liveStyled, content -> {
+            List<TextStyle> bg = new java.util.ArrayList<>();
+            for (int i = content.indexOf("TODO"); i >= 0; i = content.indexOf("TODO", i + 4)) {
+                bg.add(new TextStyle(i, i + 4, todoBg));
+            }
+            List<TextStyle> fg = new java.util.ArrayList<>();
+            for (int i = content.indexOf("FIXME"); i >= 0; i = content.indexOf("FIXME", i + 5)) {
+                fg.add(new TextStyle(i, i + 5, fixmeFg));
+            }
+            TextStyleStates.setBackground(liveStyled, bg);
+            TextStyleStates.setForeground(liveStyled, fg);
+        });
+        // Initial publish so the demo opens with the marks already painted.
+        {
+            List<TextStyle> bg = new java.util.ArrayList<>();
+            for (int i = initial.indexOf("TODO"); i >= 0; i = initial.indexOf("TODO", i + 4)) {
+                bg.add(new TextStyle(i, i + 4, todoBg));
+            }
+            List<TextStyle> fg = new java.util.ArrayList<>();
+            for (int i = initial.indexOf("FIXME"); i >= 0; i = initial.indexOf("FIXME", i + 5)) {
+                fg.add(new TextStyle(i, i + 5, fixmeFg));
+            }
+            TextStyleStates.setBackground(liveStyled, bg);
+            TextStyleStates.setForeground(liveStyled, fg);
+        }
+
+        Component header = new Component.Text(
+            "Styled text — programmatic foreground + background ranges",
+            Em.of(1.0f), LABEL_FG);
+
+        Component liveHint = new Component.Text(
+            "Editable — TODO gets a background, FIXME gets a foreground:",
+            Em.of(0.95f), LABEL_FG);
+
+        return new Component.Flex(
+            null, null, Em.of(1f), new Color(0f, 0f, 0f, 0f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(1.0f),
+            List.of(paragraphText, header, staticStyled, liveHint, liveStyled),
+            false, 0
         );
     }
 

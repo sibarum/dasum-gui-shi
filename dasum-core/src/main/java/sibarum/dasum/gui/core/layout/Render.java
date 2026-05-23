@@ -8,6 +8,8 @@ import sibarum.dasum.gui.core.input.ScrollbarController;
 import sibarum.dasum.gui.core.input.TabsController;
 import sibarum.dasum.gui.core.input.TextState;
 import sibarum.dasum.gui.core.input.TextStates;
+import sibarum.dasum.gui.core.input.TextStyle;
+import sibarum.dasum.gui.core.input.TextStyleStates;
 import sibarum.dasum.gui.core.render.Batcher;
 import sibarum.dasum.gui.core.render.Color;
 import sibarum.dasum.gui.core.render.CustomRenderers;
@@ -271,7 +273,23 @@ public final class Render {
             batcher.scissor().push(rect);
         }
 
+        // User background style ranges — emitted first so selection and
+        // glyphs sit on top. Stale indices are silently clipped inside
+        // TextGeometry.styleRects against the live content length.
+        List<TextStyle> bgRanges = TextStyleStates.backgroundOf(text);
+        if (!bgRanges.isEmpty()) {
+            for (TextStyle r : bgRanges) {
+                for (PixelRect br : TextGeometry.styleRects(text, content, rect, r.start(), r.end())) {
+                    if (br.width() > 0f && br.height() > 0f) {
+                        batcher.submit(new DrawCommand.ColoredQuad(br.x(), br.y(), br.width(), br.height(), r.color()));
+                    }
+                }
+            }
+        }
+
         // Selection background — emitted before glyphs so it sits behind them.
+        // Painted AFTER user background ranges so selection translucency
+        // reads cleanly over any colored underlay.
         if (text.selectable()) {
             TextState ts = TextStates.of(text);
             if (ts.hasSelection()) {
@@ -280,6 +298,23 @@ public final class Render {
                         batcher.submit(new DrawCommand.ColoredQuad(sel.x(), sel.y(), sel.width(), sel.height(), SELECTION_FILL));
                     }
                 }
+            }
+        }
+
+        // Foreground style ranges — bake into a per-char color array so
+        // the inner glyph loop is O(1) per char. Cost: one int → ref array
+        // of length content.length() per frame, only when ranges exist.
+        // Last-in-list wins on overlap (matches the documented API).
+        List<TextStyle> fgRanges = TextStyleStates.foregroundOf(text);
+        Color[] perCharColor = null;
+        if (!fgRanges.isEmpty() && !content.isEmpty()) {
+            perCharColor = new Color[content.length()];
+            int len = content.length();
+            for (TextStyle r : fgRanges) {
+                int s = Math.max(0, r.start());
+                int e = Math.min(len, r.end());
+                Color rc = r.color();
+                for (int i = s; i < e; i++) perCharColor[i] = rc;
             }
         }
 
@@ -292,12 +327,15 @@ public final class Render {
 
         float startX = rect.x() + padPx;
         float baseY  = rect.y() + padPx + ascender;
+        Color defaultColor = text.color();
 
         for (LineBreaker.LineSpan line : TextMetrics.lines(text, content)) {
             float cx = startX;
             for (int j = line.start(); j < line.end(); ) {
                 int cp = content.codePointAt(j);
-                DrawCommand.GlyphQuad q = fg.layout().build(cp, cx, baseY, fontPx, text.color());
+                Color glyphColor = (perCharColor != null && perCharColor[j] != null)
+                    ? perCharColor[j] : defaultColor;
+                DrawCommand.GlyphQuad q = fg.layout().build(cp, cx, baseY, fontPx, glyphColor);
                 if (q != null) batcher.submit(q);
                 cx += fg.layout().advance(cp, fontPx);
                 j += Character.charCount(cp);
