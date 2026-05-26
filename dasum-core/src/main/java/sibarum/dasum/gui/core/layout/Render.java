@@ -77,7 +77,8 @@ public final class Render {
             if (color.a() > 0f) {
                 batcher.submit(new DrawCommand.ColoredQuad(r.x(), r.y(), r.width(), r.height(), color));
             }
-            if (c == hovered && !(c instanceof Component.Tabs) && !(c instanceof Component.GraphSurface) && !(c instanceof Component.PointCloud)) {
+            if (c == hovered && !(c instanceof Component.Tabs) && !(c instanceof Component.GraphSurface) && !(c instanceof Component.PointCloud)
+                && !(c instanceof Component.Text txt && txt.selectable())) {
                 // Tabs does its own per-cell hover inside renderTabs — skip the
                 // generic whole-rect tint so it doesn't wash the header strip.
                 // GraphSurface is interactive (so right-clicks land on its
@@ -86,6 +87,10 @@ public final class Render {
                 // PointCloud is interactive for orbit-drag + click-pick, but
                 // the whole-viewport tint washes the 3D content and gives no
                 // useful feedback — the cursor change to HAND is enough.
+                // Selectable Text (editors, text inputs) already signals
+                // hoverability with the IBEAM cursor and a phantom caret at
+                // the cursor position; the whole-rect wash on top of that
+                // reads like a selection state, not a hover.
                 batcher.submit(new DrawCommand.ColoredQuad(r.x(), r.y(), r.width(), r.height(), HOVER_TINT));
             }
             if (c == focused) {

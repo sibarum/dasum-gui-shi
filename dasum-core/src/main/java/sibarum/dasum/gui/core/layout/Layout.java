@@ -297,7 +297,17 @@ public final class Layout {
                 float explicit = e != null ? e.toPixels() : 0f;
                 yield Math.max(explicit, fillExtent);
             }
-            case Component.Text te  -> width ? TextMetrics.widthPixels(te, TextStates.contentOf(te)) : TextMetrics.heightPixels(te, TextStates.contentOf(te));
+            case Component.Text te  -> {
+                // Same "fill at least the parent's interior" rule as containers:
+                // when the text is shorter than the available space, the rect
+                // extends so clicks, focus ring, hover tint, and selection drag
+                // cover the whole editor area — not just the glyph bounds. When
+                // the text is larger, intrinsic wins and overflow scrolls.
+                float intrinsic = width
+                    ? TextMetrics.widthPixels(te, TextStates.contentOf(te))
+                    : TextMetrics.heightPixels(te, TextStates.contentOf(te));
+                yield Math.max(intrinsic, fillExtent);
+            }
             case Component.Checkbox cb -> cb.size().toPixels();
             case Component.Radio<?> r  -> r.size().toPixels();
             case Component.Slider sl   -> width

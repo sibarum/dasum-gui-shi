@@ -6,14 +6,11 @@ import sibarum.dasum.gui.core.component.Direction;
 import sibarum.dasum.gui.core.component.DynamicChildren;
 import sibarum.dasum.gui.core.component.JustifyContent;
 import sibarum.dasum.gui.core.em.Em;
-import sibarum.dasum.gui.core.em.EmContext;
 import sibarum.dasum.gui.core.event.Invalidator;
+import sibarum.dasum.gui.core.input.FocusState;
 import sibarum.dasum.gui.core.input.Handlers;
-import sibarum.dasum.gui.core.input.TextStates;
-import sibarum.dasum.gui.core.layout.LatestLayout;
-import sibarum.dasum.gui.core.layout.LayoutResult;
-import sibarum.dasum.gui.core.layout.PixelRect;
 import sibarum.dasum.gui.core.overlay.Anchor;
+import sibarum.dasum.gui.core.text.Icon;
 import sibarum.dasum.gui.core.overlay.OverlayStack;
 import sibarum.dasum.gui.core.render.Color;
 import sibarum.dasum.gui.core.text.FontGroups;
@@ -71,19 +68,13 @@ public final class Status {
     public static final int MAX_HISTORY = 1000;
 
     private static final Em RIBBON_HEIGHT_EM = Em.of(1.7f);
-    /** Fraction of the viewport the log dialog occupies when one is open. */
-    private static final float LOG_DIALOG_W_FRACTION = 0.80f;
-    private static final float LOG_DIALOG_H_FRACTION = 0.70f;
-    /** Clamps so the dialog stays readable on tiny windows and reasonable on huge ones. */
-    private static final float LOG_DIALOG_MIN_W_EM = 28f;
-    private static final float LOG_DIALOG_MIN_H_EM = 14f;
-    private static final float LOG_DIALOG_MAX_W_EM = 120f;
-    private static final float LOG_DIALOG_MAX_H_EM = 60f;
-    /** Reserve some em of the dialog's width for padding when wrapping the textarea. */
-    private static final float LOG_DIALOG_PADDING_EM = 2f;
-    /** Used only if no layout has been computed yet (pre-first-frame click — shouldn't happen). */
-    private static final Em LOG_DIALOG_FALLBACK_W = Em.of(60f);
-    private static final Em LOG_DIALOG_FALLBACK_H = Em.of(28f);
+    /** Max dialog size on large viewports — past this, the dialog stops growing and centers. */
+    private static final Em LOG_DIALOG_MAX_W = Em.of(120f);
+    private static final Em LOG_DIALOG_MAX_H = Em.of(60f);
+    /** Space between the viewport edge and the dialog edge — the "minus margins" the user sees. */
+    private static final Em LOG_DIALOG_VIEWPORT_MARGIN = Em.of(1.5f);
+    /** Approximate wrap width for the log textarea — see {@link #buildLogsTextArea}. */
+    private static final Em LOG_DIALOG_WRAP_WIDTH = Em.of(LOG_DIALOG_MAX_W.value() - 4f);
     private static final Color RIBBON_BG       = new Color(0.07f, 0.09f, 0.12f, 1f);
     private static final Color RIBBON_BG_HOVER = new Color(0.10f, 0.12f, 0.16f, 1f);
     private static final Color DIALOG_BG       = new Color(0.10f, 0.12f, 0.16f, 1f);
@@ -106,6 +97,14 @@ public final class Status {
     // ----- visuals (lazily built by wrap) -----
     private static Component.Flex ribbon = null;
     private static boolean wrapped = false;
+
+    // ----- close-icon registration -----
+    // Apps may register an icon-font codepoint so the log dialog's close
+    // button renders as a proper glyph (e.g. lucide "x") instead of the
+    // fallback ASCII letter. dasum-core can't depend on app-generated
+    // Icons constants, so the codepoint is plugged in at startup.
+    private static int    closeIconCodepoint = 0;
+    private static String closeIconFontGroup = Icon.DEFAULT_FONT_GROUP;
 
     // ----- timer for auto-revert -----
     private static final ScheduledExecutorService SCHEDULER =
@@ -240,6 +239,23 @@ public final class Status {
         synchronized (LOCK) { return activeEvent; }
     }
 
+    /**
+     * Register a codepoint from the default {@code "icons"} font group for
+     * the log dialog's close button. Call once at startup with the
+     * generated {@code Icons.X} (or equivalent) constant. Until set, the
+     * close button falls back to a plain ASCII "X" rendered in the primary
+     * font.
+     */
+    public static void setCloseIcon(int codepoint) {
+        setCloseIcon(codepoint, Icon.DEFAULT_FONT_GROUP);
+    }
+
+    /** As {@link #setCloseIcon(int)} but from a non-default icon font group. */
+    public static void setCloseIcon(int codepoint, String fontGroup) {
+        closeIconCodepoint = codepoint;
+        closeIconFontGroup = fontGroup == null ? Icon.DEFAULT_FONT_GROUP : fontGroup;
+    }
+
     // ---------- internals ----------
 
     private static Component grow(Component content) {
@@ -316,66 +332,59 @@ public final class Status {
     }
 
     private static void openLogs() {
-        Em dialogW;
-        Em dialogH;
-        Em wrapW;
-        LayoutResult lr = LatestLayout.result();
-        Component appRoot = LatestLayout.root();
-        if (lr != null && appRoot != null && EmContext.pixelsPerEm() > 0f) {
-            PixelRect viewport = lr.rectOf(appRoot);
-            if (viewport != null && viewport.width() > 0f && viewport.height() > 0f) {
-                float ppe = EmContext.pixelsPerEm();
-                float emW = viewport.width()  / ppe;
-                float emH = viewport.height() / ppe;
-                float w = clamp(emW * LOG_DIALOG_W_FRACTION, LOG_DIALOG_MIN_W_EM, LOG_DIALOG_MAX_W_EM);
-                // Hard cap to the viewport so we never produce a dialog that
-                // overflows; the OverlayStack would clamp anyway but a too-large
-                // intrinsic size still hurts internal layout (caret math, scroll).
-                w = Math.min(w, emW - 0.5f);
-                float h = clamp(emH * LOG_DIALOG_H_FRACTION, LOG_DIALOG_MIN_H_EM, LOG_DIALOG_MAX_H_EM);
-                h = Math.min(h, emH - 0.5f);
-                dialogW = Em.of(w);
-                dialogH = Em.of(h);
-                wrapW   = Em.of(Math.max(LOG_DIALOG_MIN_W_EM - LOG_DIALOG_PADDING_EM,
-                                         w - LOG_DIALOG_PADDING_EM));
-            } else {
-                dialogW = LOG_DIALOG_FALLBACK_W;
-                dialogH = LOG_DIALOG_FALLBACK_H;
-                wrapW   = Em.of(LOG_DIALOG_FALLBACK_W.value() - LOG_DIALOG_PADDING_EM);
-            }
-        } else {
-            dialogW = LOG_DIALOG_FALLBACK_W;
-            dialogH = LOG_DIALOG_FALLBACK_H;
-            wrapW   = Em.of(LOG_DIALOG_FALLBACK_W.value() - LOG_DIALOG_PADDING_EM);
-        }
-
-        Component textarea = buildLogsTextArea(wrapW);
+        // The dialog tree uses null sizes + flexGrow=1 all the way down so the
+        // dialog re-fits the viewport on every layout pass — including after a
+        // window resize. The OUTER Flex requests the max em size; OverlayStack
+        // clamps it to the viewport, so on small windows the outer == viewport
+        // and on large windows it caps at the max. The outer's padding is the
+        // viewport-edge margin; STRETCH+flexGrow propagate the interior down
+        // through framed → dialog → scroll → textarea.
+        Component textarea = buildLogsTextArea(LOG_DIALOG_WRAP_WIDTH);
         Component scroll = new Component.Scroll(
-            dialogW, dialogH, Em.of(0.6f), DIALOG_BG,
-            textarea, false, 0);
-        Component header = new Component.Text("Event Log", Em.of(1.15f), LABEL_FG);
+            null, null, Em.of(0.6f), DIALOG_BG,
+            textarea, false, 1);
+        Component title     = new Component.Text("Event Log", Em.of(1.15f), LABEL_FG);
+        Component closeGlyph = closeIconCodepoint != 0
+            ? Icon.of(closeIconCodepoint, closeIconFontGroup, Em.of(1.0f), LABEL_FG)
+            : new Component.Text("X", Em.of(1.0f), LABEL_FG);
+        Component closeBtn  = new Component.Flex(
+            Em.of(1.6f), Em.of(1.6f), Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
+            List.of(closeGlyph),
+            true, 0);
+        Handlers.onClick(closeBtn, OverlayStack::pop);
+        Component header = new Component.Flex(
+            null, null, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.SPACE_BETWEEN, AlignItems.CENTER, Em.ZERO,
+            List.of(title, closeBtn), false, 0);
         Component hint   = new Component.Text(
             "click outside or press ESC to dismiss", Em.of(0.85f), HINT_FG);
         Component dialog = new Component.Flex(
-            dialogW, Em.AUTO, Em.of(1.0f), DIALOG_BG,
+            null, null, Em.of(1.0f), DIALOG_BG,
             Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.5f),
-            List.of(header, hint, scroll), false, 0);
+            List.of(header, hint, scroll), false, 1);
         Component framed = new Component.Flex(
-            Em.AUTO, Em.AUTO, Em.of(0.125f), DIALOG_BORDER,
-            Direction.COLUMN, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
-            List.of(dialog), false, 0);
+            null, null, Em.of(0.125f), DIALOG_BORDER,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            List.of(dialog), false, 1);
+        Component padded = new Component.Flex(
+            LOG_DIALOG_MAX_W, LOG_DIALOG_MAX_H, LOG_DIALOG_VIEWPORT_MARGIN, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            List.of(framed), false, 0);
         OverlayStack.push(new OverlayStack.Overlay(
-            framed, Anchor.CENTER, true, () -> {}));
+            padded, Anchor.CENTER, true, () -> {}));
+        // Override OverlayStack's auto-focus (which picks the first interactive
+        // descendant in tree order — the close button, since it sits in the
+        // header). The log textarea is the meaningful focus target: it owns
+        // the keyboard read/copy affordances and the visible caret. The close
+        // button still responds to clicks regardless of focus.
+        FocusState.set(textarea);
         // Scroll to bottom — bounds-clamped by the Scroll viewport on the
         // next layout pass.
         sibarum.dasum.gui.core.input.ScrollStates.of(scroll).scrollByPx(0f, 1_000_000f);
     }
 
-    private static float clamp(float v, float lo, float hi) {
-        if (v < lo) return lo;
-        if (v > hi) return hi;
-        return v;
-    }
+    private static final Color TRANSPARENT = new Color(0f, 0f, 0f, 0f);
 
     /**
      * Build a single selectable Text containing every event in history,

@@ -116,18 +116,33 @@ public final class FocusState {
 
             float dx = 0f, dy = 0f;
 
-            // Vertical: always align nearest edge so the focused rect is in view.
-            if (focusedRect.bottom() > interior.bottom()) dy = focusedRect.bottom() - interior.bottom();
-            else if (focusedRect.y() < interior.y())      dy = focusedRect.y()      - interior.y();
+            // Per-axis "already dominant" guard: if the focused rect already
+            // occupies more than half the scroll's interior on this axis,
+            // the user can see it (and likely interacted with the part they
+            // can see — e.g. clicked into a tall editor at the current
+            // scroll position). Auto-scrolling would yank them away from
+            // where they just looked. Tab-cycling to a small input still
+            // scrolls normally because the input's height is well under
+            // half the viewport.
+            boolean dominantVertical   = focusedRect.height() > interior.height() * 0.5f;
+            boolean dominantHorizontal = focusedRect.width()  > interior.width()  * 0.5f;
+
+            // Vertical: align the nearest edge so the focused rect is in view.
+            if (!dominantVertical) {
+                if (focusedRect.bottom() > interior.bottom()) dy = focusedRect.bottom() - interior.bottom();
+                else if (focusedRect.y() < interior.y())      dy = focusedRect.y()      - interior.y();
+            }
 
             // Horizontal: only adjust if there's ZERO horizontal overlap with the
             // viewport. Matches browser scrollIntoView's inline:'nearest' default
             // — a wide row that's partially visible is good enough; don't jump.
-            boolean horizontallyVisible = focusedRect.right() > interior.x()
-                                       && focusedRect.x()    < interior.right();
-            if (!horizontallyVisible) {
-                if (focusedRect.right() <= interior.x()) dx = focusedRect.right() - interior.x();
-                else                                      dx = focusedRect.x()     - interior.right();
+            if (!dominantHorizontal) {
+                boolean horizontallyVisible = focusedRect.right() > interior.x()
+                                           && focusedRect.x()    < interior.right();
+                if (!horizontallyVisible) {
+                    if (focusedRect.right() <= interior.x()) dx = focusedRect.right() - interior.x();
+                    else                                      dx = focusedRect.x()     - interior.right();
+                }
             }
 
             if (dx != 0f || dy != 0f) {
