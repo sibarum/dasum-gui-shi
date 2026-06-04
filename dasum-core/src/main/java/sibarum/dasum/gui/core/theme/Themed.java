@@ -50,6 +50,59 @@ public final class Themed {
         return b;
     }
 
+    /**
+     * Toolbar-style button with an icon glyph left of the label. The icon
+     * is drawn from the default {@code "icons"} font group — see
+     * {@link sibarum.dasum.gui.core.text.Icon}; apps pass a codepoint from
+     * their generated {@code Icons} class. Same height, padding, and label
+     * size as {@link #button}, so the two mix cleanly in one toolbar row.
+     */
+    public static Component iconButton(int iconCodepoint, String label, Em width, Variant variant, int flexGrow) {
+        Palette p = Theme.of(variant);
+        Component icon           = sibarum.dasum.gui.core.text.Icon.of(iconCodepoint, Em.of(1.05f), p.onBase());
+        Component.Text labelText = new Component.Text(label, Em.of(0.85f), p.onBase());
+        return new Component.Flex(
+            width, Em.of(2f), Em.of(0.3f), p.base(),
+            Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.of(0.4f),
+            List.of(icon, labelText),
+            true, 0
+        ).withFlexGrow(flexGrow);
+    }
+
+    /**
+     * Convenience overload that constructs the icon button and registers
+     * {@code onClick} against its final identity in one call — same
+     * motivation as {@link #button(String, Em, Variant, int, Runnable)}.
+     */
+    public static Component iconButton(int iconCodepoint, String label, Em width, Variant variant, int flexGrow, Runnable onClick) {
+        Component b = iconButton(iconCodepoint, label, width, variant, flexGrow);
+        sibarum.dasum.gui.core.input.Handlers.onClick(b, onClick);
+        return b;
+    }
+
+    /**
+     * Icon-only square button — {@code side × side} with the glyph centered.
+     * The glyph renders at just over half the side so the button keeps
+     * comfortable hit-target padding around it.
+     */
+    public static Component iconButton(int iconCodepoint, Em side, Variant variant, int flexGrow) {
+        Palette p = Theme.of(variant);
+        Component icon = sibarum.dasum.gui.core.text.Icon.of(iconCodepoint, Em.of(side.value() * 0.55f), p.onBase());
+        return new Component.Flex(
+            side, side, Em.ZERO, p.base(),
+            Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
+            List.of(icon),
+            true, 0
+        ).withFlexGrow(flexGrow);
+    }
+
+    /** Icon-only square button with the click handler wired in one call. */
+    public static Component iconButton(int iconCodepoint, Em side, Variant variant, int flexGrow, Runnable onClick) {
+        Component b = iconButton(iconCodepoint, side, variant, flexGrow);
+        sibarum.dasum.gui.core.input.Handlers.onClick(b, onClick);
+        return b;
+    }
+
     public static Component.Checkbox checkbox(Em size, Property<Boolean> value, Variant variant) {
         Palette p = Theme.of(variant);
         return new Component.Checkbox(size, Theme.subtleBg(), p.base(), value);

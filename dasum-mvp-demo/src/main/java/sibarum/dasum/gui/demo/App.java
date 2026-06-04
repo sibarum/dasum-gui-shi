@@ -106,9 +106,6 @@ public final class App {
     private static final Color CONTENT_BG    = new Color(0.07f, 0.09f, 0.13f, 1f);
     private static final Color FRAME_BG      = new Color(0.05f, 0.06f, 0.09f, 1f);
 
-    private static final Color BTN_RED     = new Color(0.85f, 0.35f, 0.35f, 1f);
-    private static final Color BTN_ORANGE  = new Color(0.85f, 0.55f, 0.25f, 1f);
-    private static final Color BTN_GREEN   = new Color(0.35f, 0.75f, 0.45f, 1f);
     private static final Color BTN_BLUE    = new Color(0.30f, 0.55f, 0.85f, 1f);
     private static final Color BTN_PURPLE  = new Color(0.55f, 0.40f, 0.80f, 1f);
     private static final Color BTN_NEUTRAL = new Color(0.40f, 0.42f, 0.48f, 1f);
@@ -280,18 +277,6 @@ public final class App {
         ).withFlexGrow(flexGrow);
     }
 
-    /** Toolbar-style button with a Lucide icon to the left of the label. */
-    private static Component iconButton(int iconCp, String label, Em width, Color bg, int flexGrow) {
-        Component iconComp  = Icon.of(iconCp, Em.of(1.05f), LABEL_FG);
-        Component labelComp = new Component.Text(label, Em.of(0.85f), LABEL_FG);
-        return new Component.Flex(
-            width, Em.of(2f), Em.of(0.3f), bg,
-            Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.of(0.4f),
-            List.of(iconComp, labelComp),
-            true, 0
-        ).withFlexGrow(flexGrow);
-    }
-
     private static Component buildUi() {
         return new Component.Flex(
             null, null, Em.of(0.5f), FRAME_BG,
@@ -302,10 +287,10 @@ public final class App {
     }
 
     private static Component buildToolbar() {
-        Component file    = iconButton(Icons.FOLDER,      "File",    Em.of(5.5f), BTN_RED,    0);
-        Component edit    = iconButton(Icons.EDIT,        "Edit",    Em.of(5.5f), BTN_ORANGE, 0);
-        Component view    = iconButton(Icons.EYE,         "View",    Em.of(5.5f), BTN_GREEN,  0);
-        Component help    = iconButton(Icons.HELP_CIRCLE, "Help",    Em.of(5.5f), BTN_BLUE,   0);
+        Component file    = Themed.iconButton(Icons.FOLDER,      "File", Em.of(5.5f), Variant.ERROR,   0);
+        Component edit    = Themed.iconButton(Icons.EDIT,        "Edit", Em.of(5.5f), Variant.WARNING, 0);
+        Component view    = Themed.iconButton(Icons.EYE,         "View", Em.of(5.5f), Variant.SUCCESS, 0);
+        Component help    = Themed.iconButton(Icons.HELP_CIRCLE, "Help", Em.of(5.5f), Variant.PRIMARY, 0);
         Component account = button("Account", Em.of(0f),   BTN_PURPLE, 1);
 
         Handlers.onClick(file,    () -> CommandRegistry.invoke("file.open"));
@@ -1043,7 +1028,7 @@ public final class App {
             null, null, Em.of(0.6f),
             Em.of(36f), false,
             true, true, true, false, 0  // editable
-        );
+        ).withLineNumbers(true);  // logical-line gutter; wrapped continuations unnumbered
         Color todoBg  = new Color(0.55f, 0.45f, 0.05f, 0.55f);
         Color fixmeFg = new Color(1.00f, 0.40f, 0.40f, 1f);
         TextStates.onContentChange(liveStyled, content -> {

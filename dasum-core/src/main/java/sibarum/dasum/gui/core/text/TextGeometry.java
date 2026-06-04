@@ -69,6 +69,7 @@ public final class TextGeometry {
         FontGroup fg = FontGroups.getOrDefault(text.fontGroup());
         float fontPx = text.fontSize().toPixels();
         float pad    = text.padding().toPixels();
+        float gutter = TextMetrics.gutterWidthPixels(text, content);
         float lineH  = fg.atlas().metrics().lineHeight() * fontPx;
 
         List<LineBreaker.LineSpan> lines = TextMetrics.lines(text, content);
@@ -78,7 +79,7 @@ public final class TextGeometry {
         if (k >= totalLines) k = totalLines - 1;
 
         LineBreaker.LineSpan line = lines.get(k);
-        return line.start() + columnAtX(fg, content, line.start(), line.end(), fontPx, rect.x() + pad, sx);
+        return line.start() + columnAtX(fg, content, line.start(), line.end(), fontPx, rect.x() + pad + gutter, sx);
     }
 
     private static int columnAtX(FontGroup fg, String s, int from, int to, float fontPx, float startX, float sx) {
@@ -111,7 +112,8 @@ public final class TextGeometry {
         LineBreaker.LineSpan line = TextMetrics.lines(text, content).get(k);
         int upTo = Math.min(caret, line.end());
 
-        float x = rect.x() + pad + TextMetrics.lineAdvance(fg, content, line.start(), upTo, fontPx);
+        float gutter = TextMetrics.gutterWidthPixels(text, content);
+        float x = rect.x() + pad + gutter + TextMetrics.lineAdvance(fg, content, line.start(), upTo, fontPx);
         float y = rect.y() + pad + k * lineH;
         return new PixelRect(x - 1f, y, 2f, lineH);
     }
@@ -148,6 +150,7 @@ public final class TextGeometry {
         FontGroup fg = FontGroups.getOrDefault(text.fontGroup());
         float fontPx = text.fontSize().toPixels();
         float pad    = text.padding().toPixels();
+        float gutter = TextMetrics.gutterWidthPixels(text, content);
         float lineH  = fg.atlas().metrics().lineHeight() * fontPx;
 
         List<LineBreaker.LineSpan> lines = TextMetrics.lines(text, content);
@@ -162,8 +165,8 @@ public final class TextGeometry {
             segFrom = Math.max(line.start(), Math.min(line.end(), segFrom));
             segTo   = Math.max(line.start(), Math.min(line.end(), segTo));
 
-            float fromX = rect.x() + pad + TextMetrics.lineAdvance(fg, content, line.start(), segFrom, fontPx);
-            float toX   = rect.x() + pad + TextMetrics.lineAdvance(fg, content, line.start(), segTo,   fontPx);
+            float fromX = rect.x() + pad + gutter + TextMetrics.lineAdvance(fg, content, line.start(), segFrom, fontPx);
+            float toX   = rect.x() + pad + gutter + TextMetrics.lineAdvance(fg, content, line.start(), segTo,   fontPx);
             if (toX - fromX < 1f && segFrom == segTo && k < endLine) toX = fromX + fontPx * 0.3f;
             float y = rect.y() + pad + k * lineH;
             out.add(new PixelRect(fromX, y, Math.max(0f, toX - fromX), lineH));

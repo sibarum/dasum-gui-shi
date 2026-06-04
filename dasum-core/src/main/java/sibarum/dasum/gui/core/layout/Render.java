@@ -45,6 +45,8 @@ public final class Render {
     private static final Color CARET_COLOR      = new Color(0.95f, 0.95f, 1.00f, 1.00f);
     private static final Color PHANTOM_CARET    = new Color(0.95f, 0.95f, 1.00f, 0.35f);
     private static final float FOCUS_RING_THICKNESS_PX = 2f;
+    /** Line numbers render in the text color at this alpha multiplier — present but recessive. */
+    private static final float LINE_NUMBER_ALPHA = 0.45f;
 
     private Render() {}
 
@@ -327,14 +329,34 @@ public final class Render {
         batcher.setTextAtlas(fg.texture(), fg.distanceRange(), projection);
         float fontPx     = text.fontSize().toPixels();
         float padPx      = text.padding().toPixels();
+        float gutterPx   = TextMetrics.gutterWidthPixels(text, content);
         float lineHeight = fg.atlas().metrics().lineHeight() * fontPx;
         float ascender   = fg.atlas().metrics().ascender()   * fontPx;
 
-        float startX = rect.x() + padPx;
+        float startX = rect.x() + padPx + gutterPx;
         float baseY  = rect.y() + padPx + ascender;
         Color defaultColor = text.color();
+        Color numberColor = gutterPx > 0f
+            ? new Color(defaultColor.r(), defaultColor.g(), defaultColor.b(), defaultColor.a() * LINE_NUMBER_ALPHA)
+            : null;
+        int logicalLine = 0;
 
         for (LineBreaker.LineSpan line : TextMetrics.lines(text, content)) {
+            // Line number — only on visual lines that start a logical line
+            // ('\n'-delimited); soft-wrap continuations stay unnumbered.
+            // Right-aligned so digits grow leftward into the gutter.
+            if (gutterPx > 0f && (line.start() == 0 || content.charAt(line.start() - 1) == '\n')) {
+                logicalLine++;
+                String num = Integer.toString(logicalLine);
+                float numW = TextMetrics.lineAdvance(fg, num, 0, num.length(), fontPx);
+                float nx = startX - TextMetrics.GUTTER_GAP * fontPx - numW;
+                for (int j = 0; j < num.length(); j++) {
+                    int cp = num.charAt(j);
+                    DrawCommand.GlyphQuad q = fg.layout().build(cp, nx, baseY, fontPx, numberColor);
+                    if (q != null) batcher.submit(q);
+                    nx += fg.layout().advance(cp, fontPx);
+                }
+            }
             float cx = startX;
             for (int j = line.start(); j < line.end(); ) {
                 int cp = content.codePointAt(j);
