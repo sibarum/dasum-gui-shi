@@ -9,8 +9,9 @@ import static sibarum.dasum.gui.natives.gl.Gl.GL_TRIANGLES;
 
 /**
  * Per-material batch accumulator for MSDF text glyphs. Vertex layout
- * (stride 32 bytes): pos {@code vec2} at location 0, uv {@code vec2} at
- * location 1, color {@code vec4} at location 2.
+ * (stride 36 bytes): pos {@code vec2} at location 0, uv {@code vec2} at
+ * location 1, color {@code vec4} at location 2, SDF edge shift
+ * {@code float} (screen px) at location 3.
  * <p>
  * Each {@link DrawCommand.GlyphQuad} emits two triangles (6 vertices) since
  * we don't use an index buffer yet — adding EBOs is a later optimization
@@ -18,7 +19,7 @@ import static sibarum.dasum.gui.natives.gl.Gl.GL_TRIANGLES;
  */
 final class MsdfTextAccumulator {
 
-    private static final int FLOATS_PER_VERTEX = 8;
+    private static final int FLOATS_PER_VERTEX = 9;
     private static final int VERTEX_BYTES = FLOATS_PER_VERTEX * Float.BYTES;
     private static final int VERTICES_PER_QUAD = 6;
     /** Starting capacity; the buffer grows geometrically on overflow. */
@@ -59,6 +60,8 @@ final class MsdfTextAccumulator {
         Gl.glEnableVertexAttribArray(1);
         Gl.glVertexAttribPointer(2, 4, GL_FLOAT, false, VERTEX_BYTES, 4L * Float.BYTES);
         Gl.glEnableVertexAttribArray(2);
+        Gl.glVertexAttribPointer(3, 1, GL_FLOAT, false, VERTEX_BYTES, 8L * Float.BYTES);
+        Gl.glEnableVertexAttribArray(3);
 
         Gl.glBindBuffer(GL_ARRAY_BUFFER, 0);
         Gl.glBindVertexArray(0);
@@ -109,14 +112,15 @@ final class MsdfTextAccumulator {
         float vB = q.uv().bottom();
         float vT = q.uv().top();
         Color c = q.color();
+        float e = q.edgePx();
 
-        appendVertex(x0, y0, uL, vT, c);
-        appendVertex(x1, y0, uR, vT, c);
-        appendVertex(x1, y1, uR, vB, c);
+        appendVertex(x0, y0, uL, vT, c, e);
+        appendVertex(x1, y0, uR, vT, c, e);
+        appendVertex(x1, y1, uR, vB, c, e);
 
-        appendVertex(x0, y0, uL, vT, c);
-        appendVertex(x1, y1, uR, vB, c);
-        appendVertex(x0, y1, uL, vB, c);
+        appendVertex(x0, y0, uL, vT, c, e);
+        appendVertex(x1, y1, uR, vB, c, e);
+        appendVertex(x0, y1, uL, vB, c, e);
     }
 
     void flush(float[] projection) {
@@ -166,7 +170,7 @@ final class MsdfTextAccumulator {
     int drawCalls() { return drawCalls; }
     int vertices() { return vertices; }
 
-    private void appendVertex(float x, float y, float u, float v, Color c) {
+    private void appendVertex(float x, float y, float u, float v, Color c, float edgePx) {
         int off = vertexCount * FLOATS_PER_VERTEX;
         cpuBuffer[off    ] = x;
         cpuBuffer[off + 1] = y;
@@ -176,6 +180,7 @@ final class MsdfTextAccumulator {
         cpuBuffer[off + 5] = c.g();
         cpuBuffer[off + 6] = c.b();
         cpuBuffer[off + 7] = c.a();
+        cpuBuffer[off + 8] = edgePx;
         vertexCount++;
     }
 

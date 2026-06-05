@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -274,5 +275,48 @@ final class TextStyleStatesTest {
             pool.shutdownNow();
             TextStyleStates.clear(t);
         }
+    }
+
+    /**
+     * The 3-arg compatibility constructor must default wrapLineEndings to
+     * false, and the flag must participate in record equality — guards
+     * against the field being added to the constructor but dropped from
+     * the canonical record components.
+     */
+    @Test
+    void wrapLineEndingsDefaultsFalseAndAffectsEquality() {
+        TextStyle compat = new TextStyle(0, 5, RED);
+        assertEquals(new TextStyle(0, 5, RED, false), compat);
+        assertFalse(compat.wrapLineEndings(), "3-arg constructor must default to false");
+        assertFalse(new TextStyle(0, 5, RED, true).equals(compat),
+                    "wrapLineEndings must be a record component, not a ctor side-channel");
+    }
+
+    /**
+     * Compat constructors default outline/weight to none; withers copy all
+     * other components; outline color/width must be set together.
+     */
+    @Test
+    void outlineAndWeightDefaultsWithersAndValidation() {
+        sibarum.dasum.gui.core.em.Em w = sibarum.dasum.gui.core.em.Em.of(0.05f);
+
+        TextStyle plain = new TextStyle(0, 5, RED, true);
+        assertEquals(null, plain.outlineColor());
+        assertEquals(null, plain.outlineWidth());
+        assertEquals(null, plain.weight());
+
+        TextStyle outlined = plain.withOutline(BLUE, w);
+        assertEquals(new TextStyle(0, 5, RED, true, BLUE, w, null), outlined);
+        assertFalse(outlined.equals(plain), "outline must participate in equality");
+
+        TextStyle weighted = outlined.withWeight(w);
+        assertEquals(new TextStyle(0, 5, RED, true, BLUE, w, w), weighted);
+
+        assertThrows(IllegalArgumentException.class,
+                     () -> new TextStyle(0, 5, RED, false, BLUE, null, null),
+                     "outlineColor without outlineWidth must be rejected");
+        assertThrows(IllegalArgumentException.class,
+                     () -> new TextStyle(0, 5, RED, false, null, w, null),
+                     "outlineWidth without outlineColor must be rejected");
     }
 }

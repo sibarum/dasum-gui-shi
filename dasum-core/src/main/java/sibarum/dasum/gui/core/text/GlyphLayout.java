@@ -26,6 +26,16 @@ public final class GlyphLayout {
      */
     public DrawCommand.GlyphQuad build(int codepoint, float baselineX, float baselineY,
                                        float pixelSize, Color color) {
+        return build(codepoint, baselineX, baselineY, pixelSize, color, 0f);
+    }
+
+    /**
+     * As {@link #build(int, float, float, float, Color)}, with an SDF edge
+     * shift in screen pixels — positive dilates (bold / outline underlay),
+     * negative erodes (lighter). See {@link DrawCommand.GlyphQuad#edgePx}.
+     */
+    public DrawCommand.GlyphQuad build(int codepoint, float baselineX, float baselineY,
+                                       float pixelSize, Color color, float edgePx) {
         GlyphData g = atlas.glyph(codepoint);
         if (g == null || g.planeBounds() == null || g.atlasBounds() == null) return null;
 
@@ -45,7 +55,7 @@ public final class GlyphLayout {
         return new DrawCommand.GlyphQuad(
             screenLeft, screenTop,
             screenRight - screenLeft, screenBottom - screenTop,
-            uv, color
+            uv, color, edgePx
         );
     }
 

@@ -286,7 +286,7 @@ public final class Render {
         List<TextStyle> bgRanges = TextStyleStates.backgroundOf(text);
         if (!bgRanges.isEmpty()) {
             for (TextStyle r : bgRanges) {
-                for (PixelRect br : TextGeometry.styleRects(text, content, rect, r.start(), r.end())) {
+                for (PixelRect br : TextGeometry.styleRects(text, content, rect, r.start(), r.end(), r.wrapLineEndings())) {
                     if (br.width() > 0f && br.height() > 0f) {
                         batcher.submit(new DrawCommand.ColoredQuad(br.x(), br.y(), br.width(), br.height(), r.color()));
                     }
@@ -308,20 +308,44 @@ public final class Render {
             }
         }
 
-        // Foreground style ranges — bake into a per-char color array so
-        // the inner glyph loop is O(1) per char. Cost: one int → ref array
-        // of length content.length() per frame, only when ranges exist.
-        // Last-in-list wins on overlap (matches the documented API).
+        // Foreground style ranges — bake into per-char arrays so the inner
+        // glyph loop is O(1) per char. Cost: a few arrays of length
+        // content.length() per frame, only when ranges exist. Last-in-list
+        // wins on overlap (matches the documented API). A null range color
+        // keeps the Text's default — useful for weight/outline-only spans.
         List<TextStyle> fgRanges = TextStyleStates.foregroundOf(text);
-        Color[] perCharColor = null;
+        Color[] perCharColor = null;       // glyph tint override
+        Color[] perCharOutline = null;     // outline color (null = no outline)
+        float[] perCharOutlinePx = null;   // outline width, screen px
+        float[] perCharWeightPx = null;    // fill edge shift, screen px
+        boolean anyOutline = false;
         if (!fgRanges.isEmpty() && !content.isEmpty()) {
-            perCharColor = new Color[content.length()];
             int len = content.length();
+            perCharColor = new Color[len];
             for (TextStyle r : fgRanges) {
                 int s = Math.max(0, r.start());
                 int e = Math.min(len, r.end());
                 Color rc = r.color();
-                for (int i = s; i < e; i++) perCharColor[i] = rc;
+                if (rc != null) {
+                    for (int i = s; i < e; i++) perCharColor[i] = rc;
+                }
+                if (r.outlineColor() != null) {
+                    if (perCharOutline == null) {
+                        perCharOutline = new Color[len];
+                        perCharOutlinePx = new float[len];
+                    }
+                    anyOutline = true;
+                    float opx = r.outlineWidth().toPixels();
+                    for (int i = s; i < e; i++) {
+                        perCharOutline[i] = r.outlineColor();
+                        perCharOutlinePx[i] = opx;
+                    }
+                }
+                if (r.weight() != null) {
+                    if (perCharWeightPx == null) perCharWeightPx = new float[len];
+                    float wpx = r.weight().toPixels();
+                    for (int i = s; i < e; i++) perCharWeightPx[i] = wpx;
+                }
             }
         }
 
@@ -334,40 +358,60 @@ public final class Render {
         float ascender   = fg.atlas().metrics().ascender()   * fontPx;
 
         float startX = rect.x() + padPx + gutterPx;
-        float baseY  = rect.y() + padPx + ascender;
         Color defaultColor = text.color();
         Color numberColor = gutterPx > 0f
             ? new Color(defaultColor.r(), defaultColor.g(), defaultColor.b(), defaultColor.a() * LINE_NUMBER_ALPHA)
             : null;
-        int logicalLine = 0;
+        List<LineBreaker.LineSpan> lines = TextMetrics.lines(text, content);
 
-        for (LineBreaker.LineSpan line : TextMetrics.lines(text, content)) {
-            // Line number — only on visual lines that start a logical line
-            // ('\n'-delimited); soft-wrap continuations stay unnumbered.
-            // Right-aligned so digits grow leftward into the gutter.
-            if (gutterPx > 0f && (line.start() == 0 || content.charAt(line.start() - 1) == '\n')) {
-                logicalLine++;
-                String num = Integer.toString(logicalLine);
-                float numW = TextMetrics.lineAdvance(fg, num, 0, num.length(), fontPx);
-                float nx = startX - TextMetrics.GUTTER_GAP * fontPx - numW;
-                for (int j = 0; j < num.length(); j++) {
-                    int cp = num.charAt(j);
-                    DrawCommand.GlyphQuad q = fg.layout().build(cp, nx, baseY, fontPx, numberColor);
-                    if (q != null) batcher.submit(q);
-                    nx += fg.layout().advance(cp, fontPx);
+        // Two passes when outlines exist: pass 0 emits every outlined
+        // glyph's dilated underlay, pass 1 the fills (and line numbers).
+        // Submission order within the MSDF accumulator is draw order, so
+        // ALL underlays land beneath ALL fills — interleaving per glyph
+        // would let glyph N's outline clip into glyph N-1's fill at tight
+        // kerning. Without outlines the loop runs once, exactly as before.
+        for (int pass = anyOutline ? 0 : 1; pass <= 1; pass++) {
+            boolean outlinePass = pass == 0;
+            float baseY = rect.y() + padPx + ascender;
+            int logicalLine = 0;
+            for (LineBreaker.LineSpan line : lines) {
+                // Line number — only on visual lines that start a logical line
+                // ('\n'-delimited); soft-wrap continuations stay unnumbered.
+                // Right-aligned so digits grow leftward into the gutter.
+                if (!outlinePass && gutterPx > 0f && (line.start() == 0 || content.charAt(line.start() - 1) == '\n')) {
+                    logicalLine++;
+                    String num = Integer.toString(logicalLine);
+                    float numW = TextMetrics.lineAdvance(fg, num, 0, num.length(), fontPx);
+                    float nx = startX - TextMetrics.GUTTER_GAP * fontPx - numW;
+                    for (int j = 0; j < num.length(); j++) {
+                        int cp = num.charAt(j);
+                        DrawCommand.GlyphQuad q = fg.layout().build(cp, nx, baseY, fontPx, numberColor);
+                        if (q != null) batcher.submit(q);
+                        nx += fg.layout().advance(cp, fontPx);
+                    }
                 }
+                float cx = startX;
+                for (int j = line.start(); j < line.end(); ) {
+                    int cp = content.codePointAt(j);
+                    float weightPx = perCharWeightPx != null ? perCharWeightPx[j] : 0f;
+                    DrawCommand.GlyphQuad q = null;
+                    if (outlinePass) {
+                        if (perCharOutline[j] != null) {
+                            // Outline sits outside the (possibly weighted) fill.
+                            q = fg.layout().build(cp, cx, baseY, fontPx,
+                                perCharOutline[j], weightPx + perCharOutlinePx[j]);
+                        }
+                    } else {
+                        Color glyphColor = (perCharColor != null && perCharColor[j] != null)
+                            ? perCharColor[j] : defaultColor;
+                        q = fg.layout().build(cp, cx, baseY, fontPx, glyphColor, weightPx);
+                    }
+                    if (q != null) batcher.submit(q);
+                    cx += fg.layout().advance(cp, fontPx);
+                    j += Character.charCount(cp);
+                }
+                baseY += lineHeight;
             }
-            float cx = startX;
-            for (int j = line.start(); j < line.end(); ) {
-                int cp = content.codePointAt(j);
-                Color glyphColor = (perCharColor != null && perCharColor[j] != null)
-                    ? perCharColor[j] : defaultColor;
-                DrawCommand.GlyphQuad q = fg.layout().build(cp, cx, baseY, fontPx, glyphColor);
-                if (q != null) batcher.submit(q);
-                cx += fg.layout().advance(cp, fontPx);
-                j += Character.charCount(cp);
-            }
-            baseY += lineHeight;
         }
 
         // Caret + phantom — emitted last, on top of glyphs.

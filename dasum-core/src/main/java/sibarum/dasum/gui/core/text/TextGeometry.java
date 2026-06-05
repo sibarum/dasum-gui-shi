@@ -137,6 +137,18 @@ public final class TextGeometry {
      * selection highlights an empty line inside a multi-line drag.
      */
     public static List<PixelRect> styleRects(Component.Text text, String content, PixelRect rect, int startIdx, int endIdx) {
+        return styleRects(text, content, rect, startIdx, endIdx, false);
+    }
+
+    /**
+     * As {@link #styleRects(Component.Text, String, PixelRect, int, int)},
+     * but with {@code wrapLineEndings} set, any visual line whose hard
+     * {@code '\n'} falls inside the range gets its rect extended to the
+     * right edge of the text area (diff-view style) instead of stopping at
+     * the last glyph. Soft-wrap boundaries are never extended — there is
+     * no newline character there to mark.
+     */
+    public static List<PixelRect> styleRects(Component.Text text, String content, PixelRect rect, int startIdx, int endIdx, boolean wrapLineEndings) {
         List<PixelRect> out = new ArrayList<>();
         if (startIdx == endIdx) return out;
         if (startIdx > endIdx) { int t = startIdx; startIdx = endIdx; endIdx = t; }
@@ -167,6 +179,15 @@ public final class TextGeometry {
 
             float fromX = rect.x() + pad + gutter + TextMetrics.lineAdvance(fg, content, line.start(), segFrom, fontPx);
             float toX   = rect.x() + pad + gutter + TextMetrics.lineAdvance(fg, content, line.start(), segTo,   fontPx);
+            // Extend to the text-area right edge when the range swallows
+            // this line's hard '\n'. k < endLine guarantees endIdx >
+            // line.end(), i.e. the newline index is inside [startIdx,
+            // endIdx). max() keeps the fill covering glyphs that overflow
+            // the rect (long-word rule).
+            if (wrapLineEndings && k < endLine
+                    && line.end() < len && content.charAt(line.end()) == '\n') {
+                toX = Math.max(toX, rect.x() + rect.width() - pad);
+            }
             if (toX - fromX < 1f && segFrom == segTo && k < endLine) toX = fromX + fontPx * 0.3f;
             float y = rect.y() + pad + k * lineH;
             out.add(new PixelRect(fromX, y, Math.max(0f, toX - fromX), lineH));

@@ -978,7 +978,8 @@ public final class App {
     /**
      * Column wrapping the existing paragraph (kept first) and a "Styled text"
      * subsection that exercises {@link TextStyleStates}: a read-only label
-     * with static foreground + background ranges, and an editable Text with
+     * with static foreground + background ranges, a multi-line block showing
+     * {@code wrapLineEndings} extend-to-edge fills, and an editable Text with
      * a content-change listener that re-highlights {@code TODO} / {@code FIXME}
      * tokens live as the user types. Demonstrates both the static-publisher
      * and incremental-publisher API patterns; wrap-aware bg rendering is
@@ -1013,6 +1014,55 @@ public final class App {
         TextStyleStates.setBackground(staticStyled, List.of(
             new TextStyle(errStart, errEnd, errBg),
             new TextStyle(fooStart, fooEnd, fooBg)
+        ));
+
+        // Glyph effects — outline (dilated underlay) and weight (SDF edge
+        // shift) ride on foreground ranges. A null range color keeps the
+        // Text's default tint, so weight-only spans don't recolor.
+        String fx = "Outlined words and bold words and lighter words coexist.";
+        Component.Text fxStyled = new Component.Text(
+            fx, FontGroups.DEFAULT, Em.of(1.1f), BODY_TEXT,
+            null, null, Em.of(0.6f),
+            null, false,
+            true, true, false, false, 0  // interactive + selectable, NOT editable
+        );
+        int outStart   = fx.indexOf("Outlined words");
+        int outEnd     = outStart + "Outlined words".length();
+        int boldStart  = fx.indexOf("bold words");
+        int boldEnd    = boldStart + "bold words".length();
+        int lightStart = fx.indexOf("lighter words");
+        int lightEnd   = lightStart + "lighter words".length();
+        TextStyleStates.setForeground(fxStyled, List.of(
+            new TextStyle(outStart, outEnd, yellow)
+                .withOutline(new Color(0.15f, 0.35f, 0.70f, 1f), Em.of(0.06f)),
+            new TextStyle(boldStart, boldEnd, null).withWeight(Em.of(0.04f)),
+            new TextStyle(lightStart, lightEnd, null).withWeight(Em.of(-0.03f))
+        ));
+
+        // Wrapped-ending spans — a multi-line bg range with wrapLineEndings
+        // fills each continued line to the text-area right edge (diff-view
+        // look), including the empty middle line; the default range on the
+        // last line stops at the glyph for contrast.
+        String block =
+            "Removed block — wrapLineEndings=true fills to the edge:\n" +
+            "    int unused = compute();\n" +
+            "\n" +
+            "    cleanup(unused);\n" +
+            "A default span on this line stops at the last glyph.";
+        Component.Text blockStyled = new Component.Text(
+            block, FontGroups.DEFAULT, Em.of(1.1f), BODY_TEXT,
+            null, null, Em.of(0.6f),
+            null, false,
+            true, true, false, false, 0  // interactive + selectable, NOT editable
+        );
+        Color removedBg = new Color(0.45f, 0.12f, 0.12f, 0.55f);
+        int blockStart = block.indexOf("    int unused");
+        int blockEnd   = block.indexOf("A default");  // ends just past cleanup line's '\n'
+        int defStart   = block.indexOf("default span");
+        int defEnd     = defStart + "default span".length();
+        TextStyleStates.setBackground(blockStyled, List.of(
+            new TextStyle(blockStart, blockEnd, removedBg, true),
+            new TextStyle(defStart, defEnd, fooBg)
         ));
 
         // Live-highlight editable Text — content-change listener re-publishes
@@ -1068,7 +1118,7 @@ public final class App {
         return new Component.Flex(
             null, null, Em.of(1f), new Color(0f, 0f, 0f, 0f),
             Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(1.0f),
-            List.of(paragraphText, header, staticStyled, liveHint, liveStyled),
+            List.of(paragraphText, header, staticStyled, fxStyled, blockStyled, liveHint, liveStyled),
             false, 0
         );
     }

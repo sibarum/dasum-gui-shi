@@ -34,6 +34,17 @@ public sealed interface DrawCommand
      * @param height screen-space height in pixels (positive)
      * @param uv     atlas UV rect with V-up convention; {@code uv.bottom() < uv.top()}
      * @param color  tint multiplied against the sampled SDF coverage
+     * @param edgePx SDF edge shift in screen pixels: positive dilates the
+     *               glyph (bold / outline underlay), negative erodes it
+     *               (lighter). 0 renders the glyph as authored. Positive
+     *               shifts are clamped in the shader to stay inside the
+     *               atlas's SDF distance band.
      */
-    record GlyphQuad(float x, float y, float width, float height, Rect uv, Color color) implements DrawCommand {}
+    record GlyphQuad(float x, float y, float width, float height, Rect uv, Color color, float edgePx) implements DrawCommand {
+
+        /** Compatibility constructor — no edge shift. */
+        public GlyphQuad(float x, float y, float width, float height, Rect uv, Color color) {
+            this(x, y, width, height, uv, color, 0f);
+        }
+    }
 }
