@@ -2,7 +2,7 @@ package sibarum.dasum.gui.vis.pointcloud;
 
 /**
  * Immutable point-cloud frame — what the renderer draws when a particular
- * {@code Component.PointCloud} is on screen. Snapshots are constructed by
+ * {@code Component.SceneView} is on screen. Snapshots are constructed by
  * the consumer (typically a worker thread building data from a neural
  * network's runtime state) and atomically published via
  * {@link PointCloudStates#publish(sibarum.dasum.gui.core.component.Component, PointCloudSnapshot)}.

@@ -44,6 +44,17 @@ public final class Gl {
     public static final int GL_PROGRAM_POINT_SIZE   = 0x8642;
     public static final int GL_SRC_ALPHA            = 0x0302;
     public static final int GL_ONE_MINUS_SRC_ALPHA  = 0x0303;
+    public static final int GL_ZERO                 = 0;
+    public static final int GL_ONE                  = 1;
+    public static final int GL_ONE_MINUS_SRC_COLOR  = 0x0301;
+    public static final int GL_DST_COLOR            = 0x0306;
+    public static final int GL_FUNC_ADD             = 0x8006;
+    public static final int GL_MIN                  = 0x8007;
+    public static final int GL_MAX                  = 0x8008;
+    public static final int GL_BLEND_SRC_RGB        = 0x80C9;
+    public static final int GL_BLEND_DST_RGB        = 0x80C8;
+    public static final int GL_BLEND_EQUATION_RGB   = 0x8009;
+    public static final int GL_DEPTH_WRITEMASK      = 0x0B72;
     public static final int GL_TEXTURE0             = 0x84C0;
     public static final int GL_RGBA                 = 0x1908;
     public static final int GL_RGBA8               = 0x8058;
@@ -83,6 +94,8 @@ public final class Gl {
     private static MethodHandle GL_ENABLE;
     private static MethodHandle GL_DISABLE;
     private static MethodHandle GL_BLEND_FUNC;
+    private static MethodHandle GL_BLEND_EQUATION;
+    private static MethodHandle GL_DEPTH_MASK;
 
     private static MethodHandle GL_CREATE_SHADER;
     private static MethodHandle GL_SHADER_SOURCE;
@@ -143,6 +156,8 @@ public final class Gl {
         GL_ENABLE             = h("glEnable",           FunctionDescriptor.ofVoid(JAVA_INT));
         GL_DISABLE            = h("glDisable",          FunctionDescriptor.ofVoid(JAVA_INT));
         GL_BLEND_FUNC         = h("glBlendFunc",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT));
+        GL_BLEND_EQUATION     = h("glBlendEquation",    FunctionDescriptor.ofVoid(JAVA_INT));
+        GL_DEPTH_MASK         = h("glDepthMask",        FunctionDescriptor.ofVoid(JAVA_BYTE));
 
         GL_CREATE_SHADER      = h("glCreateShader",     FunctionDescriptor.of(JAVA_INT, JAVA_INT));
         GL_SHADER_SOURCE      = h("glShaderSource",     FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, ADDRESS, ADDRESS));
@@ -252,6 +267,14 @@ public final class Gl {
     public static void glDisable(int cap) { try { GL_DISABLE.invokeExact(cap); } catch (Throwable t) { throw rt(t); } }
     public static void glBlendFunc(int sfactor, int dfactor) {
         try { GL_BLEND_FUNC.invokeExact(sfactor, dfactor); } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glBlendEquation(int mode) {
+        try { GL_BLEND_EQUATION.invokeExact(mode); } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glDepthMask(boolean writable) {
+        try { GL_DEPTH_MASK.invokeExact((byte) (writable ? 1 : 0)); } catch (Throwable t) { throw rt(t); }
     }
 
     public static int glCreateShader(int type) {

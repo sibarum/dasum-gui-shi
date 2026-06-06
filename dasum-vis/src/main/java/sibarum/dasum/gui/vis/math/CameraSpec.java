@@ -1,9 +1,9 @@
 package sibarum.dasum.gui.vis.math;
 
 /**
- * Immutable camera state for a point-cloud viewport. Updates are made by
+ * Immutable camera state for a scene viewport. Updates are made by
  * constructing a new instance and storing it via
- * {@code PointCloudStates.setCamera}. The renderer reads the current
+ * {@code SceneStates.setCamera}. The renderer reads the current
  * spec each frame and composes a JOML {@code Matrix4f} from it internally.
  * <p>
  * Orthographic-mode fields ({@code orthoScale}) and perspective-mode

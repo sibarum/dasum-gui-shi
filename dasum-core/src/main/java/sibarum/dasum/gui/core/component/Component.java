@@ -22,7 +22,7 @@ import java.util.List;
  * and both can carry a {@code flexGrow} weight for when they're a child of
  * a Flex parent.
  */
-public sealed interface Component permits Component.Box, Component.Flex, Component.Scroll, Component.Text, Component.Checkbox, Component.Radio, Component.Slider, Component.Tabs, Component.GraphSurface, Component.PointCloud, Component.DataTable {
+public sealed interface Component permits Component.Box, Component.Flex, Component.Scroll, Component.Text, Component.Checkbox, Component.Radio, Component.Slider, Component.Tabs, Component.GraphSurface, Component.SceneView, Component.DataTable {
 
     /** Per-child flex weight; default 0 means the child takes its intrinsic size. */
     int flexGrow();
@@ -369,34 +369,35 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
     }
 
     /**
-     * Leaf 3D viewport for n-dimensional point-cloud visualization. The
-     * record carries only layout + appearance — the actual point data and
-     * camera state are stored externally in {@code PointCloudStates} (in
-     * the {@code dasum-vis} module), looked up by component identity.
+     * Leaf 3D viewport — a layered scene (points / lines / triangles,
+     * painter's order) drawn through one camera. The record carries only
+     * layout + appearance — scene content, camera, and interaction policy
+     * are stored externally in {@code SceneStates} (in the
+     * {@code dasum-vis} module), looked up by component identity.
      * <p>
      * Rendering and input handling are also owned by {@code dasum-vis};
      * {@code dasum-core} treats this variant as a leaf with a background
      * fill plus a delegated render hook (see
      * {@link sibarum.dasum.gui.core.render.CustomRenderers}). A
-     * point-cloud viewport that has no registered renderer is harmless —
+     * scene viewport that has no registered renderer is harmless —
      * it just draws as a flat box.
      *
      * @param width   em viewport width; {@code null} means fill parent
      * @param height  em viewport height; {@code null} means fill parent
      * @param padding inner padding inside the viewport rect
-     * @param color   background fill (drawn beneath the points)
+     * @param color   background fill (drawn beneath the scene)
      */
-    record PointCloud(
+    record SceneView(
         Em width, Em height, Em padding, Color color,
         boolean interactive, int flexGrow
     ) implements Component {
 
-        public PointCloud(Em width, Em height, Em padding, Color color) {
+        public SceneView(Em width, Em height, Em padding, Color color) {
             this(width, height, padding, color, true, 0);
         }
 
-        public PointCloud withFlexGrow(int g)        { return new PointCloud(width, height, padding, color, interactive, g); }
-        public PointCloud withInteractive(boolean v) { return new PointCloud(width, height, padding, color, v, flexGrow); }
+        public SceneView withFlexGrow(int g)        { return new SceneView(width, height, padding, color, interactive, g); }
+        public SceneView withInteractive(boolean v) { return new SceneView(width, height, padding, color, v, flexGrow); }
     }
 
     /**
@@ -407,7 +408,7 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
      * <p>
      * Rendering is delegated to a {@code DataTableRenderer} registered via
      * {@link sibarum.dasum.gui.core.render.CustomRenderers}, mirroring the
-     * PointCloud variant's hook. The framework treats DataTable as a leaf
+     * SceneView variant's hook. The framework treats DataTable as a leaf
      * for hit-test + layout — internal row / column / region resolution
      * happens inside the table's own controllers.
      *

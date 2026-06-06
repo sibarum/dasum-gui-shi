@@ -13,7 +13,7 @@ Optional visualization module — n-dimensional point-cloud viewports rendered t
 </dependency>
 ```
 
-The `Component.PointCloud` variant lives in `dasum-core` (so layout and hit-test treat it as a first-class component) but its renderer is registered from `dasum-vis` via the `CustomRenderers` extension point — `dasum-core` never imports anything from `dasum-vis`.
+The `Component.SceneView` variant lives in `dasum-core` (so layout and hit-test treat it as a first-class component) but its renderer is registered from `dasum-vis` via the `CustomRenderers` extension point — `dasum-core` never imports anything from `dasum-vis`.
 
 ## Quick start
 
@@ -24,7 +24,7 @@ DasumVis.init();
 // register the icons FontGroup or text FontGroup as usual; no extra setup
 // for point clouds beyond DasumVis.init().
 
-Component.PointCloud viewport = new Component.PointCloud(
+Component.SceneView viewport = new Component.SceneView(
     Em.of(12f), Em.of(8f), Em.ZERO, backgroundColor, true, 1);
 
 // publish data — safe to call from any thread, including a training worker
@@ -90,22 +90,22 @@ If you find yourself wanting a JOML helper in app code, add a method to `Vec3`/`
 | `PointCloudSnapshot` | Immutable frame of point data: dimensionality, count, positions (row-major `float[]`), optional per-point colors / labels, optional projection (which dims map to x/y/[z]). Validating canonical constructor enforces invariants. |
 | `PointCloudStates` | Identity-keyed registry. `publish(c, snapshot)`, `setCamera(c, spec)`, `snapshotOf(c)`, `cameraOf(c)`, `clear(c)`. All thread-safe. |
 | `PointHandlers` | Per-component click handlers. `onPointClick(c, Consumer<PointHit>)`. `PointHit` is `(int pointIndex, Vec3 worldPosition)`. |
-| `PointCloudController` | Mouse-input dispatcher. Mirrors the `SliderController` static-API pattern; the host app calls `onMouseDown` / `onCursorMove` / `onMouseUp` / `onScroll` from its GLFW callbacks. |
+| `SceneViewController` | Mouse-input dispatcher. Mirrors the `SliderController` static-API pattern; the host app calls `onMouseDown` / `onCursorMove` / `onMouseUp` / `onScroll` from its GLFW callbacks. |
 | `Icon` | (in `dasum-core`) `Icon.of(int codepoint, Em size, Color color)` — companion helper for icon fonts; see `dasum-msdf-maven-plugin` README. |
 | `DasumVis` | Module bootstrap. `DasumVis.init()` once at startup. |
 
 ## Component integration
 
-`Component.PointCloud` is a sealed-permitted variant in `dasum-core`. Its record carries only layout + appearance — the actual point data, camera, and GPU buffers live in side registries.
+`Component.SceneView` is a sealed-permitted variant in `dasum-core`. Its record carries only layout + appearance — the actual point data, camera, and GPU buffers live in side registries.
 
 The renderer is wired in via `CustomRenderers`:
 
 ```java
 // inside DasumVis.init():
-CustomRenderers.register(Component.PointCloud.class, renderer::asRenderer);
+CustomRenderers.register(Component.SceneView.class, renderer::asRenderer);
 ```
 
-`Render.renderInOrder` dispatches `Component.PointCloud` to whatever renderer is registered for its class (no-op if none — components placed before `DasumVis.init()` runs render as flat boxes, harmless). This keeps `dasum-core` 2D-only and free of OpenGL 3D state knowledge; `dasum-vis` is the one who knows about depth tests and MVP matrices.
+`Render.renderInOrder` dispatches `Component.SceneView` to whatever renderer is registered for its class (no-op if none — components placed before `DasumVis.init()` runs render as flat boxes, harmless). This keeps `dasum-core` 2D-only and free of OpenGL 3D state knowledge; `dasum-vis` is the one who knows about depth tests and MVP matrices.
 
 `DasumVis.init()` also registers a `Components.registerCleaner` that releases `PointCloudStates`, `PointHandlers`, and the per-component GL buffer when a component is detached.
 
@@ -119,7 +119,7 @@ CustomRenderers.register(Component.PointCloud.class, renderer::asRenderer);
 
 ## Input handling
 
-The `PointCloudController` mirrors `SliderController`'s static-API pattern. The host app (e.g. `dasum-mvp-demo/App.wireInput`) calls into it from GLFW callbacks. Returns `true` from `onMouseDown` / `onScroll` to consume the event.
+The `SceneViewController` mirrors `SliderController`'s static-API pattern. The host app (e.g. `dasum-mvp-demo/App.wireInput`) calls into it from GLFW callbacks. Returns `true` from `onMouseDown` / `onScroll` to consume the event.
 
 **Click vs drag**: A 4-pixel squared threshold distinguishes the two. While the cursor stays within that bubble of the press position, the camera doesn't move and a release resolves as a click → `PointPicker.pickNearest` finds the nearest point and fires the registered `PointHandlers` handler. Cross the threshold and we commit to a drag; the eventual release does not fire a click.
 
@@ -129,11 +129,11 @@ The `PointCloudController` mirrors `SliderController`'s static-API pattern. The 
 
 ## Thumbnail-and-overlay pattern
 
-The framework's layout pass maps each `Component` to exactly one rect per frame, so a single `Component.PointCloud` instance can't appear simultaneously in the main tree and an overlay (the overlay rect overwrites the thumbnail rect). Two clean integrations:
+The framework's layout pass maps each `Component` to exactly one rect per frame, so a single `Component.SceneView` instance can't appear simultaneously in the main tree and an overlay (the overlay rect overwrites the thumbnail rect). Two clean integrations:
 
 **Option A — same instance, swap location** (the demo's pattern). Thumbnail slot is a `Flex` with empty declared children; the viewport is added via `DynamicChildren`. To expand: remove the viewport from the slot, drop a placeholder in, push an overlay whose `DynamicChildren` carries the viewport, register the overlay's `onDismiss` to swap back. Snapshot, camera, click handler, GPU buffer all follow the component identity. Free, no framework changes.
 
-**Option B — two instances sharing a source** (not implemented, ~30 LOC refactor). Add a `PointCloudSource` opaque key; `PointCloudStates.publishToSource(src, snap)` plus `PointCloudStates.bind(viewport, src)`. Then multiple `Component.PointCloud` instances render the same snapshot simultaneously while keeping per-component camera state. Right for thumbnail-next-to-detailed-inspector layouts where both need to stay visible.
+**Option B — two instances sharing a source** (not implemented, ~30 LOC refactor). Add a `PointCloudSource` opaque key; `PointCloudStates.publishToSource(src, snap)` plus `PointCloudStates.bind(viewport, src)`. Then multiple `Component.SceneView` instances render the same snapshot simultaneously while keeping per-component camera state. Right for thumbnail-next-to-detailed-inspector layouts where both need to stay visible.
 
 Option A covers "expand to popup" cleanly. Reach for Option B only when both viewports must coexist.
 
@@ -161,7 +161,7 @@ dasum-vis/
 ├── pointcloud/
 │   ├── PointCloudSnapshot.java    — immutable data
 │   ├── PointCloudStates.java      — AtomicReference registry
-│   ├── PointCloudController.java  — mouse input
+│   ├── SceneViewController.java  — mouse input
 │   ├── PointHandlers.java         — click callbacks
 │   └── PointPicker.java           — screen-space picking
 ├── render/

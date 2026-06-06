@@ -23,7 +23,7 @@ import java.util.List;
  * resolves as a click and fires {@link Handlers#activate} on the pressed
  * direct child. This lets apps attach {@code Handlers.onClick} to a node and
  * have it work intuitively — short clicks open dialogs / fire actions, sustained
- * presses drag. Threshold matches the {@code PointCloudController} for
+ * presses drag. Threshold matches the {@code SceneViewController} for
  * consistency.
  */
 public final class GraphSurfaceController {

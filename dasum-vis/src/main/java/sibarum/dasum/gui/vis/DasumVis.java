@@ -5,7 +5,8 @@ import sibarum.dasum.gui.core.component.Components;
 import sibarum.dasum.gui.core.render.CustomRenderers;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
 import sibarum.dasum.gui.vis.pointcloud.PointHandlers;
-import sibarum.dasum.gui.vis.render.PointCloudRenderer;
+import sibarum.dasum.gui.vis.render.SceneRenderer;
+import sibarum.dasum.gui.vis.scene.SceneStates;
 
 /**
  * Module bootstrap. Consumers call {@link #init()} once after a GL
@@ -20,7 +21,7 @@ public final class DasumVis implements AutoCloseable {
 
     private static DasumVis instance;
 
-    private final PointCloudRenderer renderer = new PointCloudRenderer();
+    private final SceneRenderer renderer = new SceneRenderer();
 
     private DasumVis() {}
 
@@ -37,9 +38,10 @@ public final class DasumVis implements AutoCloseable {
         if (instance != null) return instance;
         DasumVis v = new DasumVis();
         v.renderer.init();
-        CustomRenderers.register(Component.PointCloud.class, v.renderer.asRenderer());
+        CustomRenderers.register(Component.SceneView.class, v.renderer.asRenderer());
         Components.registerCleaner(c -> {
-            PointCloudStates.clear(c);
+            SceneStates.clear(c);
+            PointCloudStates.clear(c); // compat conversion cache (idempotent with the line above)
             PointHandlers.clear(c);
             v.renderer.onComponentDetached(c);
         });
@@ -47,7 +49,7 @@ public final class DasumVis implements AutoCloseable {
         return v;
     }
 
-    public PointCloudRenderer renderer() { return renderer; }
+    public SceneRenderer renderer() { return renderer; }
 
     @Override
     public synchronized void close() {

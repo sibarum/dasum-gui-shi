@@ -79,14 +79,14 @@ public final class Render {
             if (color.a() > 0f) {
                 batcher.submit(new DrawCommand.ColoredQuad(r.x(), r.y(), r.width(), r.height(), color));
             }
-            if (c == hovered && !(c instanceof Component.Tabs) && !(c instanceof Component.GraphSurface) && !(c instanceof Component.PointCloud)
+            if (c == hovered && !(c instanceof Component.Tabs) && !(c instanceof Component.GraphSurface) && !(c instanceof Component.SceneView)
                 && !(c instanceof Component.Text txt && txt.selectable())) {
                 // Tabs does its own per-cell hover inside renderTabs — skip the
                 // generic whole-rect tint so it doesn't wash the header strip.
                 // GraphSurface is interactive (so right-clicks land on its
                 // empty area) but it isn't "clickable" in a UI-feedback sense;
                 // tinting the whole canvas on hover is wrong.
-                // PointCloud is interactive for orbit-drag + click-pick, but
+                // SceneView is interactive for orbit-drag + click-pick, but
                 // the whole-viewport tint washes the 3D content and gives no
                 // useful feedback — the cursor change to HAND is enough.
                 // Selectable Text (editors, text inputs) already signals
@@ -114,7 +114,7 @@ public final class Render {
             renderTabs(tabs, r, layout, batcher, projection, hovered, focused);
         } else if (c instanceof Component.GraphSurface surface) {
             renderGraphSurface(surface, layout, batcher, projection, hovered, focused);
-        } else if (c instanceof Component.PointCloud pc) {
+        } else if (c instanceof Component.SceneView pc) {
             CustomRenderers.Renderer ext = CustomRenderers.find(pc);
             if (ext != null && r != null) {
                 // Wrap the extension call with a GL-state guard so a
@@ -483,7 +483,7 @@ public final class Render {
             case Component.Slider sl   -> sl.trackColor();
             case Component.Tabs t      -> t.contentBg();
             case Component.GraphSurface cv   -> cv.color();
-            case Component.PointCloud pc -> pc.color();
+            case Component.SceneView pc -> pc.color();
             // DataTable paints its own background (banded rows, header strip,
             // row-number gutter) inside the custom renderer — emit transparent
             // here so the generic pass doesn't draw a single color over the
@@ -503,7 +503,7 @@ public final class Render {
             case Component.Slider sl   -> List.of();
             case Component.Tabs t      -> t.activeContent() != null ? List.of(t.activeContent()) : List.of();
             case Component.GraphSurface cv   -> sibarum.dasum.gui.core.graph.GraphSurfaceChildren.all(cv);
-            case Component.PointCloud pc -> List.of();
+            case Component.SceneView pc -> List.of();
             case Component.DataTable dt -> List.of();
         };
     }

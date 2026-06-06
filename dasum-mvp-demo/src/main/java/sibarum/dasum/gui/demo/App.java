@@ -83,9 +83,16 @@ import sibarum.dasum.gui.natives.glfw.Glfw;
 import sibarum.dasum.gui.natives.glfw.GlfwCallbacks;
 import sibarum.dasum.gui.vis.DasumVis;
 import sibarum.dasum.gui.vis.math.CameraSpec;
-import sibarum.dasum.gui.vis.pointcloud.PointCloudController;
+import sibarum.dasum.gui.vis.pointcloud.SceneViewController;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudSnapshot;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
+import sibarum.dasum.gui.vis.scene.BlendMode;
+import sibarum.dasum.gui.vis.scene.InteractionSpec;
+import sibarum.dasum.gui.vis.scene.LineLayer;
+import sibarum.dasum.gui.vis.scene.PointLayer;
+import sibarum.dasum.gui.vis.scene.SceneSnapshot;
+import sibarum.dasum.gui.vis.scene.SceneStates;
+import sibarum.dasum.gui.vis.scene.TriangleLayer;
 import sibarum.dasum.gui.vis.pointcloud.PointHandlers;
 
 import java.util.List;
@@ -552,7 +559,7 @@ public final class App {
      * any other node.
      *
      * <p>The thumbnail and the expanded view share the same
-     * {@link Component.PointCloud} instance — snapshot, camera, click
+     * {@link Component.SceneView} instance — snapshot, camera, click
      * handler, and GPU buffer all follow the component because every
      * piece of state is identity-keyed off it. The node's body is a
      * {@code DynamicChildren}-backed slot so we can swap the viewport
@@ -568,7 +575,7 @@ public final class App {
         // crossAvail and the flexGrow=1 takes all remaining main-axis
         // space, so the same record renders at thumbnail size in the node
         // and full-overlay size in the popup.
-        Component.PointCloud viewport = new Component.PointCloud(
+        Component.SceneView viewport = new Component.SceneView(
             Em.of(12f), Em.of(8f), Em.ZERO, cloudBg, true, 1
         );
 
@@ -681,7 +688,7 @@ public final class App {
      * while expanded. Dismissal (Close button, ESC, click-outside) restores
      * the viewport to its slot and detaches the overlay's transient widgets.
      */
-    private static void openPointCloudOverlay(Component.PointCloud viewport,
+    private static void openPointCloudOverlay(Component.SceneView viewport,
                                               Component slot) {
         Component placeholder = new Component.Box(
             Em.of(12f), Em.of(8f), Em.ZERO,
@@ -898,6 +905,7 @@ public final class App {
             Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(1.2f),
             List.of(
                 section("Three viewports, off-centre rects", triple),
+                section("Layered scene — direct SceneSnapshot, mixed blend modes", buildBlendScene()),
                 section("Icon + text inline (small)",        iconRowSmall),
                 section("Icon + text inline (large)",        iconRowLarge),
                 section("Viewport inside Scroll",            scrollBlock)
@@ -918,7 +926,7 @@ public final class App {
      */
     private static Component buildSmallPointCloud(int seed, CameraSpec cam, String labelText) {
         Color cloudBg = new Color(0.04f, 0.05f, 0.08f, 1f);
-        Component.PointCloud viewport = new Component.PointCloud(
+        Component.SceneView viewport = new Component.SceneView(
             Em.of(10f), Em.of(7f), Em.ZERO, cloudBg, true, 0
         );
 
@@ -946,6 +954,84 @@ public final class App {
             Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
             List.of(label, viewport), false, 0
         );
+    }
+
+    /**
+     * Direct {@link SceneSnapshot} demo — exercises the layered scene API
+     * without the {@code PointCloudStates} compat path: two translucent
+     * ALPHA quads (overlap blends), a ring of ADDITIVE points over them
+     * (overlaps brighten), and a line frame on top. The stack is
+     * order-sensitive — swapping the triangle and point layers visibly
+     * changes the overlap colors. 2D ortho camera with PAN_ZOOM_2D
+     * interaction, so scroll-zoom anchors at the cursor.
+     */
+    private static Component buildBlendScene() {
+        Component.SceneView viewport = new Component.SceneView(
+            Em.of(14f), Em.of(8f), Em.ZERO, new Color(0.04f, 0.05f, 0.08f, 1f), true, 0
+        );
+
+        // Two overlapping quads, 2 triangles each: red on the left, blue
+        // on the right, overlapping in the middle.
+        float[] tris = new float[2 * 2 * 9];
+        float[] triCols = new float[tris.length];
+        fillQuad(tris, triCols, 0,  -1.6f, -1.0f, 0.4f, 1.0f, 0.95f, 0.25f, 0.25f);
+        fillQuad(tris, triCols, 18, -0.4f, -1.0f, 1.6f, 1.0f, 0.25f, 0.45f, 0.95f);
+
+        // Ring of additive points crossing both quads.
+        int ringN = 28;
+        float[] pts = new float[ringN * 3];
+        float[] ptCols = new float[ringN * 3];
+        for (int i = 0; i < ringN; i++) {
+            double a = (Math.PI * 2 * i) / ringN;
+            pts[i*3    ] = (float) (Math.cos(a) * 1.25);
+            pts[i*3 + 1] = (float) (Math.sin(a) * 0.85);
+            pts[i*3 + 2] = 0f;
+            ptCols[i*3    ] = 0.9f;
+            ptCols[i*3 + 1] = 0.8f;
+            ptCols[i*3 + 2] = 0.3f;
+        }
+
+        // Line frame on top.
+        float fx0 = -1.8f, fy0 = -1.2f, fx1 = 1.8f, fy1 = 1.2f;
+        float[] frame = {
+            fx0, fy0, 0f,  fx1, fy0, 0f,
+            fx1, fy0, 0f,  fx1, fy1, 0f,
+            fx1, fy1, 0f,  fx0, fy1, 0f,
+            fx0, fy1, 0f,  fx0, fy0, 0f,
+        };
+
+        SceneStates.publish(viewport, SceneSnapshot.of(
+            new TriangleLayer(tris, triCols).withOpacity(0.6f),
+            new PointLayer(pts, ptCols).withBlend(BlendMode.ADDITIVE).withDefaultSize(8f),
+            new LineLayer(frame, null)
+        ));
+        SceneStates.setCamera(viewport, CameraSpec.defaultOrtho());
+        SceneStates.setInteraction(viewport, InteractionSpec.panZoom2d());
+
+        Component label = new Component.Text(
+            "ALPHA quads under ADDITIVE points under lines — drag pans, scroll zooms at cursor",
+            Em.of(0.85f), LABEL_FG);
+        return new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
+            List.of(label, viewport), false, 0
+        );
+    }
+
+    /** Append an axis-aligned quad as two triangles at {@code off} in {@code verts}/{@code cols}. */
+    private static void fillQuad(float[] verts, float[] cols, int off,
+                                 float x0, float y0, float x1, float y1,
+                                 float r, float g, float b) {
+        float[] quad = {
+            x0, y0, 0f,  x1, y0, 0f,  x1, y1, 0f,
+            x0, y0, 0f,  x1, y1, 0f,  x0, y1, 0f,
+        };
+        System.arraycopy(quad, 0, verts, off, quad.length);
+        for (int v = 0; v < 6; v++) {
+            cols[off + v*3    ] = r;
+            cols[off + v*3 + 1] = g;
+            cols[off + v*3 + 2] = b;
+        }
     }
 
     /** Text pane — the editable paragraph and its caret/selection/clipboard demo. */
@@ -1533,8 +1619,8 @@ public final class App {
             if (ConnectionDragController.isDragging()) return;
             GraphSurfaceController.onCursorMove(x, y);
             if (GraphSurfaceController.isDragging()) return;
-            PointCloudController.onCursorMove(x, y);
-            if (PointCloudController.isDragging()) return;
+            SceneViewController.onCursorMove(x, y);
+            if (SceneViewController.isDragging()) return;
             DataTableSelectionController.onCursorMove(x, y);
             if (DataTableSelectionController.isDragging()) return;
             // Hover-follow keyboard selection when the context menu is open.
@@ -1601,7 +1687,7 @@ public final class App {
                 // Point-cloud viewports: drag orbits the camera. Consume
                 // so the click doesn't also focus / hit the viewport's
                 // background as a generic interactive component.
-                if (PointCloudController.onMouseDown(HoverState.hovered(), InputState.mouseX(), InputState.mouseY())) {
+                if (SceneViewController.onMouseDown(HoverState.hovered(), InputState.mouseX(), InputState.mouseY())) {
                     pressTarget = null;
                     FocusState.set(HoverState.hovered());
                     return;
@@ -1650,13 +1736,13 @@ public final class App {
                 boolean sliderDrag = SliderController.isDragging();
                 boolean canvasDrag = GraphSurfaceController.isDragging();
                 boolean connectionDrag = ConnectionDragController.isDragging();
-                boolean pointCloudDrag = PointCloudController.isDragging();
+                boolean pointCloudDrag = SceneViewController.isDragging();
                 boolean tableDrag = DataTableSelectionController.isDragging();
                 ScrollbarController.onMouseUp();
                 SliderController.onMouseUp();
                 GraphSurfaceController.onMouseUp();
                 ConnectionDragController.onMouseUp();
-                PointCloudController.onMouseUp();
+                SceneViewController.onMouseUp();
                 DataTableSelectionController.onMouseUp();
 
                 // Release-on-same-target fires the click. Re-hit-test rather
@@ -1709,7 +1795,7 @@ public final class App {
                 ScrollbarController.cancelDrag();
                 GraphSurfaceController.cancelDrag();
                 ConnectionDragController.cancelDrag();
-                PointCloudController.cancelDrag();
+                SceneViewController.cancelDrag();
                 // Window lost OS focus. Clear hover and pending drag — the
                 // mouseup likely happened in another window and we'll never
                 // see it. Selection PERSISTS so users can alt-tab away to
@@ -1729,7 +1815,7 @@ public final class App {
             // Point-cloud viewport gets first refusal — scroll over a
             // viewport zooms its camera rather than scrolling a container.
             Component pcHit = HitTest.test(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
-            if (PointCloudController.onScroll(pcHit, yOff)) return;
+            if (SceneViewController.onScroll(pcHit, yOff)) return;
 
             boolean shift = Glfw.glfwGetKey(window.handle(), Glfw.GLFW_KEY_LEFT_SHIFT)  == Glfw.GLFW_PRESS
                         || Glfw.glfwGetKey(window.handle(), Glfw.GLFW_KEY_RIGHT_SHIFT) == Glfw.GLFW_PRESS;

@@ -1,121 +1,107 @@
 package sibarum.dasum.gui.vis.pointcloud;
 
 import sibarum.dasum.gui.core.component.Component;
-import sibarum.dasum.gui.core.event.Invalidator;
 import sibarum.dasum.gui.vis.math.CameraSpec;
+import sibarum.dasum.gui.vis.scene.SceneCompat;
+import sibarum.dasum.gui.vis.scene.SceneSnapshot;
+import sibarum.dasum.gui.vis.scene.SceneStates;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.Objects;
 
 /**
- * Process-global per-component registry of point-cloud state. Each
- * {@code Component.PointCloud} instance owns one {@link State} —
- * created on first access by either {@link #publish} or
- * {@link #setCamera}. State entries are removed via {@link #clear}
- * (wired into {@code Components.detach} via
- * {@link sibarum.dasum.gui.core.component.Components#registerCleaner}).
+ * Legacy point-cloud publish API — now a thin compatibility delegate
+ * over {@link SceneStates}. {@link #publish} converts the
+ * {@link PointCloudSnapshot} into a {@link SceneSnapshot} (one point
+ * layer + one line layer, n-D projection applied — see
+ * {@link SceneCompat}) and forwards it; camera calls delegate directly.
  *
- * <h2>Threading model</h2>
+ * <p>The conversion is cached per component by snapshot <em>reference
+ * identity</em>, so a worker republishing the same snapshot instance at
+ * high frequency forwards the same scene instance — the renderer's
+ * per-scene and per-layer identity skips keep working exactly as they
+ * did pre-scene-model. {@link #snapshotOf} keeps returning the original
+ * {@code PointCloudSnapshot} (the picker and legacy readers depend on
+ * it), not the converted scene.
  *
- * <p>This is the worker-publish bottleneck. The pattern is built on top
- * of the framework's existing {@link Invalidator} which already
- * coalesces high-frequency cross-thread wakes (so a training worker
- * republishing at thousands of Hz won't flood the GLFW event queue).
+ * <p>Two-level locking mirrors the framework's other sidecars: the
+ * global lock only guards the cache map; conversion runs under the
+ * per-component entry monitor so publishers to different components
+ * never serialize against each other.
  *
- * <ul>
- *   <li><b>{@link #publish}:</b> swap an immutable snapshot into an
- *       {@code AtomicReference}, then {@code Invalidator.invalidate()}.
- *       Both operations are lock-free and never block.</li>
- *   <li><b>{@link #setCamera}:</b> same, for the camera spec.</li>
- *   <li><b>Reads:</b> happen on the GLFW main thread from the renderer.
- *       {@code AtomicReference.get()} is a plain volatile read.</li>
- * </ul>
- *
- * <p>The renderer compares the snapshot reference identity against what
- * it last uploaded to GPU; if unchanged, it skips the upload. Workers
- * therefore pay only the snapshot construction cost, not a GPU upload,
- * even at very high publish rates. The frame ultimately drawn is always
- * the most recently published snapshot at the moment the frame began.
- *
- * <p>The map lookup itself synchronizes briefly on creation only — once
- * a {@link State} exists for a component, all subsequent
- * {@code publish}/{@code setCamera}/{@code snapshotOf}/{@code cameraOf}
- * calls go through the per-state {@link AtomicReference} without
- * touching the lock.
+ * <p>New code should build {@link SceneSnapshot}s and use
+ * {@link SceneStates} directly.
  */
 public final class PointCloudStates {
 
-    /** Per-component reactive cell. Mutable fields are atomic. */
-    public static final class State {
-        final AtomicReference<PointCloudSnapshot> snapshot = new AtomicReference<>();
-        final AtomicReference<CameraSpec> camera           = new AtomicReference<>(CameraSpec.defaultPerspective());
+    private static final class Entry {
+        PointCloudSnapshot src;
+        SceneSnapshot scene;
     }
 
     private static final Object LOCK = new Object();
-    private static final Map<Component, State> STATES = new IdentityHashMap<>();
+    private static final Map<Component, Entry> CACHE = new IdentityHashMap<>();
 
     private PointCloudStates() {}
 
-    private static State stateOf(Component c) {
-        synchronized (LOCK) {
-            State s = STATES.get(c);
-            if (s == null) {
-                s = new State();
-                STATES.put(c, s);
-            }
-            return s;
-        }
-    }
-
     /**
      * Atomically replace the snapshot for {@code c} and request a redraw.
-     * Safe to call from any thread. Does not block.
+     * Safe to call from any thread. Does not block on other components'
+     * publishers.
      */
     public static void publish(Component c, PointCloudSnapshot snapshot) {
-        stateOf(c).snapshot.set(snapshot);
-        Invalidator.invalidate();
+        Objects.requireNonNull(snapshot, "snapshot");
+        Entry e;
+        synchronized (LOCK) {
+            e = CACHE.computeIfAbsent(c, k -> new Entry());
+        }
+        SceneSnapshot scene;
+        synchronized (e) {
+            if (e.src != snapshot) {
+                e.scene = SceneCompat.convert(snapshot);
+                e.src = snapshot;
+            }
+            scene = e.scene;
+        }
+        SceneStates.publish(c, scene);
     }
 
-    /**
-     * Atomically replace the camera spec for {@code c} and request a
-     * redraw. Safe to call from any thread.
-     */
+    /** @see SceneStates#setCamera */
     public static void setCamera(Component c, CameraSpec spec) {
-        stateOf(c).camera.set(spec);
-        Invalidator.invalidate();
-    }
-
-    /** Current snapshot, or {@code null} if nothing has been published. */
-    public static PointCloudSnapshot snapshotOf(Component c) {
-        State s;
-        synchronized (LOCK) { s = STATES.get(c); }
-        return s == null ? null : s.snapshot.get();
+        SceneStates.setCamera(c, spec);
     }
 
     /**
-     * Current camera spec. Returns a sensible default rather than null so
-     * the renderer never has to null-check.
+     * The most recently published {@link PointCloudSnapshot} (the
+     * original, NOT the converted scene), or {@code null} if nothing was
+     * published through this legacy API.
      */
+    public static PointCloudSnapshot snapshotOf(Component c) {
+        Entry e;
+        synchronized (LOCK) {
+            e = CACHE.get(c);
+        }
+        if (e == null) return null;
+        synchronized (e) {
+            return e.src;
+        }
+    }
+
+    /** @see SceneStates#cameraOf */
     public static CameraSpec cameraOf(Component c) {
-        State s;
-        synchronized (LOCK) { s = STATES.get(c); }
-        if (s == null) return CameraSpec.defaultPerspective();
-        CameraSpec spec = s.camera.get();
-        return spec != null ? spec : CameraSpec.defaultPerspective();
+        return SceneStates.cameraOf(c);
     }
 
     /**
-     * Per-component cleanup hook. Registered with
-     * {@code Components.registerCleaner} by {@link DasumVis#init()}.
-     * Removes any state entry; the entry's referenced snapshot arrays
-     * become GC-eligible.
+     * Per-component cleanup. Drops the conversion cache and the
+     * underlying scene state (idempotent with the cleaner also calling
+     * {@link SceneStates#clear} directly).
      */
     public static void clear(Component c) {
-        boolean removed;
         synchronized (LOCK) {
-            removed = STATES.remove(c) != null;
+            CACHE.remove(c);
         }
-        if (removed) Invalidator.invalidate();
+        SceneStates.clear(c);
     }
 }

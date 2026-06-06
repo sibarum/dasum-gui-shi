@@ -131,7 +131,7 @@ public final class HitTest {
             case Component.Slider sl   -> List.of();
             case Component.Tabs t      -> t.activeContent() != null ? List.of(t.activeContent()) : List.of();
             case Component.GraphSurface gs   -> sibarum.dasum.gui.core.graph.GraphSurfaceZOrder.orderedChildren(gs);
-            case Component.PointCloud pc -> List.of();
+            case Component.SceneView pc -> List.of();
             case Component.DataTable dt -> List.of();
         };
     }

@@ -1,0 +1,8 @@
+{
+  "resources": [
+    { "glob": "shaders/point.vert" },
+    { "glob": "shaders/point.frag" },
+    { "glob": "shaders/flat.vert" },
+    { "glob": "shaders/flat.frag" }
+  ]
+}

@@ -158,7 +158,7 @@ public final class TabsController {
             case Component.Slider sl   -> List.of();
             case Component.Tabs t      -> t.activeContent() != null ? List.of(t.activeContent()) : List.of();
             case Component.GraphSurface gs -> sibarum.dasum.gui.core.graph.GraphSurfaceChildren.all(gs);
-            case Component.PointCloud pc -> List.of();
+            case Component.SceneView pc -> List.of();
             case Component.DataTable dt -> List.of();
         };
     }

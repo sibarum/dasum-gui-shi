@@ -5,8 +5,12 @@ import sibarum.dasum.gui.natives.gl.Gl;
 import java.util.Arrays;
 
 import static sibarum.dasum.gui.natives.gl.Gl.GL_BLEND;
+import static sibarum.dasum.gui.natives.gl.Gl.GL_BLEND_DST_RGB;
+import static sibarum.dasum.gui.natives.gl.Gl.GL_BLEND_EQUATION_RGB;
+import static sibarum.dasum.gui.natives.gl.Gl.GL_BLEND_SRC_RGB;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_CURRENT_PROGRAM;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_DEPTH_TEST;
+import static sibarum.dasum.gui.natives.gl.Gl.GL_DEPTH_WRITEMASK;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_SCISSOR_BOX;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_SCISSOR_TEST;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_VERTEX_ARRAY_BINDING;
@@ -37,13 +41,16 @@ import static sibarum.dasum.gui.natives.gl.Gl.GL_VIEWPORT;
  *   <li>{@link Gl#GL_SCISSOR_TEST} enable + {@link Gl#GL_SCISSOR_BOX}</li>
  *   <li>{@link Gl#GL_DEPTH_TEST} enable</li>
  *   <li>{@link Gl#GL_BLEND} enable</li>
+ *   <li>{@link Gl#GL_BLEND_SRC_RGB} / {@link Gl#GL_BLEND_DST_RGB} /
+ *       {@link Gl#GL_BLEND_EQUATION_RGB} (blend func + equation — added
+ *       when per-layer BlendMode landed in dasum-vis)</li>
+ *   <li>{@link Gl#GL_DEPTH_WRITEMASK} (depth writes)</li>
  *   <li>{@link Gl#GL_CURRENT_PROGRAM} (active shader)</li>
  *   <li>{@link Gl#GL_VERTEX_ARRAY_BINDING} (bound VAO)</li>
  * </ul>
  *
- * Doesn't cover blend func, depth func, texture bindings, or buffer
- * bindings — those would be the next-tier additions if a bug pattern
- * proves they're needed.
+ * Doesn't cover depth func, texture bindings, or buffer bindings — those
+ * would be the next-tier additions if a bug pattern proves they're needed.
  */
 public final class GlStateGuard {
 
@@ -57,6 +64,10 @@ public final class GlStateGuard {
         int[] scissorBox,         // 4 ints
         int depthTestEnabled,     // 0 or 1
         int blendEnabled,         // 0 or 1
+        int blendSrcRgb,          // blend src factor
+        int blendDstRgb,          // blend dst factor
+        int blendEquationRgb,     // FUNC_ADD / MIN / MAX / ...
+        int depthWriteMask,       // 0 or 1
         int currentProgram,       // GL name or 0
         int vertexArrayBinding    // GL name or 0
     ) {}
@@ -72,6 +83,10 @@ public final class GlStateGuard {
             Gl.glGetIntegerv4(GL_SCISSOR_BOX),
             Gl.glGetInteger(GL_DEPTH_TEST),
             Gl.glGetInteger(GL_BLEND),
+            Gl.glGetInteger(GL_BLEND_SRC_RGB),
+            Gl.glGetInteger(GL_BLEND_DST_RGB),
+            Gl.glGetInteger(GL_BLEND_EQUATION_RGB),
+            Gl.glGetInteger(GL_DEPTH_WRITEMASK),
             Gl.glGetInteger(GL_CURRENT_PROGRAM),
             Gl.glGetInteger(GL_VERTEX_ARRAY_BINDING)
         );
@@ -102,7 +117,12 @@ public final class GlStateGuard {
             diff.append("\n  GL_SCISSOR_TEST: ").append(before.scissorEnabled)
                 .append(" -> ").append(after.scissorEnabled);
         }
-        if (!Arrays.equals(before.scissorBox, after.scissorBox)) {
+        // Only meaningful while the scissor test is enabled on either side —
+        // a dirty box value with the test off has no rendering effect (the
+        // framework's scissor stack always re-sets the box when it enables),
+        // so flagging it would just be noise from every push/pop user.
+        if ((before.scissorEnabled == 1 || after.scissorEnabled == 1)
+                && !Arrays.equals(before.scissorBox, after.scissorBox)) {
             diff = startDiff(diff, label);
             diff.append("\n  GL_SCISSOR_BOX: ").append(Arrays.toString(before.scissorBox))
                 .append(" -> ").append(Arrays.toString(after.scissorBox));
@@ -116,6 +136,21 @@ public final class GlStateGuard {
             diff = startDiff(diff, label);
             diff.append("\n  GL_BLEND: ").append(before.blendEnabled)
                 .append(" -> ").append(after.blendEnabled);
+        }
+        if (before.blendSrcRgb != after.blendSrcRgb || before.blendDstRgb != after.blendDstRgb) {
+            diff = startDiff(diff, label);
+            diff.append("\n  GL_BLEND_FUNC: (").append(before.blendSrcRgb).append(", ").append(before.blendDstRgb)
+                .append(") -> (").append(after.blendSrcRgb).append(", ").append(after.blendDstRgb).append(')');
+        }
+        if (before.blendEquationRgb != after.blendEquationRgb) {
+            diff = startDiff(diff, label);
+            diff.append("\n  GL_BLEND_EQUATION: ").append(before.blendEquationRgb)
+                .append(" -> ").append(after.blendEquationRgb);
+        }
+        if (before.depthWriteMask != after.depthWriteMask) {
+            diff = startDiff(diff, label);
+            diff.append("\n  GL_DEPTH_WRITEMASK: ").append(before.depthWriteMask)
+                .append(" -> ").append(after.depthWriteMask);
         }
         if (before.currentProgram != after.currentProgram) {
             diff = startDiff(diff, label);

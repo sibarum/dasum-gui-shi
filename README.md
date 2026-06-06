@@ -178,7 +178,7 @@ State sidecars (`HoverState`, `FocusState`, `InputState`) track the current mous
 
 ### Point-cloud visualization (`dasum-vis`)
 
-Optional module — depend on `dasum-vis` to render n-dimensional point clouds as 3D scenes inside any GUI panel. Each viewport is a `Component.PointCloud` with snapshot + camera state held in a per-component `AtomicReference`, so worker threads can publish data (typical for ML / training visualizations) without blocking the render thread. Drag-orbit, scroll-zoom, click-pick handlers. Same `Component.PointCloud` instance can be moved between a thumbnail location and a modal overlay via `DynamicChildren` — snapshot, camera, and GPU buffer all follow the component identity. JOML lives entirely inside `dasum-vis`; the public API is immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md).
+Optional module — depend on `dasum-vis` to render n-dimensional point clouds as 3D scenes inside any GUI panel. Each viewport is a `Component.SceneView` with snapshot + camera state held in a per-component `AtomicReference`, so worker threads can publish data (typical for ML / training visualizations) without blocking the render thread. Drag-orbit, scroll-zoom, click-pick handlers. Same `Component.SceneView` instance can be moved between a thumbnail location and a modal overlay via `DynamicChildren` — snapshot, camera, and GPU buffer all follow the component identity. JOML lives entirely inside `dasum-vis`; the public API is immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md).
 
 ### Icon fonts
 
