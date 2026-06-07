@@ -4,16 +4,20 @@ import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.layout.PixelRect;
 import sibarum.dasum.gui.core.render.Batcher;
 import sibarum.dasum.gui.core.render.CustomRenderers;
+import sibarum.dasum.gui.core.text.FontGroup;
+import sibarum.dasum.gui.core.text.FontGroups;
 import sibarum.dasum.gui.natives.gl.Gl;
 import sibarum.dasum.gui.vis.math.CameraMath;
 import sibarum.dasum.gui.vis.math.CameraMode;
 import sibarum.dasum.gui.vis.math.CameraSpec;
 import sibarum.dasum.gui.vis.scene.BlendMode;
+import sibarum.dasum.gui.vis.scene.ImageLayer;
 import sibarum.dasum.gui.vis.scene.Layer;
 import sibarum.dasum.gui.vis.scene.LineLayer;
 import sibarum.dasum.gui.vis.scene.PointLayer;
 import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.SceneStates;
+import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
 
 import static sibarum.dasum.gui.natives.gl.Gl.GL_BLEND;
@@ -54,9 +58,11 @@ import static sibarum.dasum.gui.natives.gl.Gl.GL_ZERO;
  */
 public final class SceneRenderer implements AutoCloseable {
 
-    private final PointMaterial pointMaterial = new PointMaterial();
-    private final FlatMaterial flatMaterial   = new FlatMaterial();
-    private final SceneGlBuffers buffers      = new SceneGlBuffers();
+    private final PointMaterial pointMaterial         = new PointMaterial();
+    private final FlatMaterial flatMaterial           = new FlatMaterial();
+    private final ImageMaterial imageMaterial         = new ImageMaterial();
+    private final SceneTextMaterial sceneTextMaterial = new SceneTextMaterial();
+    private final SceneGlBuffers buffers              = new SceneGlBuffers();
 
     /** Scratch MVP — reused across frames; main-thread only. */
     private final float[] scratchMvp = new float[16];
@@ -67,6 +73,8 @@ public final class SceneRenderer implements AutoCloseable {
         if (initialized) return;
         pointMaterial.init();
         flatMaterial.init();
+        imageMaterial.init();
+        sceneTextMaterial.init();
         initialized = true;
     }
 
@@ -119,6 +127,25 @@ public final class SceneRenderer implements AutoCloseable {
                     }
                     case TriangleLayer t -> {
                         flatMaterial.bind(scratchMvp, t.opacity());
+                        draw(slot, GL_TRIANGLES);
+                    }
+                    case ImageLayer img -> {
+                        slot.texture.bind(0);
+                        imageMaterial.bind(scratchMvp, img.opacity());
+                        draw(slot, GL_TRIANGLES);
+                    }
+                    case TextLayer txt -> {
+                        // Leaving unit 0 bound to the atlas afterwards is
+                        // safe — the 2D batcher's materials re-bind their
+                        // atlas on every flush.
+                        FontGroup fgrp = FontGroups.getOrDefault(txt.fontGroup());
+                        fgrp.texture().bind(0);
+                        float[] basis = txt.billboard()
+                            ? CameraMath.viewBasis(cam)
+                            : CameraMath.IDENTITY_BASIS;
+                        sceneTextMaterial.bind(scratchMvp,
+                            txt.anchor().x(), txt.anchor().y(), txt.anchor().z(),
+                            basis, txt.color(), txt.opacity(), fgrp.distanceRange());
                         draw(slot, GL_TRIANGLES);
                     }
                 }
@@ -174,5 +201,7 @@ public final class SceneRenderer implements AutoCloseable {
         buffers.close();
         pointMaterial.close();
         flatMaterial.close();
+        imageMaterial.close();
+        sceneTextMaterial.close();
     }
 }

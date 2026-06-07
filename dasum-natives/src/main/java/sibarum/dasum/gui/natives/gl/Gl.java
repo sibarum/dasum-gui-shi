@@ -96,6 +96,7 @@ public final class Gl {
     private static MethodHandle GL_BLEND_FUNC;
     private static MethodHandle GL_BLEND_EQUATION;
     private static MethodHandle GL_DEPTH_MASK;
+    private static MethodHandle GL_TEX_SUB_IMAGE_2D;
 
     private static MethodHandle GL_CREATE_SHADER;
     private static MethodHandle GL_SHADER_SOURCE;
@@ -114,6 +115,7 @@ public final class Gl {
     private static MethodHandle GL_GET_UNIFORM_LOCATION;
     private static MethodHandle GL_UNIFORM_1I;
     private static MethodHandle GL_UNIFORM_1F;
+    private static MethodHandle GL_UNIFORM_3F;
     private static MethodHandle GL_UNIFORM_4F;
     private static MethodHandle GL_UNIFORM_MATRIX_4FV;
 
@@ -176,6 +178,7 @@ public final class Gl {
         GL_GET_UNIFORM_LOCATION = h("glGetUniformLocation", FunctionDescriptor.of(JAVA_INT, JAVA_INT, ADDRESS));
         GL_UNIFORM_1I         = h("glUniform1i",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT));
         GL_UNIFORM_1F         = h("glUniform1f",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT));
+        GL_UNIFORM_3F         = h("glUniform3f",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT));
         GL_UNIFORM_4F         = h("glUniform4f",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT));
         GL_UNIFORM_MATRIX_4FV = h("glUniformMatrix4fv", FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_BYTE, ADDRESS));
 
@@ -198,6 +201,7 @@ public final class Gl {
         GL_GEN_TEXTURES       = h("glGenTextures",      FunctionDescriptor.ofVoid(JAVA_INT, ADDRESS));
         GL_BIND_TEXTURE       = h("glBindTexture",      FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT));
         GL_TEX_IMAGE_2D       = h("glTexImage2D",       FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, ADDRESS));
+        GL_TEX_SUB_IMAGE_2D   = h("glTexSubImage2D",    FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, ADDRESS));
         GL_TEX_PARAMETERI     = h("glTexParameteri",    FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT));
         GL_ACTIVE_TEXTURE     = h("glActiveTexture",    FunctionDescriptor.ofVoid(JAVA_INT));
         GL_DELETE_TEXTURES    = h("glDeleteTextures",   FunctionDescriptor.ofVoid(JAVA_INT, ADDRESS));
@@ -380,6 +384,10 @@ public final class Gl {
         try { GL_UNIFORM_1F.invokeExact(location, value); } catch (Throwable t) { throw rt(t); }
     }
 
+    public static void glUniform3f(int location, float x, float y, float z) {
+        try { GL_UNIFORM_3F.invokeExact(location, x, y, z); } catch (Throwable t) { throw rt(t); }
+    }
+
     public static void glUniform4f(int location, float x, float y, float z, float w) {
         try { GL_UNIFORM_4F.invokeExact(location, x, y, z, w); } catch (Throwable t) { throw rt(t); }
     }
@@ -492,6 +500,12 @@ public final class Gl {
 
     public static void glBindTexture(int target, int texture) {
         try { GL_BIND_TEXTURE.invokeExact(target, texture); } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glTexSubImage2D(int target, int level, int xoffset, int yoffset, int width, int height, int format, int type, MemorySegment pixels) {
+        try {
+            GL_TEX_SUB_IMAGE_2D.invokeExact(target, level, xoffset, yoffset, width, height, format, type, pixels);
+        } catch (Throwable t) { throw rt(t); }
     }
 
     public static void glTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int format, int type, MemorySegment pixels) {

@@ -19,7 +19,7 @@ package sibarum.dasum.gui.vis.scene;
  * building layers (the {@code PointCloudSnapshot} compat path does this
  * automatically for legacy publishers).
  */
-public sealed interface Layer permits PointLayer, LineLayer, TriangleLayer {
+public sealed interface Layer permits PointLayer, LineLayer, TriangleLayer, ImageLayer, TextLayer {
 
     BlendMode blend();
 

@@ -3,6 +3,10 @@
     { "glob": "shaders/point.vert" },
     { "glob": "shaders/point.frag" },
     { "glob": "shaders/flat.vert" },
-    { "glob": "shaders/flat.frag" }
+    { "glob": "shaders/flat.frag" },
+    { "glob": "shaders/image.vert" },
+    { "glob": "shaders/image.frag" },
+    { "glob": "shaders/scene-text.vert" },
+    { "glob": "shaders/scene-text.frag" }
   ]
 }

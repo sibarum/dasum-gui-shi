@@ -66,6 +66,33 @@ final class CameraMathTest {
     }
 
     @Test
+    void viewBasisIsOrthonormalAndFacesTheCamera() {
+        // Ortho: world XY identity.
+        float[] ortho = CameraMath.viewBasis(CameraSpec.defaultOrtho());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(
+            new float[]{1f, 0f, 0f, 0f, 1f, 0f}, ortho);
+
+        // Canonical perspective: eye on +Z (yaw=0, pitch=0) → identity basis.
+        float[] canon = CameraMath.viewBasis(
+            CameraSpec.defaultPerspective().withYaw(0f).withPitch(0f));
+        assertEquals(1f, canon[0], 1e-5f);
+        assertEquals(0f, canon[1], 1e-5f);
+        assertEquals(1f, canon[4], 1e-5f);
+
+        // Arbitrary orbit: right ⊥ up, both unit length, up has no
+        // world-flip (positive Y component for moderate pitch).
+        float[] b = CameraMath.viewBasis(
+            CameraSpec.defaultPerspective().withYaw(0.8f).withPitch(0.4f));
+        float dot = b[0]*b[3] + b[1]*b[4] + b[2]*b[5];
+        assertEquals(0f, dot, 1e-5f, "right and up must be orthogonal");
+        assertEquals(1f, (float) Math.sqrt(b[0]*b[0] + b[1]*b[1] + b[2]*b[2]), 1e-5f);
+        assertEquals(1f, (float) Math.sqrt(b[3]*b[3] + b[4]*b[4] + b[5]*b[5]), 1e-5f);
+        assertTrue(b[4] > 0f, "up must not be world-flipped at moderate pitch");
+        // Yawed orbit must tilt right out of the X axis.
+        assertTrue(Math.abs(b[2]) > 1e-3f, "yawed view's right vector gains a Z component");
+    }
+
+    @Test
     void fitToBoundsFramesTheBox() {
         Vec3 min = new Vec3(-1f, -2f, -3f);
         Vec3 max = new Vec3(3f, 2f, 1f);

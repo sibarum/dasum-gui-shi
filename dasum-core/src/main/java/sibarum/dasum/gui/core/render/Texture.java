@@ -92,6 +92,41 @@ public final class Texture implements AutoCloseable {
         Gl.glBindTexture(GL_TEXTURE_2D, id);
     }
 
+    /**
+     * Replace this texture's pixels in place via {@code glTexSubImage2D}
+     * — no reallocation, dimensions must match. Same top-row-first RGBA
+     * convention and row-flip as {@link #fromRgba}. Used by callers that
+     * stream frames into a fixed-size texture (e.g. scene image layers
+     * republished by a worker).
+     */
+    public void update(byte[] rgba) {
+        if (rgba.length != width * height * 4) {
+            throw new IllegalArgumentException("RGBA byte[] length " + rgba.length +
+                " does not match " + width + "x" + height + " * 4");
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment seg = arena.allocate((long) width * height * 4);
+            int rowBytes = width * 4;
+            for (int y = 0; y < height; y++) {
+                int srcOff = (height - 1 - y) * rowBytes;
+                long dstOff = (long) y * rowBytes;
+                MemorySegment.copy(rgba, srcOff, seg, ValueLayout.JAVA_BYTE, dstOff, rowBytes);
+            }
+            Gl.glBindTexture(GL_TEXTURE_2D, id);
+            Gl.glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, seg);
+            Gl.glBindTexture(GL_TEXTURE_2D, 0);
+        }
+    }
+
+    /** Switch MIN/MAG filtering between LINEAR ({@code smooth}) and NEAREST. */
+    public void setFilter(boolean smooth) {
+        int filter = smooth ? GL_LINEAR : Gl.GL_NEAREST;
+        Gl.glBindTexture(GL_TEXTURE_2D, id);
+        Gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+        Gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+        Gl.glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
     @Override
     public void close() {
         if (id != 0) {

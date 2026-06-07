@@ -22,6 +22,39 @@ public final class CameraMath {
 
     private CameraMath() {}
 
+    /** The world-XY-plane basis: right = +X, up = +Y. */
+    public static final float[] IDENTITY_BASIS = {1f, 0f, 0f, 0f, 1f, 0f};
+
+    /**
+     * View-plane orientation basis for billboarding: 6 floats —
+     * right xyz, then up xyz — orthonormal vectors spanning the plane
+     * facing the camera. Orthographic cameras look down -Z with no
+     * orbit, so the basis is the world XY identity; perspective derives
+     * from the same eye/target math as {@link #mvp}, guaranteeing
+     * billboards face exactly the rendered view.
+     */
+    public static float[] viewBasis(CameraSpec cam) {
+        if (cam.mode() == CameraMode.ORTHOGRAPHIC) {
+            return IDENTITY_BASIS.clone();
+        }
+        Vector3f eye = new Vector3f(0f, 0f, cam.distance());
+        eye.rotateX(-cam.pitchRad());
+        eye.rotateY(cam.yawRad());
+        // forward = normalize(target - eye); eye is target-relative here,
+        // so forward = normalize(-eye). Sanity anchor: eye (0,0,d) →
+        // forward (0,0,-1), right = f×worldUp = (+1,0,0), up = r×f = (0,+1,0).
+        Vector3f forward = new Vector3f(eye).negate().normalize();
+        Vector3f right = new Vector3f(forward).cross(0f, 1f, 0f);
+        // Degenerate straight-down view: fall back to world X.
+        if (right.lengthSquared() < 1e-8f) {
+            right.set(1f, 0f, 0f);
+        } else {
+            right.normalize();
+        }
+        Vector3f up = new Vector3f(right).cross(forward);
+        return new float[]{right.x, right.y, right.z, up.x, up.y, up.z};
+    }
+
     /** Compose the MVP for {@code cam} at the given viewport aspect ratio. */
     public static float[] mvp(CameraSpec cam, float aspect) {
         return mvp(cam, aspect, new float[16]);

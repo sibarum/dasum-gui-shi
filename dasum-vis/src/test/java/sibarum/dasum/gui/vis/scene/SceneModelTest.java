@@ -85,6 +85,50 @@ final class SceneModelTest {
     }
 
     @Test
+    void imageLayerValidationAndRectConvenience() {
+        byte[] px = new byte[2 * 3 * 4];
+        ImageLayer img = ImageLayer.rect(-1f, -2f, 3f, 4f, 0.5f, 2, 3, px);
+        assertEquals(BlendMode.ALPHA, img.blend());
+        assertEquals(1f, img.opacity());
+        assertEquals(true, img.smooth());
+        // Corner order: TL, TR, BR, BL; top = y1 (world Y-up).
+        float[] c = img.corners();
+        assertEquals(-1f, c[0]);  assertEquals(4f, c[1]);   // TL
+        assertEquals(3f, c[3]);   assertEquals(4f, c[4]);   // TR
+        assertEquals(3f, c[6]);   assertEquals(-2f, c[7]);  // BR
+        assertEquals(-1f, c[9]);  assertEquals(-2f, c[10]); // BL
+        assertEquals(0.5f, c[2]); assertEquals(0.5f, c[11]);
+
+        assertEquals(false, img.withSmooth(false).smooth());
+        assertThrows(IllegalArgumentException.class,
+            () -> new ImageLayer(2, 3, new byte[5], c, true, BlendMode.ALPHA, 1f));
+        assertThrows(IllegalArgumentException.class,
+            () -> new ImageLayer(2, 3, px, new float[11], true, BlendMode.ALPHA, 1f));
+        assertThrows(IllegalArgumentException.class,
+            () -> new ImageLayer(0, 3, new byte[0], c, true, BlendMode.ALPHA, 1f));
+    }
+
+    @Test
+    void textLayerValidationAndDefaults() {
+        sibarum.dasum.gui.vis.math.Vec3 a = new sibarum.dasum.gui.vis.math.Vec3(1f, 2f, 3f);
+        sibarum.dasum.gui.core.render.Color white = new sibarum.dasum.gui.core.render.Color(1f, 1f, 1f, 1f);
+
+        TextLayer t = new TextLayer("hello", a, 0.5f, white);
+        assertEquals(TextLayer.HAlign.CENTER, t.align());
+        assertEquals(false, t.billboard());
+        assertEquals(BlendMode.ALPHA, t.blend());
+        assertEquals(1f, t.opacity());
+
+        assertEquals(true, t.withBillboard(true).billboard());
+        assertEquals(TextLayer.HAlign.RIGHT, t.withAlign(TextLayer.HAlign.RIGHT).align());
+
+        assertThrows(IllegalArgumentException.class, () -> new TextLayer(null, a, 0.5f, white));
+        assertThrows(IllegalArgumentException.class, () -> new TextLayer("x", a, 0f, white));
+        assertThrows(IllegalArgumentException.class, () -> new TextLayer("x", null, 0.5f, white));
+        assertThrows(IllegalArgumentException.class, () -> new TextLayer("x", a, 0.5f, null));
+    }
+
+    @Test
     void interactionSpecValidationAndDefaults() {
         InteractionSpec d = InteractionSpec.defaults();
         assertEquals(InteractionSpec.Mode.ORBIT_3D, d.mode());

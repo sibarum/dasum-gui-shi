@@ -87,12 +87,15 @@ import sibarum.dasum.gui.vis.pointcloud.SceneViewController;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudSnapshot;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
 import sibarum.dasum.gui.vis.scene.BlendMode;
+import sibarum.dasum.gui.vis.scene.ImageLayer;
 import sibarum.dasum.gui.vis.scene.InteractionSpec;
 import sibarum.dasum.gui.vis.scene.LineLayer;
 import sibarum.dasum.gui.vis.scene.PointLayer;
 import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.SceneStates;
+import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
+import sibarum.dasum.gui.vis.math.Vec3;
 import sibarum.dasum.gui.vis.pointcloud.PointHandlers;
 
 import java.util.List;
@@ -906,6 +909,12 @@ public final class App {
             List.of(
                 section("Three viewports, off-centre rects", triple),
                 section("Layered scene — direct SceneSnapshot, mixed blend modes", buildBlendScene()),
+                section("Image + text layers", new Component.Flex(
+                    null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+                    Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
+                    List.of(buildImageTextScene(), buildBillboardScene()),
+                    false, 0
+                )),
                 section("Icon + text inline (small)",        iconRowSmall),
                 section("Icon + text inline (large)",        iconRowLarge),
                 section("Viewport inside Scroll",            scrollBlock)
@@ -1011,6 +1020,136 @@ public final class App {
         Component label = new Component.Text(
             "ALPHA quads under ADDITIVE points under lines — drag pans, scroll zooms at cursor",
             Em.of(0.85f), LABEL_FG);
+        return new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
+            List.of(label, viewport), false, 0
+        );
+    }
+
+    /**
+     * Image + text layer demo (2D): a CPU-iterated Mandelbrot as a smooth
+     * ImageLayer (asymmetric content — an upside-down or mirrored render
+     * is immediately obvious), a small NEAREST-filtered heatmap whose
+     * texel edges must stay crisp, and non-billboard TextLayer captions.
+     * PAN_ZOOM_2D, so scroll-zoom anchors at the cursor — a preview of
+     * the FractalView interaction.
+     */
+    private static Component buildImageTextScene() {
+        Component.SceneView viewport = new Component.SceneView(
+            Em.of(14f), Em.of(8f), Em.ZERO, new Color(0.04f, 0.05f, 0.08f, 1f), true, 0
+        );
+
+        // Mandelbrot, 256x192, escape-time coloring, top row first.
+        int mw = 256, mh = 192;
+        byte[] mandel = new byte[mw * mh * 4];
+        double reMin = -2.4, reMax = 0.8, imMax = 1.2, imMin = -1.2;
+        int maxIter = 64;
+        for (int py = 0; py < mh; py++) {
+            double ci = imMax - (imMax - imMin) * py / (mh - 1); // top row = imMax
+            for (int px = 0; px < mw; px++) {
+                double cr = reMin + (reMax - reMin) * px / (mw - 1);
+                double zr = 0, zi = 0;
+                int it = 0;
+                while (it < maxIter && zr * zr + zi * zi <= 4.0) {
+                    double t = zr * zr - zi * zi + cr;
+                    zi = 2 * zr * zi + ci;
+                    zr = t;
+                    it++;
+                }
+                int off = (py * mw + px) * 4;
+                if (it >= maxIter) {
+                    mandel[off] = 0; mandel[off + 1] = 0; mandel[off + 2] = 0;
+                } else {
+                    float t = (float) it / maxIter;
+                    mandel[off    ] = (byte) (Math.min(1f, t * 2.5f) * 255);        // ramps fast
+                    mandel[off + 1] = (byte) (Math.min(1f, t * 1.2f) * 200);
+                    mandel[off + 2] = (byte) ((1f - t) * 180 + 60);
+                }
+                mandel[off + 3] = (byte) 255;
+            }
+        }
+
+        // Heatmap, 8x6, smooth scalar field -> 3-stop colormap, NEAREST.
+        int hw = 8, hh = 6;
+        byte[] heat = new byte[hw * hh * 4];
+        for (int py = 0; py < hh; py++) {
+            for (int px = 0; px < hw; px++) {
+                float v = (float) (0.5 + 0.5 * Math.sin(px * 0.9) * Math.cos(py * 1.1));
+                int off = (py * hw + px) * 4;
+                // dark blue -> magenta -> yellow
+                float r = Math.min(1f, v * 2f);
+                float g = Math.max(0f, v * 2f - 1f);
+                float b = 1f - v;
+                heat[off    ] = (byte) (r * 255);
+                heat[off + 1] = (byte) (g * 255);
+                heat[off + 2] = (byte) (b * 255);
+                heat[off + 3] = (byte) 255;
+            }
+        }
+
+        Color captionFg = new Color(0.85f, 0.88f, 0.95f, 1f);
+        SceneStates.publish(viewport, SceneSnapshot.of(
+            ImageLayer.rect(-3.2f, -1.0f, -0.2f, 1.0f, 0f, mw, mh, mandel),
+            ImageLayer.rect(0.2f, -1.0f, 3.2f, 1.0f, 0f, hw, hh, heat).withSmooth(false),
+            new TextLayer("Mandelbrot (smooth)", new Vec3(-1.7f, -1.5f, 0f), 0.24f, captionFg),
+            new TextLayer("Heatmap (nearest)",   new Vec3(1.7f, -1.5f, 0f), 0.24f, captionFg)
+        ));
+        SceneStates.setCamera(viewport, CameraSpec.defaultOrtho());
+        SceneStates.setInteraction(viewport, InteractionSpec.panZoom2d());
+
+        Component label = new Component.Text(
+            "ImageLayer + TextLayer (2D) — scroll zooms at cursor", Em.of(0.85f), LABEL_FG);
+        return new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
+            List.of(label, viewport), false, 0
+        );
+    }
+
+    /**
+     * Billboard text demo (3D): a line-frame cube with TextLayer labels
+     * on three corners. The labels are uploaded once and oriented in the
+     * vertex shader — orbiting must keep them facing the camera without
+     * any re-upload.
+     */
+    private static Component buildBillboardScene() {
+        Component.SceneView viewport = new Component.SceneView(
+            Em.of(12f), Em.of(8f), Em.ZERO, new Color(0.04f, 0.05f, 0.08f, 1f), true, 0
+        );
+
+        // 12 cube edges, +-1.
+        float[] e = new float[12 * 6];
+        int k = 0;
+        float[][] c = {
+            {-1,-1,-1}, {1,-1,-1}, {1,1,-1}, {-1,1,-1},
+            {-1,-1, 1}, {1,-1, 1}, {1,1, 1}, {-1,1, 1},
+        };
+        int[][] edges = {
+            {0,1},{1,2},{2,3},{3,0},  // back face
+            {4,5},{5,6},{6,7},{7,4},  // front face
+            {0,4},{1,5},{2,6},{3,7},  // connectors
+        };
+        for (int[] ed : edges) {
+            for (int v : ed) {
+                e[k++] = c[v][0]; e[k++] = c[v][1]; e[k++] = c[v][2];
+            }
+        }
+
+        Color labelFg = new Color(1.00f, 0.85f, 0.40f, 1f);
+        SceneStates.publish(viewport, SceneSnapshot.of(
+            new LineLayer(e, null),
+            new TextLayer("(+1,+1,+1)", FontGroups.DEFAULT, new Vec3(1f, 1f, 1f), 0.22f,
+                labelFg, TextLayer.HAlign.CENTER, true, BlendMode.ALPHA, 1f),
+            new TextLayer("(-1,-1,-1)", FontGroups.DEFAULT, new Vec3(-1f, -1f, -1f), 0.22f,
+                labelFg, TextLayer.HAlign.CENTER, true, BlendMode.ALPHA, 1f),
+            new TextLayer("(+1,-1,+1)", FontGroups.DEFAULT, new Vec3(1f, -1f, 1f), 0.22f,
+                labelFg, TextLayer.HAlign.CENTER, true, BlendMode.ALPHA, 1f)
+        ));
+        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective());
+
+        Component label = new Component.Text(
+            "Billboard TextLayer (3D) — labels face the camera while orbiting", Em.of(0.85f), LABEL_FG);
         return new Component.Flex(
             Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
             Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
