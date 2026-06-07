@@ -87,6 +87,7 @@ import sibarum.dasum.gui.vis.pointcloud.SceneViewController;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudSnapshot;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
 import sibarum.dasum.gui.vis.scene.BlendMode;
+import sibarum.dasum.gui.vis.scene.CsgBox;
 import sibarum.dasum.gui.vis.scene.ImageLayer;
 import sibarum.dasum.gui.vis.scene.InteractionSpec;
 import sibarum.dasum.gui.vis.scene.LineLayer;
@@ -919,7 +920,7 @@ public final class App {
                 section("VexelRay — raymarched fields", new Component.Flex(
                     null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
                     Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
-                    List.of(buildMandelbulbScene(), buildBlobsScene()),
+                    List.of(buildMandelbulbScene(), buildBlobsScene(), buildCsgBoxScene()),
                     false, 0
                 )),
                 section("Icon + text inline (small)",        iconRowSmall),
@@ -1229,6 +1230,51 @@ public final class App {
 
         return sceneCard("Smooth-union blobs + torus — two fields, one scene",
             "Raymarched Fields", viewport, Em.of(13f), Em.of(9f));
+    }
+
+    /**
+     * CSG_BOXES demo: a little arch monument built from nine axis-aligned
+     * boxes folded with hard unions, a smooth-union lintel (melts into
+     * its pillars), a hard window subtraction, and a smooth-subtracted
+     * scoop — finished with global edge rounding. The whole shape is a
+     * uniform array: every box, blend radius, and the rounding are
+     * animatable without a recompile.
+     */
+    private static Component buildCsgBoxScene() {
+        Component.SceneView viewport = new Component.SceneView(
+            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
+        );
+
+        List<CsgBox> ops = List.of(
+            // Base slab; pillars join it with small-k smooth unions —
+            // hard min() keeps concave junction creases SHARP (outward
+            // rounding only rounds convex edges), and sharp concave
+            // creases produce AO piping. A small fillet is the
+            // modeling-correct fix, and real monuments have them anyway.
+            new CsgBox(CsgBox.Op.UNION, new Vec3(0f, -0.90f, 0f), new Vec3(0.95f, 0.12f, 0.50f)),
+            new CsgBox(CsgBox.Op.SMOOTH_UNION, new Vec3(-0.55f, -0.25f, 0f), new Vec3(0.16f, 0.60f, 0.16f), 0.07f),
+            new CsgBox(CsgBox.Op.SMOOTH_UNION, new Vec3(0.55f, -0.25f, 0f), new Vec3(0.16f, 0.60f, 0.16f), 0.07f),
+            // Lintel melts into the pillars (bigger blend radius).
+            new CsgBox(CsgBox.Op.SMOOTH_UNION, new Vec3(0f, 0.42f, 0f), new Vec3(0.85f, 0.14f, 0.20f), 0.16f),
+            // Window slot through the lintel (slightly softened subtract).
+            new CsgBox(CsgBox.Op.SMOOTH_SUBTRACT, new Vec3(0f, 0.42f, 0f), new Vec3(0.30f, 0.06f, 0.60f), 0.05f),
+            // Soft scoop carved out of the base front.
+            new CsgBox(CsgBox.Op.SMOOTH_SUBTRACT, new Vec3(0f, -0.80f, 0.55f), new Vec3(0.45f, 0.16f, 0.25f), 0.12f),
+            // Capstone, filleted onto the lintel.
+            new CsgBox(CsgBox.Op.SMOOTH_UNION, new Vec3(0f, 0.70f, 0f), new Vec3(0.13f, 0.13f, 0.13f), 0.06f)
+        );
+
+        SceneStates.publish(viewport, SceneSnapshot.of(
+            // Rounding wide enough to RESOLVE at card size — a fillet
+            // thinner than ~4px renders as an aliased bright wire along
+            // every edge and reads as an artifact.
+            VexelRayLayer.csgBoxes(ops, 0.10f)
+                .withColor(new Color(0.88f, 0.80f, 0.66f, 1f))
+        ));
+        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(4.0f));
+
+        return sceneCard("CSG boxes — booleans, smooth joins, global rounding",
+            "CSG Boxes", viewport, Em.of(13f), Em.of(9f));
     }
 
     /**

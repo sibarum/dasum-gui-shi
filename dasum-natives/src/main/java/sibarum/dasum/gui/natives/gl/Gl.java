@@ -117,6 +117,7 @@ public final class Gl {
     private static MethodHandle GL_UNIFORM_1F;
     private static MethodHandle GL_UNIFORM_3F;
     private static MethodHandle GL_UNIFORM_4F;
+    private static MethodHandle GL_UNIFORM_4FV;
     private static MethodHandle GL_UNIFORM_MATRIX_4FV;
 
     private static MethodHandle GL_GEN_VERTEX_ARRAYS;
@@ -180,6 +181,7 @@ public final class Gl {
         GL_UNIFORM_1F         = h("glUniform1f",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT));
         GL_UNIFORM_3F         = h("glUniform3f",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT));
         GL_UNIFORM_4F         = h("glUniform4f",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT));
+        GL_UNIFORM_4FV        = h("glUniform4fv",       FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, ADDRESS));
         GL_UNIFORM_MATRIX_4FV = h("glUniformMatrix4fv", FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_BYTE, ADDRESS));
 
         GL_GEN_VERTEX_ARRAYS    = h("glGenVertexArrays",    FunctionDescriptor.ofVoid(JAVA_INT, ADDRESS));
@@ -386,6 +388,18 @@ public final class Gl {
 
     public static void glUniform3f(int location, float x, float y, float z) {
         try { GL_UNIFORM_3F.invokeExact(location, x, y, z); } catch (Throwable t) { throw rt(t); }
+    }
+
+    /**
+     * Upload an array of vec4 uniforms. {@code values.length} must be a
+     * multiple of 4; {@code count} vec4s are read from the front.
+     */
+    public static void glUniform4fv(int location, int count, float[] values) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment seg = arena.allocate((long) values.length * Float.BYTES);
+            MemorySegment.copy(values, 0, seg, JAVA_FLOAT, 0L, values.length);
+            GL_UNIFORM_4FV.invokeExact(location, count, seg);
+        } catch (Throwable t) { throw rt(t); }
     }
 
     public static void glUniform4f(int location, float x, float y, float z, float w) {

@@ -11,10 +11,13 @@ uniform vec3 u_eye;
 uniform vec3 u_forward;
 uniform vec3 u_lightDir;    // unit, toward the light; camera-anchored by the renderer
 uniform int u_ortho;        // 1 = parallel rays along u_forward
-uniform int u_fieldType;    // 0 SPHERE, 1 BOX, 2 TORUS, 3 BLOBS, 4 MANDELBULB
+uniform int u_fieldType;    // 0 SPHERE, 1 BOX, 2 TORUS, 3 BLOBS, 4 MANDELBULB, 5 CSG_BOXES
 uniform vec4 u_params;
 uniform vec4 u_color;       // base colour, alpha = color.a * layer opacity
 uniform int u_maxSteps;
+// CSG_BOXES program: 2 vec4s per op — (center.xyz, opcode), (halfExtents.xyz, smoothK).
+uniform vec4 u_csg[96];
+uniform int u_csgCount;     // ops (not vec4s)
 
 out vec4 fragColor;
 
@@ -71,13 +74,44 @@ float sdMandelbulb(vec3 p) {
     return 0.5 * log(max(r, 1e-9)) * r / dr;
 }
 
+float sdBoxAt(vec3 p, vec3 c, vec3 he) {
+    vec3 q = abs(p - c) - he;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+float smax(float a, float b, float k) {
+    return -smin(-a, -b, k);
+}
+
+// Sequential left-fold over the box op-list: d = op(d, box_i).
+// Opcodes: 0 union, 1 subtract, 2 intersect, 3/4/5 smooth variants.
+// Global rounding (u_params.x) at the end fillets every edge at once.
+float sdCsgBoxes(vec3 p) {
+    float d = 1e9;
+    for (int i = 0; i < 48; i++) {
+        if (i >= u_csgCount) break;
+        vec4 a = u_csg[i * 2];
+        vec4 b = u_csg[i * 2 + 1];
+        float di = sdBoxAt(p, a.xyz, b.xyz);
+        int op = int(a.w + 0.5);
+        if      (op == 0) d = min(d, di);
+        else if (op == 1) d = max(d, -di);
+        else if (op == 2) d = max(d, di);
+        else if (op == 3) d = smin(d, di, b.w);
+        else if (op == 4) d = smax(d, -di, b.w);
+        else              d = smax(d, di, b.w);
+    }
+    return d - u_params.x;
+}
+
 float sdf(vec3 worldP) {
     vec3 p = worldP - u_center;
     if (u_fieldType == 0) return sdSphere(p);
     if (u_fieldType == 1) return sdBox(p);
     if (u_fieldType == 2) return sdTorus(p);
     if (u_fieldType == 3) return sdBlobs(p);
-    return sdMandelbulb(p);
+    if (u_fieldType == 4) return sdMandelbulb(p);
+    return sdCsgBoxes(p);
 }
 
 vec3 normalAt(vec3 p) {
@@ -88,7 +122,12 @@ vec3 normalAt(vec3 p) {
     // scales, so the bulb gets a 3x wider tap -- a low-pass filter on the
     // normal that trades sub-pixel surface detail for smooth lobes
     // (specular otherwise turns every DE jitter into glitter).
-    float h = (u_fieldType == 4 ? 6e-3 : 2e-3) * u_scale;
+    // Wider taps for fractals (DE noise) AND booleans: hard min()/max()
+    // keeps concave creases sharp -- the normal flips across one pixel,
+    // and the AO probe direction flips with it (corner bisector = max
+    // free space), painting bright/dark piping along junctions. Wider
+    // taps blend the flip across a band.
+    float h = (u_fieldType >= 4 ? 6e-3 : 2e-3) * u_scale;
     // The four tetrahedron vertices MUST sum to zero — (1,-1,-1),
     // (-1,-1,1), (-1,1,-1), (1,1,1) — or the estimator gains a constant
     // directional bias proportional to the residual f(p) at the shading
@@ -103,14 +142,26 @@ vec3 normalAt(vec3 p) {
         k.xxx * sdf(p + k.xxx * h));
 }
 
-// Fractal distance estimates UNDERREPORT free space in the halo just
-// outside the surface (dr grows fast, so the DE is far smaller than the
-// true distance even where nothing is nearby). Occlusion queries that
-// read the raw DE there see phantom occluders and blanket-darken convex
-// lobes -- inverting the perceived lighting (convex darker than concave).
-// Compensate the DE for *occlusion reads only*; the primary march keeps
-// the conservative value, where pessimism equals correctness.
-float deComp() { return u_fieldType == 4 ? 2.3 : 1.0; }
+// Some fields UNDERREPORT free space, and occlusion reads of the raw
+// value see phantom occluders:
+//  - Fractal DEs (bulb): dr grows fast, so the estimate is far smaller
+//    than true distance everywhere in the halo -- blanket-darkens convex
+//    lobes (factor ~2.3 empirical).
+//  - Boolean max()/smin() fields (CSG): distance is to the nearest FACE
+//    PLANE, not the surface, so probes along a crease's bisector normal
+//    read ~cos(45 deg) of the truth -- a dark seam along every rounded
+//    edge, convex ones included (1/cos(45) ~= 1.45).
+// Compensate for *occlusion reads only*; the primary march keeps the
+// conservative value, where pessimism equals correctness.
+float deComp() {
+    // Booleans get NO compensation: their bisector deficit shows up
+    // exactly at concave creases, where compensating BRIGHTENS the
+    // crease relative to its flanks (the piping artifact). Sharp creases
+    // are instead handled by wider normal taps + the shape language's
+    // smooth joins.
+    if (u_fieldType == 4) return 2.3;
+    return 1.0;
+}
 
 // Ambient occlusion: probe the field along the normal; concave regions
 // return less free distance than the probe height. Per-probe normalized
@@ -137,13 +188,19 @@ float occlusion(vec3 p, vec3 n) {
 float softShadow(vec3 p, vec3 n) {
     float comp = deComp();
     float res = 1.0;
-    vec3 ro2 = p + n * (0.012 * u_scale);
-    float t2 = 0.025 * u_scale;
+    // Start clear of the local surface. At concave junctions the ray
+    // origin sits very close to the NEIGHBORING wall; a hard zero-return
+    // there pixel-quantizes the penumbra into bright/dark piping along
+    // the crease. So: bigger standoff, and NO binary cutoff -- the
+    // penumbra term goes negative continuously and clamps, keeping the
+    // contact shadow but smoothing its edge.
+    vec3 ro2 = p + n * (0.02 * u_scale);
+    float t2 = 0.04 * u_scale;
     for (int i = 0; i < 32; i++) {
         float d = sdf(ro2 + u_lightDir * t2) * comp;
-        if (d < 1e-4 * u_scale) return 0.0;
         res = min(res, 12.0 * d / t2);
-        t2 += clamp(d, 0.01 * u_scale, 0.25 * u_scale);
+        if (res < 0.0) break; // fully dark; clamp below
+        t2 += clamp(abs(d), 0.015 * u_scale, 0.25 * u_scale);
         if (t2 > 3.0 * u_scale) break;
     }
     return clamp(res, 0.0, 1.0);

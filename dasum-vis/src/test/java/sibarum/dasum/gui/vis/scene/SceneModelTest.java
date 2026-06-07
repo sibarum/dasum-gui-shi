@@ -155,6 +155,47 @@ final class SceneModelTest {
     }
 
     @Test
+    void csgBoxPackingAndValidation() {
+        sibarum.dasum.gui.vis.math.Vec3 c = new sibarum.dasum.gui.vis.math.Vec3(1f, 2f, 3f);
+        sibarum.dasum.gui.vis.math.Vec3 he = new sibarum.dasum.gui.vis.math.Vec3(0.5f, 0.6f, 0.7f);
+
+        // Packed layout golden: (center.xyz, opcode), (halfExtents.xyz, smoothK).
+        float[] packed = CsgBox.pack(java.util.List.of(
+            new CsgBox(CsgBox.Op.UNION, c, he),
+            new CsgBox(CsgBox.Op.SMOOTH_SUBTRACT, c, he, 0.25f)
+        ));
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new float[]{
+            1f, 2f, 3f, 0f,   0.5f, 0.6f, 0.7f, 0f,
+            1f, 2f, 3f, 4f,   0.5f, 0.6f, 0.7f, 0.25f,
+        }, packed);
+
+        assertThrows(IllegalArgumentException.class,
+            () -> new CsgBox(CsgBox.Op.SMOOTH_UNION, c, he, 0f), "smooth ops need k > 0");
+        assertThrows(IllegalArgumentException.class,
+            () -> new CsgBox(CsgBox.Op.UNION, c, new sibarum.dasum.gui.vis.math.Vec3(0f, 1f, 1f)));
+        assertThrows(IllegalArgumentException.class, () -> CsgBox.pack(java.util.List.of()));
+
+        // Layer-level: csg required iff CSG_BOXES.
+        VexelRayLayer shape = VexelRayLayer.csgBoxes(
+            java.util.List.of(new CsgBox(CsgBox.Op.UNION, c, he)), 0.05f);
+        assertEquals(VexelRayLayer.Field.CSG_BOXES, shape.field());
+        assertEquals(1, shape.csgOpCount());
+        assertEquals(0.05f, shape.params()[0], "params[0] = global rounding");
+
+        sibarum.dasum.gui.core.render.Color w = new sibarum.dasum.gui.core.render.Color(1f, 1f, 1f, 1f);
+        assertThrows(IllegalArgumentException.class,
+            () -> new VexelRayLayer(VexelRayLayer.Field.CSG_BOXES, new float[4], null,
+                sibarum.dasum.gui.vis.math.Vec3.ZERO, 1f, w, 96, BlendMode.OPAQUE, 1f),
+            "CSG_BOXES without an op list must be rejected");
+        assertThrows(IllegalArgumentException.class,
+            () -> new VexelRayLayer(VexelRayLayer.Field.SPHERE, new float[4], packed,
+                sibarum.dasum.gui.vis.math.Vec3.ZERO, 1f, w, 96, BlendMode.OPAQUE, 1f),
+            "csg on an analytic field must be rejected");
+        assertThrows(IllegalArgumentException.class,
+            () -> VexelRayLayer.of(VexelRayLayer.Field.CSG_BOXES));
+    }
+
+    @Test
     void interactionSpecValidationAndDefaults() {
         InteractionSpec d = InteractionSpec.defaults();
         assertEquals(InteractionSpec.Mode.ORBIT_3D, d.mode());

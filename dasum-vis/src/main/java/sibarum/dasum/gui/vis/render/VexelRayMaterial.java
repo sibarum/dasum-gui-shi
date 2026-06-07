@@ -27,6 +27,8 @@ final class VexelRayMaterial implements AutoCloseable {
     private int uParams = -1;
     private int uColor = -1;
     private int uMaxSteps = -1;
+    private int uCsg = -1;
+    private int uCsgCount = -1;
 
     void init() {
         String vs = ShaderUtil.readResource("/shaders/vexelray.vert");
@@ -43,9 +45,14 @@ final class VexelRayMaterial implements AutoCloseable {
         uParams    = Gl.glGetUniformLocation(program, "u_params");
         uColor     = Gl.glGetUniformLocation(program, "u_color");
         uMaxSteps  = Gl.glGetUniformLocation(program, "u_maxSteps");
+        // Array uniforms resolve as "name" on most drivers, "name[0]" on
+        // the rest — try both.
+        uCsg = Gl.glGetUniformLocation(program, "u_csg");
+        if (uCsg < 0) uCsg = Gl.glGetUniformLocation(program, "u_csg[0]");
+        uCsgCount  = Gl.glGetUniformLocation(program, "u_csgCount");
         if (uMvp < 0 || uCenter < 0 || uScale < 0 || uEye < 0 || uForward < 0
                 || uLightDir < 0 || uOrtho < 0 || uFieldType < 0 || uParams < 0
-                || uColor < 0 || uMaxSteps < 0) {
+                || uColor < 0 || uMaxSteps < 0 || uCsg < 0 || uCsgCount < 0) {
             throw new IllegalStateException("vexelray shader missing required uniforms");
         }
     }
@@ -67,6 +74,12 @@ final class VexelRayMaterial implements AutoCloseable {
             layer.color().r(), layer.color().g(), layer.color().b(),
             layer.color().a() * layer.opacity());
         Gl.glUniform1i(uMaxSteps, layer.maxSteps());
+        if (layer.field() == VexelRayLayer.Field.CSG_BOXES) {
+            Gl.glUniform4fv(uCsg, layer.csg().length / 4, layer.csg());
+            Gl.glUniform1i(uCsgCount, layer.csgOpCount());
+        } else {
+            Gl.glUniform1i(uCsgCount, 0);
+        }
     }
 
     @Override
