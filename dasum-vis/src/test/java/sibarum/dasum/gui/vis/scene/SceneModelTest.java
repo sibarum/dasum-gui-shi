@@ -196,6 +196,15 @@ final class SceneModelTest {
     }
 
     @Test
+    void alienPlantDefaults() {
+        VexelRayLayer plant = VexelRayLayer.of(VexelRayLayer.Field.ALIEN_PLANT);
+        assertEquals(VexelRayLayer.Field.ALIEN_PLANT, plant.field());
+        assertEquals(9f, plant.params()[2], "default generations");
+        assertEquals(BlendMode.OPAQUE, plant.blend());
+        assertNull(plant.csg(), "plant carries no csg program");
+    }
+
+    @Test
     void interactionSpecValidationAndDefaults() {
         InteractionSpec d = InteractionSpec.defaults();
         assertEquals(InteractionSpec.Mode.ORBIT_3D, d.mode());

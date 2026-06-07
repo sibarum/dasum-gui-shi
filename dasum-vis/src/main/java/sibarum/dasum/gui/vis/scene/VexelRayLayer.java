@@ -31,6 +31,11 @@ import java.util.List;
  *   <li>{@code CSG_BOXES}  — [rounding] — global edge rounding applied to
  *       the folded result; the shape program itself is the {@code csg}
  *       op list (see {@link CsgBox})</li>
+ *   <li>{@code ALIEN_PLANT} — [branchAngle, shrink, generations, sway] —
+ *       folded-IFS flora: one capsule per generation represents 2^i
+ *       branches via a mirror fold, spun by the golden angle each level
+ *       (phyllotaxis). Branch depth drives an emissive hue-shifted tip
+ *       glow derived from {@code color}.</li>
  * </ul>
  *
  * <p>Default blend is {@link BlendMode#OPAQUE}: the field is a surface,
@@ -62,7 +67,7 @@ public record VexelRayLayer(
     float opacity
 ) implements Layer {
 
-    public enum Field { SPHERE, BOX, TORUS, BLOBS, MANDELBULB, CSG_BOXES }
+    public enum Field { SPHERE, BOX, TORUS, BLOBS, MANDELBULB, CSG_BOXES, ALIEN_PLANT }
 
     public VexelRayLayer {
         if (field == null) throw new IllegalArgumentException("field != null");
@@ -109,10 +114,14 @@ public record VexelRayLayer(
             case TORUS      -> new float[]{0.65f, 0.25f, 0f, 0f};
             case BLOBS      -> new float[]{0.55f, 0.35f, 0f, 0f};
             case MANDELBULB -> new float[]{8f, 10f, 0f, 0f};
+            case ALIEN_PLANT -> new float[]{0.62f, 0.70f, 9f, 0.14f};
             case CSG_BOXES  -> throw new IllegalStateException(); // handled above
         };
+        Color color = field == Field.ALIEN_PLANT
+            ? new Color(0.10f, 0.52f, 0.42f, 1f)  // deep teal stalk; tips hue-rotate to magenta
+            : new Color(0.75f, 0.82f, 0.95f, 1f);
         return new VexelRayLayer(field, params, Vec3.ZERO, 1.2f,
-            new Color(0.75f, 0.82f, 0.95f, 1f), 96, BlendMode.OPAQUE, 1f);
+            color, 96, BlendMode.OPAQUE, 1f);
     }
 
     /**

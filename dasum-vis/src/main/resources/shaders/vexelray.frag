@@ -104,6 +104,69 @@ float sdCsgBoxes(vec3 p) {
     return d - u_params.x;
 }
 
+float sdCapsuleY(vec3 p, float l, float r) {
+    p.y -= clamp(p.y, 0.0, l);
+    return length(p) - r;
+}
+
+// Orbit trap for the plant: normalized branch depth (0 = rootstock,
+// 1 = outermost tips) of whichever generation owns the surface point.
+// Written by sdAlienPlant; main() snapshots it at the hit point before
+// the normal/AO/shadow taps clobber it.
+float g_plantTrap = 0.0;
+
+// Folded-IFS flora. Per generation: draw one tapered stem capsule
+// (which, thanks to the mirror fold, stands in for 2^i branches), climb
+// to its top, fold space so the two branch directions coincide, tilt
+// outward, spin by the GOLDEN ANGLE (phyllotaxis -- the spiral
+// arrangement real plants use), and shrink the domain. A glowing pod
+// caps the final generation. Folds and uniform scales preserve distance
+// bounds, so the march stays honest; the gentle height-proportional
+// sway is the only Lipschitz cheat (covered by march relaxation).
+// params: x = branch tilt (rad), y = shrink per generation,
+//         z = generations, w = sway.
+float sdAlienPlant(vec3 p) {
+    p.y += 0.95;                       // root at the cube floor
+    float tiltC = cos(u_params.x), tiltS = sin(u_params.x);
+    const float GC = -0.737369;        // cos/sin of the golden angle 2.39996 rad
+    const float GS =  0.675490;
+    float shrink = u_params.y;
+    int gens = int(u_params.z);
+    float sway = u_params.w;
+
+    float scale = 1.0;
+    float d = 1e9;
+    float seg = 0.55;
+    g_plantTrap = 0.0;
+
+    for (int i = 0; i < 12; i++) {
+        if (i >= gens) break;
+        // Organic lean, proportional to height within the generation.
+        float sw = sway * p.y;
+        float swc = cos(sw), sws = sin(sw);
+        p.xy = mat2(swc, -sws, sws, swc) * p.xy;
+
+        // Stem for this generation, tapered with depth.
+        float stem = sdCapsuleY(p, seg, 0.085) * scale;
+        if (stem < d) g_plantTrap = float(i);
+        d = smin(d, stem, 0.05 * scale);
+
+        // Climb, fold, tilt, spin, shrink.
+        p.y -= seg;
+        p.x = abs(p.x);                              // mirror fold: 2 branches per gen
+        p.xy = mat2(tiltC, tiltS, -tiltS, tiltC) * p.xy;   // tilt child axis outward
+        p.xz = mat2(GC, -GS, GS, GC) * p.xz;         // golden-angle spin
+        p /= shrink;
+        scale *= shrink;
+    }
+    // Pod at every outermost tip.
+    float pod = (length(p - vec3(0.0, 0.12, 0.0)) - 0.20) * scale;
+    if (pod < d) g_plantTrap = float(gens);
+    d = smin(d, pod, 0.06 * scale);
+    g_plantTrap /= max(float(gens), 1.0);
+    return d;
+}
+
 float sdf(vec3 worldP) {
     vec3 p = worldP - u_center;
     if (u_fieldType == 0) return sdSphere(p);
@@ -111,7 +174,8 @@ float sdf(vec3 worldP) {
     if (u_fieldType == 2) return sdTorus(p);
     if (u_fieldType == 3) return sdBlobs(p);
     if (u_fieldType == 4) return sdMandelbulb(p);
-    return sdCsgBoxes(p);
+    if (u_fieldType == 5) return sdCsgBoxes(p);
+    return sdAlienPlant(p);
 }
 
 vec3 normalAt(vec3 p) {
@@ -242,7 +306,9 @@ void main() {
     // ring artifacts. Under-step fractals and tighten their hit
     // tolerance; analytic primitives keep the exact march.
     bool fractal = u_fieldType == 4;
-    float relax = fractal ? 0.6 : 1.0;
+    // The plant's sway warp mildly inflates its Lipschitz bound -- a
+    // small under-step keeps the march safe.
+    float relax = fractal ? 0.6 : (u_fieldType == 6 ? 0.85 : 1.0);
     float epsScale = fractal ? 0.35 : 1.0;
 
     bool hit = false;
@@ -262,6 +328,9 @@ void main() {
     for (int i = 0; i < 3; i++) {
         p += rd * sdf(p);
     }
+    // Snapshot the plant's orbit trap at the refined hit -- the
+    // normal/AO/shadow evaluations below all clobber the global.
+    float plantTrap = g_plantTrap;
 
     // Blinn-Phong with field-derived occlusion: colored ambient +
     // diffuse, white specular highlight, soft shadows toward the key
@@ -283,8 +352,22 @@ void main() {
     // reads as "broken lighting".
     float shadow = 0.2 + 0.8 * softShadow(p, n);
 
-    vec3 col = u_color.rgb * ((0.30 + 1.05 * diff * shadow) * ao + fill * ao)
+    vec3 albedo = u_color.rgb;
+    if (u_fieldType == 6) {
+        // Alien flora coloring from one base color: outer generations
+        // hue-rotate toward the channel-cycled complement.
+        vec3 tip = u_color.rgb.brg * 1.35 + vec3(0.06);
+        albedo = mix(u_color.rgb, tip, smoothstep(0.15, 0.95, plantTrap));
+    }
+
+    vec3 col = albedo * ((0.30 + 1.05 * diff * shadow) * ao + fill * ao)
              + vec3(spec * shadow) * ao;
+
+    if (u_fieldType == 6) {
+        // Bioluminescence: emissive tip glow added AFTER lighting, so
+        // pods shine from inside their own shadow.
+        col += albedo * (pow(plantTrap, 3.0) * 0.85);
+    }
     fragColor = vec4(col, u_color.a);
 
     // Real depth for the hit point so vector layers compose against the
