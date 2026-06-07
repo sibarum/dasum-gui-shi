@@ -104,20 +104,44 @@ public final class HitTest {
      * before their containers).
      */
     public static Component.Scroll findScroll(Component root, LayoutResult layout, float px, float py) {
-        return findScrollInOrder(root, layout, px, py);
+        List<Component.Scroll> chain = findScrollChain(root, layout, px, py);
+        return chain.isEmpty() ? null : chain.get(0);
     }
 
-    private static Component.Scroll findScrollInOrder(Component c, LayoutResult layout, float px, float py) {
-        List<Component> kids = childrenOf(c);
-        for (int i = kids.size() - 1; i >= 0; i--) {
-            Component.Scroll hit = findScrollInOrder(kids.get(i), layout, px, py);
-            if (hit != null) return hit;
+    /**
+     * Every {@link Component.Scroll} under the point, innermost first,
+     * <b>clip-respected</b> the same way {@link #testInOrder} clips hits:
+     * a scroll is included only if the point lies within both its own rect
+     * and the intersection of all ancestor scroll rects above it. The
+     * wheel handler walks this chain and routes the event to the first
+     * scroll that can actually move on the requested axis — so a nested
+     * scroll bottomed-out at its limit bubbles the wheel to its parent,
+     * and a scroll whose viewport isn't visually under the cursor (scrolled
+     * out from an ancestor) never captures.
+     */
+    public static List<Component.Scroll> findScrollChain(Component root, LayoutResult layout, float px, float py) {
+        List<Component.Scroll> out = new ArrayList<>();
+        collectScrollChain(root, layout, px, py, null, out);
+        return out;
+    }
+
+    private static void collectScrollChain(Component c, LayoutResult layout, float px, float py,
+                                           PixelRect clip, List<Component.Scroll> out) {
+        PixelRect newClip = clip;
+        if (c instanceof Component.Scroll) {
+            PixelRect r = layout.rectOf(c);
+            if (r != null) newClip = (clip == null) ? r : intersect(clip, r);
         }
+        for (Component child : childrenOf(c)) {
+            collectScrollChain(child, layout, px, py, newClip, out);
+        }
+        // Self after children → deeper scrolls land earlier in the list.
         if (c instanceof Component.Scroll s) {
             PixelRect r = layout.rectOf(s);
-            if (r != null && r.contains(px, py)) return s;
+            boolean inSelf = r != null && r.contains(px, py);
+            boolean inClip = clip == null || clip.contains(px, py);
+            if (inSelf && inClip) out.add(s);
         }
-        return null;
     }
 
     private static List<Component> childrenOf(Component c) {

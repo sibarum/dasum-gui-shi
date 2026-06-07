@@ -57,8 +57,19 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
     record Flex(
         Em width, Em height, Em padding, Color color,
         Direction direction, JustifyContent justify, AlignItems align, Em gap,
-        List<Component> children, boolean interactive, int flexGrow
+        List<Component> children, boolean interactive, int flexGrow, boolean wrap
     ) implements Component {
+
+        /**
+         * Compatibility constructor — {@code wrap} defaults to {@code false}.
+         * Keeps every pre-wrap positional call site compiling.
+         */
+        public Flex(Em width, Em height, Em padding, Color color,
+                    Direction direction, JustifyContent justify, AlignItems align, Em gap,
+                    List<Component> children, boolean interactive, int flexGrow) {
+            this(width, height, padding, color, direction, justify, align, gap,
+                 children, interactive, flexGrow, false);
+        }
 
         public static Flex row(Em gap, List<Component> children) {
             return new Flex(null, null, Em.ZERO, new Color(0f, 0f, 0f, 0f),
@@ -70,13 +81,15 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
                 Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, gap, children, false, 0);
         }
 
-        public Flex withWidth(Em w)               { return new Flex(w, height, padding, color, direction, justify, align, gap, children, interactive, flexGrow); }
-        public Flex withHeight(Em h)              { return new Flex(width, h, padding, color, direction, justify, align, gap, children, interactive, flexGrow); }
-        public Flex withPadding(Em p)             { return new Flex(width, height, p, color, direction, justify, align, gap, children, interactive, flexGrow); }
-        public Flex withColor(Color c)            { return new Flex(width, height, padding, c, direction, justify, align, gap, children, interactive, flexGrow); }
-        public Flex withJustify(JustifyContent j) { return new Flex(width, height, padding, color, direction, j, align, gap, children, interactive, flexGrow); }
-        public Flex withAlign(AlignItems a)       { return new Flex(width, height, padding, color, direction, justify, a, gap, children, interactive, flexGrow); }
-        public Flex withFlexGrow(int g)           { return new Flex(width, height, padding, color, direction, justify, align, gap, children, interactive, g); }
+        public Flex withWidth(Em w)               { return new Flex(w, height, padding, color, direction, justify, align, gap, children, interactive, flexGrow, wrap); }
+        public Flex withHeight(Em h)              { return new Flex(width, h, padding, color, direction, justify, align, gap, children, interactive, flexGrow, wrap); }
+        public Flex withPadding(Em p)             { return new Flex(width, height, p, color, direction, justify, align, gap, children, interactive, flexGrow, wrap); }
+        public Flex withColor(Color c)            { return new Flex(width, height, padding, c, direction, justify, align, gap, children, interactive, flexGrow, wrap); }
+        public Flex withJustify(JustifyContent j) { return new Flex(width, height, padding, color, direction, j, align, gap, children, interactive, flexGrow, wrap); }
+        public Flex withAlign(AlignItems a)       { return new Flex(width, height, padding, color, direction, justify, a, gap, children, interactive, flexGrow, wrap); }
+        public Flex withFlexGrow(int g)           { return new Flex(width, height, padding, color, direction, justify, align, gap, children, interactive, g, wrap); }
+        /** Wrap ROW children onto multiple rows when they overflow the main axis (ROW only). */
+        public Flex withWrap(boolean w)           { return new Flex(width, height, padding, color, direction, justify, align, gap, children, interactive, flexGrow, w); }
     }
 
     /**

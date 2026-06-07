@@ -45,20 +45,31 @@ public final class ScrollPosition {
 
     // ---------- mutate ----------
 
-    /** Scroll by an em-typed delta. Primary public API. */
-    public void scrollBy(float emDx, float emDy) {
+    /**
+     * Scroll by an em-typed delta. Primary public API.
+     * @return true iff the offset actually changed (see {@link #scrollByPx}).
+     */
+    public boolean scrollBy(float emDx, float emDy) {
         float pxPerEm = EmContext.pixelsPerEm();
-        scrollByPx(emDx * pxPerEm, emDy * pxPerEm);
+        return scrollByPx(emDx * pxPerEm, emDy * pxPerEm);
     }
 
-    /** Scroll by a pixel-typed delta. Sibling for callers that already have pixels. */
-    public void scrollByPx(float pxDx, float pxDy) {
+    /**
+     * Scroll by a pixel-typed delta. Sibling for callers that already have
+     * pixels.
+     * @return true iff the offset actually changed — false when already
+     *         clamped at the limit on every requested axis. The wheel
+     *         handler uses this to bubble an unconsumed event to the next
+     *         scroll container out.
+     */
+    public boolean scrollByPx(float pxDx, float pxDy) {
         float nx = clamp(xPx + pxDx, 0f, maxXPx);
         float ny = clamp(yPx + pxDy, 0f, maxYPx);
-        if (nx == xPx && ny == yPx) return;
+        if (nx == xPx && ny == yPx) return false;
         xPx = nx;
         yPx = ny;
         Invalidator.invalidate();
+        return true;
     }
 
     /**

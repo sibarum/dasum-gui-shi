@@ -915,13 +915,13 @@ public final class App {
                     null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
                     Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
                     List.of(buildImageTextScene(), buildBillboardScene()),
-                    false, 0
+                    false, 0, true  // wrap: reflow cards to the viewport width
                 )),
                 section("VexelRay — raymarched fields", new Component.Flex(
                     null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
                     Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
-                    List.of(buildMandelbulbScene(), buildBlobsScene(), buildCsgBoxScene()),
-                    false, 0
+                    List.of(buildMandelbulbScene(), buildBlobsScene(), buildCsgBoxScene(), buildAlienPlantScene()),
+                    false, 0, true  // wrap: all four cards reachable via vertical scroll
                 )),
                 section("Icon + text inline (small)",        iconRowSmall),
                 section("Icon + text inline (large)",        iconRowLarge),
@@ -1275,6 +1275,30 @@ public final class App {
 
         return sceneCard("CSG boxes — booleans, smooth joins, global rounding",
             "CSG Boxes", viewport, Em.of(13f), Em.of(9f));
+    }
+
+    /**
+     * Alien flora: a folded-IFS plant. Nine generations of one mirrored,
+     * golden-angle-spun, shrinking stem capsule represent ~512 branches
+     * for nine capsule evaluations per field sample; branch depth drives
+     * a teal-to-magenta hue rotation and an emissive tip glow that shines
+     * through shadow. The entire organism is four floats —
+     * (tilt, shrink, generations, sway) — every one animatable without a
+     * recompile.
+     */
+    private static Component buildAlienPlantScene() {
+        Component.SceneView viewport = new Component.SceneView(
+            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.02f, 0.03f, 0.06f, 1f), true, 1
+        );
+
+        SceneStates.publish(viewport, SceneSnapshot.of(
+            VexelRayLayer.of(VexelRayLayer.Field.ALIEN_PLANT)
+                .withMaxSteps(128) // thin branches want march headroom
+        ));
+        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(3.4f));
+
+        return sceneCard("Alien flora — folded IFS, phyllotaxis, bioluminescent tips",
+            "Alien Flora", viewport, Em.of(13f), Em.of(9f));
     }
 
     /**
@@ -2148,10 +2172,13 @@ public final class App {
             LayoutResult lr = LatestLayout.result();
             Component layoutRoot = OverlayStack.activeInputRoot(LatestLayout.root());
             if (lr == null || layoutRoot == null) return;
-            // Point-cloud viewport gets first refusal — scroll over a
-            // viewport zooms its camera rather than scrolling a container.
+            // A scene viewport eats the wheel (camera zoom) ONLY when it
+            // holds focus — click it first. Otherwise a page-scroll whose
+            // cursor merely passes over a viewport would hijack into a
+            // zoom; requiring focus keeps casual scrolling on the page.
             Component pcHit = HitTest.test(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
-            if (SceneViewController.onScroll(pcHit, yOff)) return;
+            if (pcHit instanceof Component.SceneView && FocusState.focused() == pcHit
+                    && SceneViewController.onScroll(pcHit, yOff)) return;
 
             boolean shift = Glfw.glfwGetKey(window.handle(), Glfw.GLFW_KEY_LEFT_SHIFT)  == Glfw.GLFW_PRESS
                         || Glfw.glfwGetKey(window.handle(), Glfw.GLFW_KEY_RIGHT_SHIFT) == Glfw.GLFW_PRESS;
@@ -2160,12 +2187,18 @@ public final class App {
             if (DataTableSelectionController.onScroll(
                     InputState.mouseX(), InputState.mouseY(), xOff, yOff, shift)) return;
 
-            Component.Scroll target = HitTest.findScroll(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
-            if (target == null) return;
             double dx, dy;
             if (shift) { dx = -yOff * WHEEL_PIXELS_PER_STEP; dy = 0; }
             else        { dx = -xOff * WHEEL_PIXELS_PER_STEP; dy = -yOff * WHEEL_PIXELS_PER_STEP; }
-            ScrollStates.of(target).scrollByPx((float) dx, (float) dy);
+            // Walk the scroll chain innermost→outermost; the first
+            // container that actually moves consumes the wheel. A nested
+            // scroll bottomed-out at its limit returns false from
+            // scrollByPx, so the event bubbles to its parent.
+            java.util.List<Component.Scroll> chain =
+                HitTest.findScrollChain(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
+            for (Component.Scroll s : chain) {
+                if (ScrollStates.of(s).scrollByPx((float) dx, (float) dy)) break;
+            }
         });
     }
 

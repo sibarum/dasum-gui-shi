@@ -11,6 +11,7 @@ import sibarum.dasum.gui.core.input.ScrollStates;
 import sibarum.dasum.gui.core.input.TextStates;
 import sibarum.dasum.gui.core.text.TextMetrics;
 
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -267,6 +268,11 @@ public final class Layout {
         // has an explicit larger size, that size is used and overflow scrolls.
         float childW = childExtentOrFill(child, true,  interior.width());
         float childH = childExtentOrFill(child, false, interior.height());
+        // childW is now the definite width the child subtree will receive,
+        // so any wrapping flex within it can be measured at that width —
+        // giving the true stacked height the scroll must expose. (No-op
+        // for subtrees with no wrapping flex.)
+        childH = Math.max(childH, contentHeightPx(child, childW));
 
         ScrollPosition pos = ScrollStates.of(scroll);
         pos.updateBoundsPx(childW - interior.width(), childH - interior.height());
@@ -329,6 +335,33 @@ public final class Layout {
                 yield Math.max(explicit, fillExtent);
             }
         };
+    }
+
+    /**
+     * Width-aware content height of a subtree given the definite width it
+     * will receive. The only place wrap geometry needs to propagate up
+     * through measurement: a wrapping ROW flex reports its stacked-row
+     * height at {@code availWidthPx}, and COLUMN flexes pass the width
+     * down (minus padding) and sum. Everything else defers to the
+     * width-agnostic {@link #intrinsicAxisSize}. Used by
+     * {@link #layoutScroll} so an ancestor scroll exposes wrapped overflow.
+     */
+    private static float contentHeightPx(Component c, float availWidthPx) {
+        if (c instanceof Component.Flex f) {
+            if (f.wrap() && f.direction() == Direction.ROW) {
+                return wrappedCrossExtentPx(f, availWidthPx);
+            }
+            if (f.direction() == Direction.COLUMN) {
+                List<Component> kids = sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(f);
+                if (kids.isEmpty()) return intrinsicAxisSize(c, false);
+                float pad = f.padding().toPixels();
+                float innerW = Math.max(0f, availWidthPx - 2f * pad);
+                float total = 2f * pad + f.gap().toPixels() * Math.max(0, kids.size() - 1);
+                for (Component child : kids) total += contentHeightPx(child, innerW);
+                return total;
+            }
+        }
+        return intrinsicAxisSize(c, false);
     }
 
     private static float intrinsicAxisSize(Component c, boolean width) {
@@ -493,17 +526,75 @@ public final class Layout {
         float mainAvail  = row ? interior.width()  : interior.height();
         float crossAvail = row ? interior.height() : interior.width();
         float gap = flex.gap().toPixels();
-        int n = kids.size();
+        float originMain  = row ? interior.x() : interior.y();
+        float originCross = row ? interior.y() : interior.x();
 
+        // Partition into lines. Without wrap (or for COLUMN, which doesn't
+        // wrap) this is a single line containing every child — the original
+        // behavior, unchanged.
+        List<List<Component>> lines = (flex.wrap() && row)
+            ? wrapLines(kids, mainAvail, gap)
+            : List.of(kids);
+
+        float lineCross = originCross;
+        for (List<Component> line : lines) {
+            float maxCross = layoutLine(flex, line, row, mainAvail, crossAvail,
+                                        gap, originMain, lineCross, rects);
+            // Advance to the next line on the cross axis (wrap only ever
+            // produces >1 line for ROW; STRETCH within a line still works
+            // because crossAvail for a wrapped line is that line's height).
+            lineCross += maxCross + gap;
+        }
+    }
+
+    /**
+     * Greedy line-breaking for a wrapping ROW flex: accumulate children
+     * until the next one would overflow {@code mainAvail}, then start a
+     * new line. A single child wider than the line gets its own line
+     * (it overflows rather than vanishing). Shared by {@link #layoutFlex}
+     * and {@link #wrappedCrossExtentPx} so placement and measurement agree.
+     */
+    private static List<List<Component>> wrapLines(List<Component> kids, float mainAvail, float gap) {
+        List<List<Component>> lines = new ArrayList<>();
+        List<Component> cur = new ArrayList<>();
+        float used = 0f;
+        for (Component child : kids) {
+            float m = intrinsicMain(child, true);
+            float add = (cur.isEmpty() ? 0f : gap) + m;
+            if (!cur.isEmpty() && used + add > mainAvail) {
+                lines.add(cur);
+                cur = new ArrayList<>();
+                used = 0f;
+                add = m;
+            }
+            cur.add(child);
+            used += add;
+        }
+        if (!cur.isEmpty()) lines.add(cur);
+        return lines;
+    }
+
+    /**
+     * Lay out one line (the only line when not wrapping). Returns the
+     * line's cross extent (max child cross, or {@code crossAvail} under
+     * STRETCH) so the caller can advance to the next wrapped line.
+     */
+    private static float layoutLine(Component.Flex flex, List<Component> kids, boolean row,
+                                    float mainAvail, float crossAvail, float gap,
+                                    float originMain, float originCross,
+                                    Map<Component, PixelRect> rects) {
+        int n = kids.size();
         float[] mainSize = new float[n];
         int[]   grow     = new int[n];
         int totalGrow = 0;
         float usedMain = gap * Math.max(0, n - 1);
+        float maxChildCross = 0f;
         for (int i = 0; i < n; i++) {
             mainSize[i] = intrinsicMain(kids.get(i), row);
             grow[i] = kids.get(i).flexGrow();
             totalGrow += grow[i];
             usedMain += mainSize[i];
+            maxChildCross = Math.max(maxChildCross, intrinsicCross(kids.get(i), row));
         }
 
         float remaining = mainAvail - usedMain;
@@ -524,10 +615,12 @@ public final class Layout {
             }
         }
 
-        float originMain  = row ? interior.x() : interior.y();
-        float originCross = row ? interior.y() : interior.x();
-        float cur = originMain + startMain;
+        // STRETCH stretches to the line's own cross extent when wrapping
+        // (so rows don't each balloon to the whole container height);
+        // for a single non-wrapped line that's the full crossAvail.
+        float lineCross = (flex.align() == AlignItems.STRETCH) ? crossAvail : maxChildCross;
 
+        float cur = originMain + startMain;
         for (int i = 0; i < n; i++) {
             Component child = kids.get(i);
             float childMain  = mainSize[i];
@@ -535,13 +628,13 @@ public final class Layout {
 
             float crossOffset;
             if (flex.align() == AlignItems.STRETCH) {
-                childCross = crossAvail;
+                childCross = lineCross;
                 crossOffset = 0f;
             } else {
                 crossOffset = switch (flex.align()) {
                     case START  -> 0f;
-                    case CENTER -> (crossAvail - childCross) * 0.5f;
-                    case END    -> crossAvail - childCross;
+                    case CENTER -> (lineCross - childCross) * 0.5f;
+                    case END    -> lineCross - childCross;
                     case STRETCH -> 0f;
                 };
             }
@@ -553,6 +646,29 @@ public final class Layout {
             layoutInto(child, childRect, rects);
             cur += childMain + gap + extraGap;
         }
+        return lineCross;
+    }
+
+    /**
+     * Total cross extent (height for a ROW) of a wrapping flex when given
+     * {@code availMainPx} on its main axis — i.e. how tall the rows stack.
+     * The width-aware answer the scroll path needs so overflow height is
+     * honest. Plain (non-wrap) flexes never call this.
+     */
+    private static float wrappedCrossExtentPx(Component.Flex flex, float availMainPx) {
+        List<Component> kids = sibarum.dasum.gui.core.component.DynamicChildren.effectiveChildren(flex);
+        if (kids.isEmpty()) return 0f;
+        float gap = flex.gap().toPixels();
+        float pad = flex.padding().toPixels();
+        float innerMain = Math.max(0f, availMainPx - 2f * pad);
+        List<List<Component>> lines = wrapLines(kids, innerMain, gap);
+        float total = 2f * pad + gap * Math.max(0, lines.size() - 1);
+        for (List<Component> line : lines) {
+            float maxCross = 0f;
+            for (Component child : line) maxCross = Math.max(maxCross, intrinsicCross(child, true));
+            total += maxCross;
+        }
+        return total;
     }
 
     private static float intrinsicMain(Component c, boolean row) {
