@@ -129,6 +129,32 @@ final class SceneModelTest {
     }
 
     @Test
+    void vexelRayLayerValidationAndDefaults() {
+        VexelRayLayer bulb = VexelRayLayer.of(VexelRayLayer.Field.MANDELBULB);
+        assertEquals(VexelRayLayer.Field.MANDELBULB, bulb.field());
+        assertEquals(BlendMode.OPAQUE, bulb.blend(), "fields are surfaces — OPAQUE writes depth");
+        assertEquals(1f, bulb.opacity());
+        assertEquals(8f, bulb.params()[0], "canonical bulb power");
+
+        VexelRayLayer tuned = bulb.withMaxSteps(64).withScale(2f);
+        assertEquals(64, tuned.maxSteps());
+        assertEquals(2f, tuned.scale());
+
+        sibarum.dasum.gui.vis.math.Vec3 o = sibarum.dasum.gui.vis.math.Vec3.ZERO;
+        sibarum.dasum.gui.core.render.Color w = new sibarum.dasum.gui.core.render.Color(1f, 1f, 1f, 1f);
+        assertThrows(IllegalArgumentException.class,
+            () -> new VexelRayLayer(null, new float[4], o, 1f, w, 96, BlendMode.OPAQUE, 1f));
+        assertThrows(IllegalArgumentException.class,
+            () -> new VexelRayLayer(VexelRayLayer.Field.SPHERE, new float[3], o, 1f, w, 96, BlendMode.OPAQUE, 1f));
+        assertThrows(IllegalArgumentException.class,
+            () -> bulb.withScale(0f));
+        assertThrows(IllegalArgumentException.class,
+            () -> bulb.withMaxSteps(4));
+        assertThrows(IllegalArgumentException.class,
+            () -> bulb.withMaxSteps(1000));
+    }
+
+    @Test
     void interactionSpecValidationAndDefaults() {
         InteractionSpec d = InteractionSpec.defaults();
         assertEquals(InteractionSpec.Mode.ORBIT_3D, d.mode());

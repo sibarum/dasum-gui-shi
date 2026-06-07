@@ -14,6 +14,7 @@ import sibarum.dasum.gui.vis.scene.PointLayer;
 import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
+import sibarum.dasum.gui.vis.scene.VexelRayLayer;
 
 import java.util.ArrayDeque;
 import java.util.EnumMap;
@@ -53,7 +54,7 @@ final class SceneGlBuffers {
     private static final float DEF_R = 0.85f, DEF_G = 0.90f, DEF_B = 1.00f;
 
     enum Kind {
-        POINT(7), FLAT(6), IMAGE(5), TEXT(4);
+        POINT(7), FLAT(6), IMAGE(5), TEXT(4), VEXEL(3);
 
         final int floatsPerVertex;
         Kind(int f) { this.floatsPerVertex = f; }
@@ -65,8 +66,42 @@ final class SceneGlBuffers {
                 case TriangleLayer t -> FLAT;
                 case ImageLayer i    -> IMAGE;
                 case TextLayer t     -> TEXT;
+                case VexelRayLayer v -> VEXEL;
             };
         }
+    }
+
+    /**
+     * Unit cube [-1, 1]³ as 12 triangles — the raymarch bounding volume.
+     * Layer-independent: the shader scales/centres via uniforms, so every
+     * VEXEL slot uploads these same 36 vertices.
+     */
+    private static final float[] UNIT_CUBE = buildUnitCube();
+
+    private static float[] buildUnitCube() {
+        float[][] c = {
+            {-1,-1,-1}, {1,-1,-1}, {1,1,-1}, {-1,1,-1},
+            {-1,-1, 1}, {1,-1, 1}, {1,1, 1}, {-1,1, 1},
+        };
+        int[][] quads = {
+            {0,1,2,3},  // back  (z = -1)
+            {5,4,7,6},  // front (z = +1)
+            {4,0,3,7},  // left
+            {1,5,6,2},  // right
+            {3,2,6,7},  // top
+            {4,5,1,0},  // bottom
+        };
+        float[] out = new float[36 * 3];
+        int w = 0;
+        for (int[] q : quads) {
+            int[] order = {q[0], q[1], q[2], q[0], q[2], q[3]};
+            for (int v : order) {
+                out[w++] = c[v][0];
+                out[w++] = c[v][1];
+                out[w++] = c[v][2];
+            }
+        }
+        return out;
     }
 
     static final class Slot {
@@ -156,6 +191,7 @@ final class SceneGlBuffers {
             case TriangleLayer t -> buildFlatVertices(t.vertices(), t.colors());
             case ImageLayer img  -> { syncImageTexture(s, img); yield buildImageVertices(img); }
             case TextLayer txt   -> buildTextVertices(txt);
+            case VexelRayLayer v -> UNIT_CUBE; // geometry is uniform-driven; cube is constant
         };
         int floatsPerVertex = s.kind.floatsPerVertex;
         int vertexCount = verts.length / floatsPerVertex;
@@ -365,6 +401,10 @@ final class SceneGlBuffers {
                 Gl.glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, 2L * Float.BYTES);
                 Gl.glEnableVertexAttribArray(0);
                 Gl.glEnableVertexAttribArray(1);
+            }
+            case VEXEL -> {
+                Gl.glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0L);
+                Gl.glEnableVertexAttribArray(0);
             }
         }
         Gl.glBindBuffer(GL_ARRAY_BUFFER, 0);

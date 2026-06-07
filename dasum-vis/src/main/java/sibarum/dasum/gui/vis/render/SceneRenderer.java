@@ -19,6 +19,7 @@ import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.SceneStates;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
+import sibarum.dasum.gui.vis.scene.VexelRayLayer;
 
 import static sibarum.dasum.gui.natives.gl.Gl.GL_BLEND;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_DST_COLOR;
@@ -62,6 +63,7 @@ public final class SceneRenderer implements AutoCloseable {
     private final FlatMaterial flatMaterial           = new FlatMaterial();
     private final ImageMaterial imageMaterial         = new ImageMaterial();
     private final SceneTextMaterial sceneTextMaterial = new SceneTextMaterial();
+    private final VexelRayMaterial vexelRayMaterial   = new VexelRayMaterial();
     private final SceneGlBuffers buffers              = new SceneGlBuffers();
 
     /** Scratch MVP — reused across frames; main-thread only. */
@@ -75,6 +77,7 @@ public final class SceneRenderer implements AutoCloseable {
         flatMaterial.init();
         imageMaterial.init();
         sceneTextMaterial.init();
+        vexelRayMaterial.init();
         initialized = true;
     }
 
@@ -132,6 +135,23 @@ public final class SceneRenderer implements AutoCloseable {
                     case ImageLayer img -> {
                         slot.texture.bind(0);
                         imageMaterial.bind(scratchMvp, img.opacity());
+                        draw(slot, GL_TRIANGLES);
+                    }
+                    case VexelRayLayer v -> {
+                        // Camera-anchored key light: over the viewer's right
+                        // shoulder, recomputed per frame from the view basis —
+                        // whatever the user orbits to is always lit (inspection-
+                        // viewer convention; shadows sweep with the view).
+                        float[] basis = CameraMath.viewBasis(cam);
+                        float[] fwd = CameraMath.forward(cam);
+                        float lx = 0.45f * basis[0] + 0.55f * basis[3] - fwd[0];
+                        float ly = 0.45f * basis[1] + 0.55f * basis[4] - fwd[1];
+                        float lz = 0.45f * basis[2] + 0.55f * basis[5] - fwd[2];
+                        float len = (float) Math.sqrt(lx*lx + ly*ly + lz*lz);
+                        float[] lightDir = {lx / len, ly / len, lz / len};
+                        vexelRayMaterial.bind(scratchMvp, v,
+                            CameraMath.eye(cam), fwd, lightDir,
+                            cam.mode() == CameraMode.ORTHOGRAPHIC);
                         draw(slot, GL_TRIANGLES);
                     }
                     case TextLayer txt -> {
@@ -203,5 +223,6 @@ public final class SceneRenderer implements AutoCloseable {
         flatMaterial.close();
         imageMaterial.close();
         sceneTextMaterial.close();
+        vexelRayMaterial.close();
     }
 }

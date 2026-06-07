@@ -93,6 +93,39 @@ final class CameraMathTest {
     }
 
     @Test
+    void eyeAndForwardMatchTheViewMatrix() {
+        // Canonical: yaw=0, pitch=0, distance d → eye sits at target + (0,0,d),
+        // forward looks down -Z.
+        Vec3 target = new Vec3(2f, -1f, 4f);
+        CameraSpec canon = CameraSpec.defaultPerspective()
+            .withTarget(target).withYaw(0f).withPitch(0f).withDistance(7f);
+        float[] e = CameraMath.eye(canon);
+        assertEquals(2f, e[0], 1e-5f);
+        assertEquals(-1f, e[1], 1e-5f);
+        assertEquals(11f, e[2], 1e-5f);
+        float[] f = CameraMath.forward(canon);
+        assertEquals(0f, f[0], 1e-5f);
+        assertEquals(0f, f[1], 1e-5f);
+        assertEquals(-1f, f[2], 1e-5f);
+
+        // Arbitrary orbit: |eye - target| == distance; forward is unit and
+        // points from eye toward target.
+        CameraSpec orbit = canon.withYaw(1.1f).withPitch(0.5f);
+        float[] e2 = CameraMath.eye(orbit);
+        float dx = e2[0] - target.x(), dy = e2[1] - target.y(), dz = e2[2] - target.z();
+        assertEquals(7f, (float) Math.sqrt(dx*dx + dy*dy + dz*dz), 1e-4f);
+        float[] f2 = CameraMath.forward(orbit);
+        assertEquals(1f, (float) Math.sqrt(f2[0]*f2[0] + f2[1]*f2[1] + f2[2]*f2[2]), 1e-5f);
+        assertEquals(-dx / 7f, f2[0], 1e-4f);
+        assertEquals(-dy / 7f, f2[1], 1e-4f);
+        assertEquals(-dz / 7f, f2[2], 1e-4f);
+
+        // Ortho: parallel rays down -Z regardless of orbit fields.
+        float[] fo = CameraMath.forward(CameraSpec.defaultOrtho());
+        assertEquals(-1f, fo[2], 1e-6f);
+    }
+
+    @Test
     void fitToBoundsFramesTheBox() {
         Vec3 min = new Vec3(-1f, -2f, -3f);
         Vec3 max = new Vec3(3f, 2f, 1f);

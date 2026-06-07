@@ -26,6 +26,39 @@ public final class CameraMath {
     public static final float[] IDENTITY_BASIS = {1f, 0f, 0f, 0f, 1f, 0f};
 
     /**
+     * World-space eye position — the same one the view matrix uses
+     * (target-relative orbit rotate, then translate to target). For
+     * orthographic cameras there is no meaningful eye point; returns the
+     * target (callers in ortho mode use {@link #forward} for parallel
+     * rays and ignore the eye).
+     */
+    public static float[] eye(CameraSpec cam) {
+        if (cam.mode() == CameraMode.ORTHOGRAPHIC) {
+            return new float[]{cam.target().x(), cam.target().y(), cam.target().z()};
+        }
+        Vector3f eye = new Vector3f(0f, 0f, cam.distance());
+        eye.rotateX(-cam.pitchRad());
+        eye.rotateY(cam.yawRad());
+        eye.add(cam.target().x(), cam.target().y(), cam.target().z());
+        return new float[]{eye.x, eye.y, eye.z};
+    }
+
+    /**
+     * Unit view direction (eye toward target). Orthographic cameras look
+     * down -Z by construction (see {@link #mvp}'s ortho branch).
+     */
+    public static float[] forward(CameraSpec cam) {
+        if (cam.mode() == CameraMode.ORTHOGRAPHIC) {
+            return new float[]{0f, 0f, -1f};
+        }
+        Vector3f eye = new Vector3f(0f, 0f, cam.distance());
+        eye.rotateX(-cam.pitchRad());
+        eye.rotateY(cam.yawRad());
+        Vector3f f = eye.negate().normalize(); // target-relative: forward = -(eye - target)
+        return new float[]{f.x, f.y, f.z};
+    }
+
+    /**
      * View-plane orientation basis for billboarding: 6 floats —
      * right xyz, then up xyz — orthonormal vectors spanning the plane
      * facing the camera. Orthographic cameras look down -Z with no

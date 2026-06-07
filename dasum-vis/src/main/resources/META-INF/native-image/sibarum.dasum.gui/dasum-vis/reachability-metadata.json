@@ -7,6 +7,8 @@
     { "glob": "shaders/image.vert" },
     { "glob": "shaders/image.frag" },
     { "glob": "shaders/scene-text.vert" },
-    { "glob": "shaders/scene-text.frag" }
+    { "glob": "shaders/scene-text.frag" },
+    { "glob": "shaders/vexelray.vert" },
+    { "glob": "shaders/vexelray.frag" }
   ]
 }

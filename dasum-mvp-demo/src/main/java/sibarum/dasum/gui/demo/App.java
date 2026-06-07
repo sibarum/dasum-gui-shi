@@ -95,6 +95,7 @@ import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.SceneStates;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
+import sibarum.dasum.gui.vis.scene.VexelRayLayer;
 import sibarum.dasum.gui.vis.math.Vec3;
 import sibarum.dasum.gui.vis.pointcloud.PointHandlers;
 
@@ -915,6 +916,12 @@ public final class App {
                     List.of(buildImageTextScene(), buildBillboardScene()),
                     false, 0
                 )),
+                section("VexelRay — raymarched fields", new Component.Flex(
+                    null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+                    Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
+                    List.of(buildMandelbulbScene(), buildBlobsScene()),
+                    false, 0
+                )),
                 section("Icon + text inline (small)",        iconRowSmall),
                 section("Icon + text inline (large)",        iconRowLarge),
                 section("Viewport inside Scroll",            scrollBlock)
@@ -1155,6 +1162,150 @@ public final class App {
             Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
             List.of(label, viewport), false, 0
         );
+    }
+
+    /**
+     * VexelRay R1 showpiece: a raymarched Mandelbulb with vector layers
+     * composed THROUGH it — the axis lines must vanish behind the bulb
+     * and emerge on the other side, and the billboard label must occlude
+     * correctly. That's gl_FragDepth from the field hit point meeting the
+     * scene's shared depth buffer; nothing here is uploaded geometry
+     * except the lines and the label.
+     */
+    private static Component buildMandelbulbScene() {
+        // flexGrow 1 from birth: the SAME instance later fills the
+        // fullscreen overlay, and a with* copy would orphan its scene
+        // state (identity-keyed).
+        Component.SceneView viewport = new Component.SceneView(
+            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
+        );
+
+        // Axis lines passing straight through the bulb's volume.
+        float a = 1.6f;
+        float[] axes = {
+            -a, 0f, 0f,   a, 0f, 0f,
+            0f, -a, 0f,   0f, a, 0f,
+            0f, 0f, -a,   0f, 0f, a,
+        };
+        float[] axisCols = {
+            1f, 0.4f, 0.4f,  1f, 0.4f, 0.4f,
+            0.4f, 1f, 0.4f,  0.4f, 1f, 0.4f,
+            0.4f, 0.6f, 1f,  0.4f, 0.6f, 1f,
+        };
+
+        SceneStates.publish(viewport, SceneSnapshot.of(
+            VexelRayLayer.of(VexelRayLayer.Field.MANDELBULB)
+                .withColor(new Color(0.92f, 0.74f, 1.00f, 1f))
+                .withMaxSteps(192), // relaxed fractal stepping needs the headroom
+            new LineLayer(axes, axisCols),
+            new TextLayer("power-8 bulb", FontGroups.DEFAULT, new Vec3(0f, 1.35f, 0f), 0.18f,
+                new Color(1f, 0.9f, 0.5f, 1f), TextLayer.HAlign.CENTER, true, BlendMode.ALPHA, 1f)
+        ));
+        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(3.5f));
+
+        return sceneCard("Mandelbulb — axis lines depth-compose through the field",
+            "Mandelbulb", viewport, Em.of(13f), Em.of(9f));
+    }
+
+    /**
+     * Two raymarched fields in one scene: smooth-union blobs (the SDF
+     * smin melting three spheres into one organic form) beside a torus.
+     * Each is its own VexelRayLayer with its own bounding cube.
+     */
+    private static Component buildBlobsScene() {
+        Component.SceneView viewport = new Component.SceneView(
+            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
+        );
+
+        SceneStates.publish(viewport, SceneSnapshot.of(
+            VexelRayLayer.of(VexelRayLayer.Field.BLOBS)
+                .withCenter(new Vec3(-1.1f, 0f, 0f))
+                .withColor(new Color(0.45f, 0.9f, 0.6f, 1f)),
+            VexelRayLayer.of(VexelRayLayer.Field.TORUS)
+                .withCenter(new Vec3(1.1f, 0f, 0f))
+                .withColor(new Color(0.95f, 0.6f, 0.35f, 1f))
+        ));
+        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(4.5f));
+
+        return sceneCard("Smooth-union blobs + torus — two fields, one scene",
+            "Raymarched Fields", viewport, Em.of(13f), Em.of(9f));
+    }
+
+    /**
+     * Card wrapper around a scene viewport with the thumbnail-and-overlay
+     * swap pattern: the viewport lives in a {@code DynamicChildren} slot,
+     * and a click on the card (its label/padding — clicks on the viewport
+     * itself are consumed by the camera controller) expands the SAME
+     * instance into a fullscreen modal. Scene, camera, and GPU buffers
+     * follow the component identity for free.
+     */
+    private static Component sceneCard(String caption, String overlayTitle,
+                                       Component.SceneView viewport, Em slotW, Em slotH) {
+        Component.Flex slot = new Component.Flex(
+            slotW, slotH, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.COLUMN, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
+            List.of(), false, 0
+        );
+        DynamicChildren.add(slot, viewport);
+
+        Component label = new Component.Text(caption, Em.of(0.85f), LABEL_FG);
+        Component subtitle = new Component.Text("click frame to expand",
+            Em.of(0.72f), new Color(0.65f, 0.70f, 0.85f, 0.75f));
+
+        Component.Flex card = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
+            List.of(label, slot, subtitle), true, 0
+        );
+        Handlers.onClick(card, () -> openSceneOverlay(overlayTitle, viewport, slot, slotW, slotH));
+        return card;
+    }
+
+    /**
+     * Move a scene viewport into a fullscreen modal overlay, leaving a
+     * placeholder in its slot; dismissal swaps it back. Mirrors
+     * {@link #openPointCloudOverlay} minus the camera-mode buttons.
+     */
+    private static void openSceneOverlay(String titleText, Component.SceneView viewport,
+                                         Component slot, Em slotW, Em slotH) {
+        Component placeholder = new Component.Box(
+            slotW, slotH, Em.ZERO,
+            new Color(0.04f, 0.05f, 0.08f, 0.6f),
+            List.of(new Component.Text("Viewing in popup", Em.of(0.85f),
+                new Color(0.65f, 0.70f, 0.85f, 0.85f)))
+        );
+        DynamicChildren.remove(slot, viewport);
+        DynamicChildren.add(slot, placeholder);
+
+        Component closeBtn = Themed.button("Close", Em.of(6f), Variant.PRIMARY, 0);
+        Component title    = new Component.Text(titleText + " — Expanded", Em.of(1.1f), LABEL_FG);
+        Component spacer   = new Component.Box(Em.of(1f), Em.of(0f), Em.ZERO, new Color(0f, 0f, 0f, 0f))
+                                  .withFlexGrow(1);
+        Component header = new Component.Flex(
+            null, Em.of(2.6f), Em.of(0.5f), TOOLBAR_BG,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
+            List.of(title, spacer, closeBtn),
+            false, 0
+        );
+
+        // 1000em clamps to the viewport via OverlayStack.computeOverlayRect
+        // — a fullscreen modal.
+        Component.Flex overlayRoot = new Component.Flex(
+            Em.of(1000f), Em.of(1000f), Em.of(0.4f), CONTENT_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            List.of(header), false, 0
+        );
+        DynamicChildren.add(overlayRoot, viewport);
+
+        Runnable restore = () -> {
+            DynamicChildren.remove(overlayRoot, viewport);
+            DynamicChildren.remove(slot, placeholder);
+            DynamicChildren.add(slot, viewport);
+            Components.detach(overlayRoot);
+            Components.detach(placeholder);
+        };
+        Handlers.onClick(closeBtn, OverlayStack::pop);
+        OverlayStack.push(new OverlayStack.Overlay(overlayRoot, Anchor.CENTER, true, restore));
     }
 
     /** Append an axis-aligned quad as two triangles at {@code off} in {@code verts}/{@code cols}. */
