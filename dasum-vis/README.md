@@ -1,10 +1,10 @@
 # dasum-vis
 
-Optional visualization module — n-dimensional point-cloud viewports rendered through OpenGL inside the same `Component` tree as the rest of the GUI. Built for ML / training visualizations where a worker thread publishes data continuously and the UI just keeps up.
+Optional visualization module — 3D scene viewports rendered through OpenGL inside the same `Component` tree as the rest of the GUI. A scene is a list of blend-mode **layers** (points, lines, triangles, images, in-scene text) plus **VexelRay** raymarched signed-distance-field shapes. Built for ML / training visualizations where a worker thread publishes data continuously and the UI just keeps up.
 
 ## Why it's its own module
 
-`dasum-core` is 2D-only and intentionally has no 3D math, no JOML dependency, no depth-test code. Putting point-cloud rendering in `dasum-core` would bloat the classpath of every consumer regardless of whether they need it. So this module is opt-in: depend on `dasum-vis` to get point clouds, leave it out otherwise.
+`dasum-core` is 2D-only and intentionally has no 3D math, no JOML dependency, no depth-test code. Putting scene rendering in `dasum-core` would bloat the classpath of every consumer regardless of whether they need it. So this module is opt-in:
 
 ```xml
 <dependency>
@@ -21,152 +21,150 @@ The `Component.SceneView` variant lives in `dasum-core` (so layout and hit-test 
 // once, after Gl.load():
 DasumVis.init();
 
-// register the icons FontGroup or text FontGroup as usual; no extra setup
-// for point clouds beyond DasumVis.init().
-
 Component.SceneView viewport = new Component.SceneView(
     Em.of(12f), Em.of(8f), Em.ZERO, backgroundColor, true, 1);
 
-// publish data — safe to call from any thread, including a training worker
-float[] positions = ... ; // N*3 row-major xyz
-PointCloudStates.publish(viewport, new PointCloudSnapshot(
-    3, positions.length / 3, positions, null, null, null));
-
-PointCloudStates.setCamera(viewport, CameraSpec.defaultPerspective());
+// A scene is an ordered list of layers, drawn in painter's order.
+float[] xyz = ...;   // N*3 row-major positions
+float[] rgb = ...;   // N*3 per-point colour, or null for the default
+SceneStates.publish(viewport, SceneSnapshot.of(
+    new PointLayer(xyz, rgb),                       // scatter
+    new LineLayer(axisEndpoints, axisColors)        // axes / wireframe on top
+));
+SceneStates.setCamera(viewport, CameraSpec.defaultPerspective());
 
 // optional: react to clicks on individual points
 PointHandlers.onPointClick(viewport, hit ->
-    System.out.println("Picked " + hit.pointIndex()));
+    System.out.println("Picked layer " + hit.layerIndex() + " point " + hit.pointIndex()));
 ```
 
-Drop the `viewport` anywhere in your component tree (inside a `Flex`, a `GraphSurface` node, an `OverlayStack` modal, …). Drag-orbits the camera (perspective) or pans the target (orthographic); scroll-wheel zooms; click-without-drag picks the nearest point inside an 8-pixel tolerance.
+Drop the `viewport` anywhere in your component tree (inside a `Flex`, a `GraphSurface` node, an `OverlayStack` modal, …). Drag orbits the camera (or pans in 2D mode); scroll-wheel zooms (cursor-anchored in 2D mode); click-without-drag picks the nearest point inside an 8-pixel tolerance.
+
+## Layers
+
+A `SceneSnapshot` holds a `List<Layer>` drawn in order — later layers blend over earlier ones (painter's model). `Layer` is sealed:
+
+| Layer | Geometry | Notes |
+|---|---|---|
+| `PointLayer` | `float[]` xyz + optional per-point RGB + optional per-point size | round screen-space dots; `defaultSizePx` for points with no explicit size |
+| `LineLayer` | endpoint pairs + optional per-endpoint RGB | 1px segments, per-endpoint colour gradient — axes, wireframes, edges |
+| `TriangleLayer` | vertex triples + optional per-vertex RGB | the universal fill — bars, heatmap cells, pie wedges, thick polylines |
+| `ImageLayer` | `byte[]` RGBA + world-space quad corners + `smooth` flag | textured quad; same-dimension republish streams via `glTexSubImage2D` (fractals, heatmaps, volume slices) |
+| `TextLayer` | string + world anchor + em height + align + `billboard` | MSDF glyphs in world space; billboards orient in the vertex shader (no re-upload on camera move) |
+| `VexelRayLayer` | a built-in `Field` + params (+ a `CsgBox` op list) | a raymarched signed-distance field — see below |
+
+Every layer carries a `BlendMode` (`ALPHA`, `ADDITIVE`, `SCREEN`, `MULTIPLY`, `MAX`, `MIN`, `OPAQUE`) and a scalar `opacity`. Commutative modes (`ADDITIVE`/`MAX`/`MIN`) are order-independent — the right choice for translucent 3D, where unsorted `ALPHA` pops as the camera orbits. `MAX` over a colormapped point/voxel layer is maximum-intensity projection. Layers have the standard ownership contract: **don't mutate a published layer's backing arrays** — and GPU upload is skipped per layer whose reference is unchanged between snapshots, so reuse untouched layer instances and replace only what changed.
+
+## VexelRay — raymarched fields
+
+A `VexelRayLayer` sphere-traces a signed-distance field inside a bounding cube and shades the hit surface (Blinn-Phong + soft shadows + ambient occlusion, camera-anchored key light). The hit writes real `gl_FragDepth`, so the other (uploaded-geometry) layers depth-compose correctly against the computed surface — axis lines pierce a Mandelbulb, text occludes behind it.
+
+This is the fixed-function tier: a built-in `Field` menu, all parameters as uniforms, so **the shader never recompiles** when a shape changes — animate any parameter through the transition system at zero cost.
+
+```java
+SceneStates.publish(viewport, SceneSnapshot.of(
+    VexelRayLayer.of(VexelRayLayer.Field.MANDELBULB).withMaxSteps(128),
+    VexelRayLayer.csgBoxes(List.of(                       // boolean box program
+        new CsgBox(CsgBox.Op.UNION,         center, halfExtents),
+        new CsgBox(CsgBox.Op.SMOOTH_UNION,  c2, he2, /*k*/0.1f),
+        new CsgBox(CsgBox.Op.SUBTRACT,      c3, he3)
+    ), /*globalRounding*/ 0.04f).withCenter(new Vec3(2f, 0f, 0f))
+));
+```
+
+`Field` values: `SPHERE`, `BOX`, `TORUS`, `BLOBS` (smooth-union), `MANDELBULB`, `CSG_BOXES` (a `CsgBox` op-list program — union / subtract / intersect, hard or smooth, plus global edge rounding), `ALIEN_PLANT` (folded-IFS flora with phyllotaxis spin and bioluminescent tips). `maxSteps` is the quality/cost knob. Fractal fields carry per-field tuning (step relaxation, distance-estimate compensation) internal to the shader.
 
 ## Threading model
 
-This is the load-bearing design constraint. The Ternion Studio use case has a training worker that updates `NodeRuntime` snapshots at thousands of Hz and the UI has to display them without blocking. The framework already had this problem solved at the invalidation layer — `Invalidator.invalidate()` is lock-free and coalesces cross-thread wake events. This module extends that pattern to bulk per-component state.
+The load-bearing design constraint: a worker updates snapshots at thousands of Hz and the UI must display them without blocking. Built on the framework's lock-free `Invalidator.invalidate()` (coalesces cross-thread wake events).
 
 ```
 ┌─────────── Worker thread ────────────┐    ┌──────── Main / render thread ────────┐
 │                                      │    │                                       │
-│  PointCloudStates.publish(component, │    │  PointCloudRenderer.render(...)       │
-│     newSnapshot)                     │    │     - reads snapshotRef.get()         │
-│     ↓                                │    │     - if reference unchanged: skip    │
-│   snapshotRef.set(snapshot)  ◄──────────────────                                  │
-│     ↓                                │    │     - otherwise upload to VBO         │
-│   Invalidator.invalidate()           │    │     - draw GL_POINTS                  │
+│  SceneStates.publish(component,      │    │  SceneRenderer.render(...)            │
+│     newScene)                        │    │     - reads sceneRef.get()            │
+│     ↓                                │    │     - per layer: if reference         │
+│   sceneRef.set(scene)  ◄────────────────────  unchanged, skip its upload          │
+│     ↓                                │    │     - else upload to that layer's VBO │
+│   Invalidator.invalidate()           │    │     - draw all layers in order        │
 │     ↓                                │    │                                       │
 │   (coalesced glfwPostEmptyEvent)     │    │                                       │
 └──────────────────────────────────────┘    └───────────────────────────────────────┘
 ```
 
-Properties this gives:
+- Worker never blocks (`AtomicReference.set` + `Invalidator.invalidate()` are lock-free).
+- Render thread never blocks (one `AtomicReference.get()` per visible viewport per frame).
+- No callbacks cross the boundary — the publish path fires no user code.
+- A worker can publish thousands of snapshots between two frames; the renderer draws exactly one, the latest at frame start. Re-upload happens **per layer**, only when that layer's reference identity changed — republishing a scene where one layer moved costs one layer's upload.
 
-- Worker never blocks. `AtomicReference.set` + `Invalidator.invalidate()` are both lock-free.
-- Render thread never blocks. One `AtomicReference.get()` per visible point cloud per frame.
-- No callbacks cross the boundary. The publish path doesn't fire any user code.
-- Worker can publish 10,000 snapshots between two frames — the renderer uploads exactly one, the latest at the moment the frame starts.
-- Re-upload only when the snapshot reference identity changes (it's compared with `==`). High publish rates that happen to set the same reference twice cost nothing.
+**Ownership contract**: after a layer is published, its backing arrays MUST NOT be mutated by the publisher; the renderer reads them lock-free on the GLFW main thread. Allocate fresh arrays per publish (or reuse the same immutable layer instance).
 
-**Snapshot ownership contract**: after a `PointCloudSnapshot` is passed to `publish`, its backing `positions` / `colors` / `labels` arrays MUST NOT be mutated by the publisher. The renderer reads them lock-free on a different thread. The simplest way to honour this is to allocate fresh arrays per publish.
+## Camera + interaction
+
+- `CameraSpec` — immutable camera (mode, target, distance, yaw, pitch, ortho-scale, FOV, near/far); `with*` setters return new instances; `defaultOrtho()` / `defaultPerspective()`.
+- `CameraMath` — the single source of MVP composition (`mvp`), billboard basis (`viewBasis`), and ray origin/direction (`eye`, `forward`), shared by the renderer and the picker so screen mapping never drifts.
+- `CameraRig` — `fitToBounds(spec, min, max)` frames a bounding box; `front`/`top`/`side`/`iso` presets. Pairs with the transition system for animated camera moves.
+- `InteractionSpec` (per component, via `SceneStates.setInteraction`) — `ORBIT_3D` (default), `PAN_ZOOM_2D` (drag-pan + cursor-anchored zoom, for 2D/chart/fractal views), or `LOCKED` (camera frozen, click-pick still works), with zoom clamps + pitch clamp.
+- `SceneStates.onCameraChange(c, listener)` — fires on every camera change (user navigation or programmatic), so view-dependent content (fractal recompute, chart tick re-derivation) can rebuild.
+
+## Legacy point-cloud API (compat)
+
+The original n-dimensional point-cloud API still works as a thin layer over the scene model:
+
+```java
+PointCloudStates.publish(viewport, new PointCloudSnapshot(
+    dim, count, positions, colors, labels, projection));   // n-D + projection dims
+PointCloudStates.setCamera(viewport, CameraSpec.defaultPerspective());
+```
+
+`PointCloudStates` converts the snapshot to a `SceneSnapshot` (one point layer + one line layer, projecting n-D positions to 3D via `SceneCompat`), caches the conversion by snapshot reference identity, and forwards to `SceneStates` — so the renderer's per-layer identity-skip still works. `snapshotOf` still returns the original `PointCloudSnapshot`. New code should build `SceneSnapshot`s and use `SceneStates` directly.
 
 ## JOML lives inside this module only
 
-JOML's types (`Matrix4f`, `Vector3f`) are mutable for performance — exactly what a per-frame render loop wants. But mutable shared state across threads is a footgun. So JOML is contained to `dasum-vis` internals:
+JOML's types (`Matrix4f`, `Vector3f`) are mutable for performance — exactly what a per-frame render loop wants, but a footgun across threads. So JOML is contained:
 
-- The public API uses immutable records: `Vec3`, `Vec4`, `CameraSpec`, `PointCloudSnapshot`.
-- The renderer (`PointCloudRenderer`) holds JOML scratch buffers as instance fields, used only on the GLFW main thread.
-- The picker (`PointPicker`) allocates JOML matrices per pick (rare event), all on the main thread.
-- No `Matrix4f` reference ever escapes `dasum-vis`.
-
-If you find yourself wanting a JOML helper in app code, add a method to `Vec3`/`CameraSpec` that takes/returns records and does the JOML work internally.
-
-## Public API
-
-| Type | Purpose |
-|---|---|
-| `Vec3`, `Vec4` | Immutable float vectors. |
-| `CameraMode` | `ORTHOGRAPHIC` or `PERSPECTIVE`. |
-| `CameraSpec` | Immutable camera state: mode, target, distance, yaw, pitch, ortho-scale, FOV, near/far. With-style setters return new instances. `defaultOrtho()` / `defaultPerspective()` factories. |
-| `PointCloudSnapshot` | Immutable frame of point data: dimensionality, count, positions (row-major `float[]`), optional per-point colors / labels, optional projection (which dims map to x/y/[z]). Validating canonical constructor enforces invariants. |
-| `PointCloudStates` | Identity-keyed registry. `publish(c, snapshot)`, `setCamera(c, spec)`, `snapshotOf(c)`, `cameraOf(c)`, `clear(c)`. All thread-safe. |
-| `PointHandlers` | Per-component click handlers. `onPointClick(c, Consumer<PointHit>)`. `PointHit` is `(int pointIndex, Vec3 worldPosition)`. |
-| `SceneViewController` | Mouse-input dispatcher. Mirrors the `SliderController` static-API pattern; the host app calls `onMouseDown` / `onCursorMove` / `onMouseUp` / `onScroll` from its GLFW callbacks. |
-| `Icon` | (in `dasum-core`) `Icon.of(int codepoint, Em size, Color color)` — companion helper for icon fonts; see `dasum-msdf-maven-plugin` README. |
-| `DasumVis` | Module bootstrap. `DasumVis.init()` once at startup. |
+- The public API uses immutable records: `Vec3`, `Vec4`, `CameraSpec`, the layer records, `SceneSnapshot`.
+- `CameraMath` returns `float[16]` / `float[]`, never a JOML reference.
+- The renderer and picker allocate JOML scratch only on the GLFW main thread.
 
 ## Component integration
 
-`Component.SceneView` is a sealed-permitted variant in `dasum-core`. Its record carries only layout + appearance — the actual point data, camera, and GPU buffers live in side registries.
+`Component.SceneView` carries only layout + appearance; scene, camera, and interaction live in `SceneStates`, GPU buffers in the renderer's cache. `DasumVis.init()` registers the renderer and a `Components.registerCleaner` that releases `SceneStates`, the compat cache, `PointHandlers`, and the per-component GL buffers on detach.
 
-The renderer is wired in via `CustomRenderers`:
-
-```java
-// inside DasumVis.init():
-CustomRenderers.register(Component.SceneView.class, renderer::asRenderer);
-```
-
-`Render.renderInOrder` dispatches `Component.SceneView` to whatever renderer is registered for its class (no-op if none — components placed before `DasumVis.init()` runs render as flat boxes, harmless). This keeps `dasum-core` 2D-only and free of OpenGL 3D state knowledge; `dasum-vis` is the one who knows about depth tests and MVP matrices.
-
-`DasumVis.init()` also registers a `Components.registerCleaner` that releases `PointCloudStates`, `PointHandlers`, and the per-component GL buffer when a component is detached.
+The renderer wraps its GL work in a `ViewportScope` (try-with-resources: flush the 2D batcher, push scissor, retarget `glViewport`, depth-clear, and restore everything on close). A debug `GlStateGuard` (`-Ddasum.debug.gl=true`, in `dasum-core`) flags any GL state a custom renderer leaks.
 
 ## Rendering details
 
-- **Points as `GL_POINTS`** with `gl_PointSize` set from a uniform. Fragment shader discards corners with an SDF-style round-dot mask. Avoids needing instanced quads (`glDrawArraysInstanced` + `glVertexAttribDivisor`) which aren't in `Gl.java`.
-- **Per-component VBO cache** (`PointCloudGlBuffers`). Skip the upload when the snapshot reference hasn't changed since last frame — a high-frequency worker that re-publishes the same data costs allocation only.
-- **`glViewport` per rect**, then restored to the framebuffer. Without this, NDC `[-1, 1]` maps to the full framebuffer; a small-rect viewport (a thumbnail in a corner) would have all its points scissored away. This bit specifically: was a bug fixed during the node-thumbnail work — keep the restore call in if you modify the renderer.
-- **Depth test** enabled only in perspective mode. The depth buffer is cleared scissored to the viewport rect, so multiple point clouds on screen don't fight each other.
-- **Scissor** to the viewport rect (via `Batcher.scissor()`). Pushes and pops match the `ScrollContents` rendering pattern.
+- **Per-layer materials**: `PointMaterial` (point sprites with per-vertex size + round-dot discard), `FlatMaterial` (lines + triangles), `ImageMaterial` (textured quad), `SceneTextMaterial` (world-space MSDF), `VexelRayMaterial` (the sphere tracer). One program each, bound per layer.
+- **Per-(component, layer) GPU cache** (`SceneGlBuffers`) with per-kind slot pooling — a worker streaming fresh layers every frame reuses VAOs/VBOs (and image textures via `glTexSubImage2D`) with no GL object churn.
+- **`glViewport` per rect** then restored, so a small-rect viewport (a thumbnail in a corner) maps NDC to its rect, not the whole framebuffer.
+- **Depth test** in perspective mode; the depth buffer is cleared scissored to the rect so multiple viewports don't fight. Translucent layers test depth but don't write it.
 
-## Input handling
+## Picking
 
-The `SceneViewController` mirrors `SliderController`'s static-API pattern. The host app (e.g. `dasum-mvp-demo/App.wireInput`) calls into it from GLFW callbacks. Returns `true` from `onMouseDown` / `onScroll` to consume the event.
-
-**Click vs drag**: A 4-pixel squared threshold distinguishes the two. While the cursor stays within that bubble of the press position, the camera doesn't move and a release resolves as a click → `PointPicker.pickNearest` finds the nearest point and fires the registered `PointHandlers` handler. Cross the threshold and we commit to a drag; the eventual release does not fire a click.
-
-`isDragging()` returns `true` for the entire duration of a press, regardless of whether the threshold has been crossed — the host's mouse-up dispatcher uses it to suppress generic click activation so a press-and-release on a viewport is routed through `PointHandlers` instead of `Handlers.activate`.
-
-**Picking** is CPU-side: project every point through the same MVP the renderer uses, filter behind-camera (post-projection w ≤ 0) and out-of-frustum, measure screen-space distance to the cursor, take the nearest within the 8-pixel tolerance. O(N) per click — microseconds for thousands of points.
+`PointPicker` projects every `PointLayer` point through `CameraMath.mvp` (the same matrix the renderer uses), filters behind-camera and out-of-frustum, and takes the screen-nearest within tolerance. O(total points) per click — microseconds for thousands. `PointHit` is `(layerIndex, pointIndex, worldPosition)`. Triangle/field picking is future work; the SDF makes field picking a cursor-ray march (the renderer already does it per fragment).
 
 ## Thumbnail-and-overlay pattern
 
-The framework's layout pass maps each `Component` to exactly one rect per frame, so a single `Component.SceneView` instance can't appear simultaneously in the main tree and an overlay (the overlay rect overwrites the thumbnail rect). Two clean integrations:
+The layout pass maps each `Component` to one rect per frame, so a single `SceneView` can't appear in both the main tree and an overlay at once. The demo's pattern: keep the viewport in a `DynamicChildren` slot; to expand, move it into a modal overlay and drop a placeholder in the slot; the overlay's `onDismiss` swaps it back. Scene, camera, and GPU buffers all follow the component identity — free, no framework changes.
 
-**Option A — same instance, swap location** (the demo's pattern). Thumbnail slot is a `Flex` with empty declared children; the viewport is added via `DynamicChildren`. To expand: remove the viewport from the slot, drop a placeholder in, push an overlay whose `DynamicChildren` carries the viewport, register the overlay's `onDismiss` to swap back. Snapshot, camera, click handler, GPU buffer all follow the component identity. Free, no framework changes.
+## Aspirational / later phases
 
-**Option B — two instances sharing a source** (not implemented, ~30 LOC refactor). Add a `PointCloudSource` opaque key; `PointCloudStates.publishToSource(src, snap)` plus `PointCloudStates.bind(viewport, src)`. Then multiple `Component.SceneView` instances render the same snapshot simultaneously while keeping per-component camera state. Right for thumbnail-next-to-detailed-inspector layouts where both need to stay visible.
-
-Option A covers "expand to popup" cleanly. Reach for Option B only when both viewports must coexist.
-
-## Aspirational / phase 2
-
-Things explicitly out of scope for the initial implementation, designed-not-to-block but not yet wired:
-
-- **Hover tooltips** showing per-point labels (`snapshot.labels`).
-- **Matrix-shaped point positions** + cell-grid dim selector UI (current scope is vector positions, optional `projection` field picks dims for x/y/z).
-- **PCA / t-SNE auto-projection** for n > 3 dims when no explicit `projection` is supplied.
-- **Trail / trajectory rendering** — multiple snapshots overlaid with fading alpha.
-- **Render-limit decimation** for very large clouds (current cap is whatever the GPU can chew through; ~10⁵ points is fine on consumer hardware).
-- **Frustum culling** via JOML's `frustumPlanes`.
-- **Variable point size per point** — currently one uniform pixel size for the whole cloud.
-- **Gradient-magnitude coloring** — automatic mapping from a per-point scalar to colors via a colormap, for Ternion's `runningMaxGrad` use case.
+- **VexelRay R2** — a composable `Field` tree (CSG, domain ops, `Mix` morphing, `Iterate`) compiled to GLSL and cached by structure hash; the `CSG_BOXES` op-list and `ALIEN_PLANT` are the fixed-function preview.
+- **Texture-backed fields** — cubemap heightfields, layered interval shells, voxel grids (3D textures) for arbitrary-topology / dense-tensor manifolds.
+- **Decal cache** — forward-splat cached surface points (position + gradient surfels) and march only disocclusions, for a large interaction speedup on heavy fields.
+- **Chart / fractal / tensor wrappers** — app-facing facades built on the layer model.
+- Hover tooltips from point labels; PCA / t-SNE auto-projection for n > 3 dims; trail / trajectory rendering; render-limit decimation.
 
 ## Files of interest
 
 ```
 dasum-vis/
-├── math/
-│   ├── Vec3.java, Vec4.java       — immutable public math types
-│   ├── CameraMode.java
-│   └── CameraSpec.java
-├── pointcloud/
-│   ├── PointCloudSnapshot.java    — immutable data
-│   ├── PointCloudStates.java      — AtomicReference registry
-│   ├── SceneViewController.java  — mouse input
-│   ├── PointHandlers.java         — click callbacks
-│   └── PointPicker.java           — screen-space picking
-├── render/
-│   ├── PointCloudRenderer.java    — the CustomRenderers entry point
-│   ├── PointCloudMaterial.java    — GL program + uniforms
-│   └── PointCloudGlBuffers.java   — per-component VBO cache
-└── DasumVis.java                  — module bootstrap
+├── math/      — Vec3, Vec4, CameraMode, CameraSpec, CameraMath, CameraRig
+├── scene/     — BlendMode, Layer (sealed) + Point/Line/Triangle/Image/Text/VexelRay layers,
+│               CsgBox, SceneSnapshot, SceneStates, SceneCompat, InteractionSpec
+├── pointcloud/— PointCloudSnapshot, PointCloudStates (compat), SceneViewController,
+│               PointHandlers, PointPicker
+├── render/    — SceneRenderer, SceneGlBuffers, ViewportScope, and the per-layer materials
+└── DasumVis.java — module bootstrap
 ```

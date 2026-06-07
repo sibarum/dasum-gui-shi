@@ -27,7 +27,7 @@ mvn install
 mvn -pl dasum-mvp-demo exec:exec
 ```
 
-A 1280×800 window opens with three top-level tabs: **Node Editor**, **Widgets**, **Text**. The Node Editor tab includes a Point Cloud node — click to expand it into a full-screen modal viewport with orbit / zoom / point-pick.
+A 1280×800 window opens with five top-level tabs: **Node Editor**, **Widgets**, **Text**, **Stress**, **Tables**. The Node Editor tab includes a scene viewport (a point cloud) — click to expand it into a full-screen modal with orbit / zoom / point-pick. The Stress tab showcases the layered `SceneView` renderer: mixed blend modes, streamed images, in-scene MSDF text, and **VexelRay** raymarched signed-distance-field shapes (primitives, boolean CSG, a Mandelbulb, alien flora) — each card expands to full screen.
 
 ### Run the demo (native-image)
 
@@ -46,7 +46,7 @@ Produces a single executable with no JVM dependency.
 | `dasum-glfw` | Holds the GLFW dynamic library (`glfw3.dll` etc.) as a classpath resource. Split out from `dasum-natives` so the bindings can be vendored / replaced without the binary. |
 | `dasum-nfd` | Native file-dialog wrapper. Exposes `FileDialog.open` / `save` / `pickFolder` backed by [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended); the platform's native picker, not an in-process imitation. |
 | `dasum-core` | The framework. All packages under `sibarum.dasum.gui.core`. See below. |
-| `dasum-vis` | Optional visualization module — n-dimensional point-cloud viewport with orbit/zoom camera, click-to-pick, thumbnail-or-expanded layout. Uses JOML internally, exposes immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md). |
+| `dasum-vis` | Optional visualization module — `Component.SceneView`, a layered 3D scene viewport: point / line / triangle / image / text layers with per-layer blend modes, plus **VexelRay**, a raymarched signed-distance-field layer. Orbit/pan/zoom camera, click-pick, thumbnail-or-expanded layout. Uses JOML internally, exposes immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md). |
 | `dasum-msdf-maven-plugin` | Build-time MSDF atlas generation. Text atlases from charset presets, icon atlases from named glyph subsets of icon fonts (Lucide / Material) with generated Java constants. See [`dasum-msdf-maven-plugin/README.md`](dasum-msdf-maven-plugin/README.md). |
 | `dasum-mvp-demo` | The reference / showcase app. The best place to look when learning the API. |
 
@@ -126,15 +126,16 @@ The `Batcher` has one accumulator per material — currently `SolidFillAccumulat
 All under `sibarum.dasum.gui.core.component.Component` (sealed):
 
 - **`Box`** — solid-color rectangle with fixed em size. Container or leaf.
-- **`Flex`** — layout container; row or column, justify-content + align-items + gap + per-child flex-grow. `width`/`height` may be `null` (fill parent) or `Em.AUTO` (fit content). The workhorse for almost every UI.
-- **`Scroll`** — viewport with overflow scrolling. Mouse-wheel + scrollbar drag.
-- **`Text`** — text-rendering primitive. Optional `selectable` / `editable` / multiline / clip / wrap-width / phantom-cursor on hover. The foundation of every label and input.
+- **`Flex`** — layout container; row or column, justify-content + align-items + gap + per-child flex-grow, optional `wrap` (ROW children that overflow the main axis reflow onto stacked rows). `width`/`height` may be `null` (fill parent) or `Em.AUTO` (fit content). The workhorse for almost every UI.
+- **`Scroll`** — viewport with overflow scrolling (both axes). Mouse-wheel + scrollbar drag; wheel routing walks the scroll chain so a bottomed-out inner scroll bubbles to its parent.
+- **`Text`** — text-rendering primitive. Optional `selectable` / `editable` / multiline / clip / wrap-width / phantom-cursor on hover. Per-range foreground (glyph tint) and background color spans, plus MSDF outline and weight effects, via `TextStyle` + `TextStyleStates` (used for syntax highlighting). The foundation of every label and input.
 - **`Checkbox`** — bound to a `Property<Boolean>`.
 - **`Radio<T>`** — bound to a shared `Property<T>` (group-exclusive).
 - **`Slider`** — horizontal or vertical, bound to a `Property<Float>`.
 - **`Tabs`** — tab strip with header cells, content panes, active-index bound to a `Property<Integer>`.
 - **`GraphSurface`** — 2D positioning container for the node editor. Children float at em positions from `GraphSurfacePositions`. Distinct from a future drawing-canvas component (which would be called `Canvas`).
-- **`PointCloud`** — leaf 3D viewport whose data and camera state live in `PointCloudStates` (in `dasum-vis`). The variant lives in `dasum-core` so layout / hit-test treat it as a first-class component; the renderer is registered via `CustomRenderers` from `dasum-vis` so `dasum-core` stays 2D-only. See [`dasum-vis/README.md`](dasum-vis/README.md).
+- **`SceneView`** — leaf 3D viewport whose scene (a list of blend-mode layers) and camera live in `SceneStates` (in `dasum-vis`). The variant lives in `dasum-core` so layout / hit-test treat it as a first-class component; the renderer is registered via `CustomRenderers` from `dasum-vis` so `dasum-core` stays 2D-only. See [`dasum-vis/README.md`](dasum-vis/README.md).
+- **`DataTable`** — virtualized spreadsheet-style grid backed by a `DataTableSource`; selection / scroll / edit / hover state in `DataTableStates`. Rendered via `CustomRenderers` like `SceneView`, treated as a leaf for layout / hit-test.
 
 Variants are immutable; instance methods like `Flex.withFlexGrow(int)` return a new record with the field changed.
 
@@ -176,9 +177,9 @@ State sidecars (`HoverState`, `FocusState`, `InputState`) track the current mous
 
 `EmContext` is process-global state: `rootEmPx` (default 16), `zoom`, `dpiScale`. `pixelsPerEm() = rootEmPx × zoom × dpiScale`. Set DPI scale at startup from `Window.contentScaleX()`. Ctrl+= / Ctrl+- / Ctrl+0 in the demo bind to `multiplyZoom` / `setZoom(1f)`.
 
-### Point-cloud visualization (`dasum-vis`)
+### Scene visualization (`dasum-vis`)
 
-Optional module — depend on `dasum-vis` to render n-dimensional point clouds as 3D scenes inside any GUI panel. Each viewport is a `Component.SceneView` with snapshot + camera state held in a per-component `AtomicReference`, so worker threads can publish data (typical for ML / training visualizations) without blocking the render thread. Drag-orbit, scroll-zoom, click-pick handlers. Same `Component.SceneView` instance can be moved between a thumbnail location and a modal overlay via `DynamicChildren` — snapshot, camera, and GPU buffer all follow the component identity. JOML lives entirely inside `dasum-vis`; the public API is immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md).
+Optional module — depend on `dasum-vis` to render 3D scenes inside any GUI panel. Each viewport is a `Component.SceneView`; its scene is a `SceneSnapshot` — an ordered list of layers (points, lines, triangles, images, in-scene MSDF text) each with a blend mode, plus **VexelRay** layers that raymarch a signed-distance field (analytic primitives, boolean CSG box programs, fractals, folded-IFS shapes). Scene + camera + interaction state are held in per-component `AtomicReference`s in `SceneStates`, so worker threads can publish data (typical for ML / training visualizations) without blocking the render thread; GPU uploads are skipped per layer when a layer reference is unchanged. Drag-orbit / pan, scroll-zoom (cursor-anchored in 2D mode), click-pick. The same `SceneView` instance can move between a thumbnail and a modal overlay via `DynamicChildren` — scene, camera, and GPU buffers all follow the component identity. The legacy `PointCloudStates` API still works as a thin compat layer over `SceneStates`. JOML lives entirely inside `dasum-vis`; the public API is immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md).
 
 ### Icon fonts
 
@@ -287,7 +288,7 @@ The component sealed type is `permits`-restricted, so you can't add a new varian
 
 ### A custom 3D / GPU component
 
-If you need a new component variant that draws via OpenGL outside the 2D batcher (point clouds, mesh viewers, custom shaders), add the variant to `Component`'s sealed `permits` clause and register a `CustomRenderers.Renderer` for it from a separate module. The renderer receives the component, its layout rect, the batcher, the 2D projection, and the framebuffer dimensions; it's responsible for flushing the batcher, scissoring/viewport-ing to its rect, drawing, and restoring GL state. `dasum-vis`'s `PointCloudRenderer` is the worked example.
+If you need a new component variant that draws via OpenGL outside the 2D batcher (3D scenes, mesh viewers, custom shaders), add the variant to `Component`'s sealed `permits` clause and register a `CustomRenderers.Renderer` for it from a separate module. The renderer receives the component, its layout rect, the batcher, and the 2D projection; it queries the current `glViewport` directly (rather than being passed framebuffer dimensions) and is responsible for flushing the batcher, scissoring/viewport-ing to its rect, drawing, and restoring GL state. `dasum-vis` packages this dance in a `ViewportScope` (try-with-resources) and a debug `GlStateGuard` (`-Ddasum.debug.gl=true`) that flags any leaked GL state; its `SceneRenderer` is the worked example.
 
 ### A custom port type
 

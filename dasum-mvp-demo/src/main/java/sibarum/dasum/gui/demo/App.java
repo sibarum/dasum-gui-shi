@@ -206,7 +206,7 @@ public final class App {
                 registerCommands(window);
 
                 RenderStats stats = new RenderStats();
-                System.out.println("Demo: top-level tabs — Node Editor / Widgets / Text. Ctrl+Space opens the command palette; Ctrl+=/- zoom.");
+                System.out.println("Demo: top-level tabs — Node Editor / Widgets / Text / Stress / Tables. Ctrl+Space opens the command palette; Ctrl+=/- zoom.");
 
                 EventLoop loop = new EventLoop(window, () -> {
                     int fbW = window.framebufferWidth();
