@@ -227,10 +227,12 @@ float deComp() {
     return 1.0;
 }
 
-// Ambient occlusion: probe the field along the normal; concave regions
-// return less free distance than the probe height. Per-probe normalized
-// (0..1 each) so the result is scale-independent; smooth by construction.
-float occlusion(vec3 p, vec3 n) {
+// Normal-march AO (iq-style): probe the field along the normal; nearby
+// geometry along that axis returns less free distance than the probe
+// height. Good for smooth, mostly-convex surfaces (bulb, blobs, plant).
+// Blind to concave creases — the normal there points the most-OPEN way,
+// so it can't see the converging walls (that's what hemisphereAO fixes).
+float normalMarchAO(vec3 p, vec3 n) {
     float comp = deComp();
     float base = 0.03 * u_scale;
     float occ = 0.0;
@@ -244,6 +246,44 @@ float occlusion(vec3 p, vec3 n) {
         sca *= 0.7;
     }
     return clamp(1.0 - 0.9 * occ / wsum, 0.05, 1.0);
+}
+
+// Hemisphere AO with a direction-relative baseline — the correct answer
+// for hard concave creases. Each tap compares the field at p + dir*r to
+// the TANGENT-PLANE prediction r*dot(dir,n):
+//   flat surface   -> sdf == prediction      -> 0  (bright)
+//   convex edge    -> sdf  > prediction      -> clamped to 0 (bright)
+//   concave crease -> walls intrude, sdf < prediction -> positive (dark)
+// Because the converging walls are closest at the crease CENTRE, that's
+// where the most tap directions are occluded — so the centre is the
+// darkest point, not the brightest. The direction-relative baseline is
+// the whole trick: it cancels surface curvature except where geometry
+// actually closes in.
+float hemisphereAO(vec3 p, vec3 n) {
+    float comp = deComp();
+    vec3 t = normalize(abs(n.y) < 0.99 ? cross(n, vec3(0.0, 1.0, 0.0))
+                                       : cross(n, vec3(1.0, 0.0, 0.0)));
+    vec3 b = cross(n, t);
+    float r = 0.07 * u_scale;
+    const float CT = 0.573; // cos(55°) — ring tilt off the normal
+    const float ST = 0.819; // sin(55°)
+    float occ = 0.0;
+    for (int i = 0; i < 6; i++) {
+        float a = 6.2831853 * float(i) / 6.0;
+        vec3 dir = n * CT + (t * cos(a) + b * sin(a)) * ST;
+        float e = r * CT;                       // flat-plane expectation for this dir
+        occ += clamp((e - sdf(p + dir * r) * comp) / r, 0.0, 1.0);
+    }
+    // Plus the normal axis (convex-bump / contact occlusion).
+    occ += clamp((r - sdf(p + n * r) * comp) / r, 0.0, 1.0);
+    return clamp(1.0 - 1.4 * occ / 7.0, 0.05, 1.0);
+}
+
+float occlusion(vec3 p, vec3 n) {
+    // Boolean shapes have hard concave creases the normal-march can't read
+    // (it inverts them to bright); hemisphere sampling darkens the crease
+    // centre correctly. Smooth fields keep the cheaper, already-tuned march.
+    return u_fieldType == 5 ? hemisphereAO(p, n) : normalMarchAO(p, n);
 }
 
 // Soft shadow: march from the surface toward the light; the closer the
