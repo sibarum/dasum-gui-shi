@@ -88,6 +88,10 @@ import sibarum.dasum.gui.vis.pointcloud.PointCloudSnapshot;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
 import sibarum.dasum.gui.vis.scene.BlendMode;
 import sibarum.dasum.gui.vis.scene.CsgBox;
+import sibarum.dasum.gui.vis.scene.CsgField;
+import sibarum.dasum.gui.vis.scene.FieldShading;
+import sibarum.dasum.gui.vis.scene.ScalarField;
+import sibarum.dasum.gui.vis.scene.SurfaceSampler;
 import sibarum.dasum.gui.vis.scene.ImageLayer;
 import sibarum.dasum.gui.vis.scene.InteractionSpec;
 import sibarum.dasum.gui.vis.scene.LineLayer;
@@ -920,7 +924,7 @@ public final class App {
                 section("VexelRay — raymarched fields", new Component.Flex(
                     null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
                     Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
-                    List.of(buildMandelbulbScene(), buildBlobsScene(), buildCsgBoxScene(), buildAlienPlantScene()),
+                    List.of(buildMandelbulbScene(), buildBlobsScene(), buildCsgBoxScene(), buildCsgSplatScene(), buildAlienPlantScene()),
                     false, 0, true  // wrap: all four cards reachable via vertical scroll
                 )),
                 section("Icon + text inline (small)",        iconRowSmall),
@@ -1240,12 +1244,12 @@ public final class App {
      * uniform array: every box, blend radius, and the rounding are
      * animatable without a recompile.
      */
-    private static Component buildCsgBoxScene() {
-        Component.SceneView viewport = new Component.SceneView(
-            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
-        );
+    private static final float MONUMENT_ROUNDING = 0.10f;
+    private static final Color MONUMENT_COLOR = new Color(0.88f, 0.80f, 0.66f, 1f);
 
-        List<CsgBox> ops = List.of(
+    /** The arch-monument op list — shared by the raymarched and splat cards. */
+    private static List<CsgBox> monumentOps() {
+        return List.of(
             // Base slab; pillars join it with small-k smooth unions —
             // hard min() keeps concave junction creases SHARP (outward
             // rounding only rounds convex edges), and sharp concave
@@ -1263,18 +1267,60 @@ public final class App {
             // Capstone, filleted onto the lintel.
             new CsgBox(CsgBox.Op.SMOOTH_UNION, new Vec3(0f, 0.70f, 0f), new Vec3(0.13f, 0.13f, 0.13f), 0.06f)
         );
+    }
+
+    private static Component buildCsgBoxScene() {
+        Component.SceneView viewport = new Component.SceneView(
+            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
+        );
 
         SceneStates.publish(viewport, SceneSnapshot.of(
             // Rounding wide enough to RESOLVE at card size — a fillet
             // thinner than ~4px renders as an aliased bright wire along
             // every edge and reads as an artifact.
-            VexelRayLayer.csgBoxes(ops, 0.10f)
-                .withColor(new Color(0.88f, 0.80f, 0.66f, 1f))
+            VexelRayLayer.csgBoxes(monumentOps(), MONUMENT_ROUNDING).withColor(MONUMENT_COLOR)
         ));
         SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(4.0f));
 
         return sceneCard("CSG boxes — booleans, smooth joins, global rounding",
             "CSG Boxes", viewport, Em.of(13f), Em.of(9f));
+    }
+
+    /**
+     * Experiment: the SAME monument, but instead of raymarching the field
+     * directly, sample its surface into a splat point cloud (CPU SDF →
+     * grid → Newton-project), bake view-independent shading (diffuse + the
+     * hemisphere AO) into per-point colour, and render THAT as a PointLayer.
+     * The first probe of the surface-cache thesis: does a baked splat cloud
+     * stand in for the marched surface? Watch the coverage gaps between
+     * dots — that's the empirical case for oriented surfels (R4).
+     */
+    private static Component buildCsgSplatScene() {
+        Component.SceneView viewport = new Component.SceneView(
+            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
+        );
+
+        float scale = 1.2f; // monument bounding-cube half-extent (matches the field demo)
+        ScalarField field = CsgField.of(monumentOps(), MONUMENT_ROUNDING);
+        SurfaceSampler.Result surf = SurfaceSampler.sample(
+            field, new Vec3(-scale, -scale, -scale), new Vec3(scale, scale, scale), 96, 0.6f);
+        // Fixed world light (view-independent bake → orbits correctly).
+        Vec3 light = new Vec3(0.40f, 0.75f, 0.52f);
+        float[] colors = FieldShading.bakeColors(field, surf.positions(), surf.normals(),
+            surf.count(), new Vec3(0.88f, 0.80f, 0.66f), light, scale);
+
+        SceneStates.publish(viewport, SceneSnapshot.of(
+            // OPAQUE so the dots WRITE depth and occlude each other — a
+            // surface splat must hide its own back side. (ALPHA points
+            // don't write depth, so the far surface shows through the
+            // gaps between near dots — reads as inverted backface culling.)
+            new PointLayer(surf.positions(), colors, null, 4f, BlendMode.OPAQUE, 1f)
+        ));
+        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(4.0f));
+
+        System.out.println("CSG splat bake: " + surf.count() + " surface points");
+        return sceneCard("CSG monument (splat) — surface-sampled SDF, baked shading",
+            "CSG Splat", viewport, Em.of(13f), Em.of(9f));
     }
 
     /**
