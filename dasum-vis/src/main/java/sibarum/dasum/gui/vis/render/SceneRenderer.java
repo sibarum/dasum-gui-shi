@@ -20,6 +20,7 @@ import sibarum.dasum.gui.vis.scene.SceneStates;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
 import sibarum.dasum.gui.vis.scene.VexelRayLayer;
+import sibarum.dasum.gui.vis.scene.VexelRayView;
 
 import static sibarum.dasum.gui.natives.gl.Gl.GL_BLEND;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_DST_COLOR;
@@ -151,7 +152,8 @@ public final class SceneRenderer implements AutoCloseable {
                         float[] lightDir = {lx / len, ly / len, lz / len};
                         vexelRayMaterial.bind(scratchMvp, v,
                             CameraMath.eye(cam), fwd, lightDir,
-                            cam.mode() == CameraMode.ORTHOGRAPHIC);
+                            cam.mode() == CameraMode.ORTHOGRAPHIC,
+                            VexelRayView.current().ordinal());
                         draw(slot, GL_TRIANGLES);
                     }
                     case TextLayer txt -> {

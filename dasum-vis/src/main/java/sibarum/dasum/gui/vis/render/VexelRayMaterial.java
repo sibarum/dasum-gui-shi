@@ -27,6 +27,7 @@ final class VexelRayMaterial implements AutoCloseable {
     private int uParams = -1;
     private int uColor = -1;
     private int uMaxSteps = -1;
+    private int uViewMode = -1;
     private int uCsg = -1;
     private int uCsgCount = -1;
 
@@ -45,6 +46,7 @@ final class VexelRayMaterial implements AutoCloseable {
         uParams    = Gl.glGetUniformLocation(program, "u_params");
         uColor     = Gl.glGetUniformLocation(program, "u_color");
         uMaxSteps  = Gl.glGetUniformLocation(program, "u_maxSteps");
+        uViewMode  = Gl.glGetUniformLocation(program, "u_viewMode");
         // Array uniforms resolve as "name" on most drivers, "name[0]" on
         // the rest — try both.
         uCsg = Gl.glGetUniformLocation(program, "u_csg");
@@ -52,13 +54,13 @@ final class VexelRayMaterial implements AutoCloseable {
         uCsgCount  = Gl.glGetUniformLocation(program, "u_csgCount");
         if (uMvp < 0 || uCenter < 0 || uScale < 0 || uEye < 0 || uForward < 0
                 || uLightDir < 0 || uOrtho < 0 || uFieldType < 0 || uParams < 0
-                || uColor < 0 || uMaxSteps < 0 || uCsg < 0 || uCsgCount < 0) {
+                || uColor < 0 || uMaxSteps < 0 || uViewMode < 0 || uCsg < 0 || uCsgCount < 0) {
             throw new IllegalStateException("vexelray shader missing required uniforms");
         }
     }
 
     void bind(float[] mvp, VexelRayLayer layer, float[] eye, float[] forward,
-              float[] lightDir, boolean ortho) {
+              float[] lightDir, boolean ortho, int viewMode) {
         Gl.glUseProgram(program);
         Gl.glUniformMatrix4fv(uMvp, false, mvp);
         Gl.glUniform3f(uCenter, layer.center().x(), layer.center().y(), layer.center().z());
@@ -74,6 +76,7 @@ final class VexelRayMaterial implements AutoCloseable {
             layer.color().r(), layer.color().g(), layer.color().b(),
             layer.color().a() * layer.opacity());
         Gl.glUniform1i(uMaxSteps, layer.maxSteps());
+        Gl.glUniform1i(uViewMode, viewMode);
         if (layer.field() == VexelRayLayer.Field.CSG_BOXES) {
             Gl.glUniform4fv(uCsg, layer.csg().length / 4, layer.csg());
             Gl.glUniform1i(uCsgCount, layer.csgOpCount());

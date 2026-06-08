@@ -88,10 +88,7 @@ import sibarum.dasum.gui.vis.pointcloud.PointCloudSnapshot;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
 import sibarum.dasum.gui.vis.scene.BlendMode;
 import sibarum.dasum.gui.vis.scene.CsgBox;
-import sibarum.dasum.gui.vis.scene.CsgField;
-import sibarum.dasum.gui.vis.scene.FieldShading;
-import sibarum.dasum.gui.vis.scene.ScalarField;
-import sibarum.dasum.gui.vis.scene.SurfaceSampler;
+import sibarum.dasum.gui.vis.scene.VexelRayView;
 import sibarum.dasum.gui.vis.scene.ImageLayer;
 import sibarum.dasum.gui.vis.scene.InteractionSpec;
 import sibarum.dasum.gui.vis.scene.LineLayer;
@@ -343,6 +340,7 @@ public final class App {
                 new Component.Tabs.TabPanel("Widgets",     buildWidgetsPane()),
                 new Component.Tabs.TabPanel("Text",        buildTextPane()),
                 new Component.Tabs.TabPanel("Stress",      buildStressPane()),
+                new Component.Tabs.TabPanel("VexelRay",    buildVexelRayPane()),
                 new Component.Tabs.TabPanel("Tables",      buildTablesPane())
             ),
             activeTab,
@@ -921,12 +919,6 @@ public final class App {
                     List.of(buildImageTextScene(), buildBillboardScene()),
                     false, 0, true  // wrap: reflow cards to the viewport width
                 )),
-                section("VexelRay — raymarched fields", new Component.Flex(
-                    null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
-                    Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
-                    List.of(buildMandelbulbScene(), buildBlobsScene(), buildCsgBoxScene(), buildCsgSplatScene(), buildAlienPlantScene()),
-                    false, 0, true  // wrap: all four cards reachable via vertical scroll
-                )),
                 section("Icon + text inline (small)",        iconRowSmall),
                 section("Icon + text inline (large)",        iconRowLarge),
                 section("Viewport inside Scroll",            scrollBlock)
@@ -1170,80 +1162,102 @@ public final class App {
     }
 
     /**
-     * VexelRay R1 showpiece: a raymarched Mandelbulb with vector layers
-     * composed THROUGH it — the axis lines must vanish behind the bulb
-     * and emerge on the other side, and the billboard label must occlude
-     * correctly. That's gl_FragDepth from the field hit point meeting the
-     * scene's shared depth buffer; nothing here is uploaded geometry
-     * except the lines and the label.
+     * VexelRay inspector tab ("Houdini-lite"): one orbit viewport plus a
+     * control panel that swaps the model, the inspection view mode, and the
+     * march step budget — so any render-pipeline experiment applies to any
+     * model. Geometry/quality is per-layer (republished on change); the view
+     * mode is the global {@link VexelRayView} read live by the renderer.
      */
-    private static Component buildMandelbulbScene() {
-        // flexGrow 1 from birth: the SAME instance later fills the
-        // fullscreen overlay, and a with* copy would orphan its scene
-        // state (identity-keyed).
-        Component.SceneView viewport = new Component.SceneView(
-            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
-        );
-
-        // Axis lines passing straight through the bulb's volume.
-        float a = 1.6f;
-        float[] axes = {
-            -a, 0f, 0f,   a, 0f, 0f,
-            0f, -a, 0f,   0f, a, 0f,
-            0f, 0f, -a,   0f, 0f, a,
-        };
-        float[] axisCols = {
-            1f, 0.4f, 0.4f,  1f, 0.4f, 0.4f,
-            0.4f, 1f, 0.4f,  0.4f, 1f, 0.4f,
-            0.4f, 0.6f, 1f,  0.4f, 0.6f, 1f,
-        };
-
-        SceneStates.publish(viewport, SceneSnapshot.of(
-            VexelRayLayer.of(VexelRayLayer.Field.MANDELBULB)
-                .withColor(new Color(0.92f, 0.74f, 1.00f, 1f))
-                .withMaxSteps(192), // relaxed fractal stepping needs the headroom
-            new LineLayer(axes, axisCols),
-            new TextLayer("power-8 bulb", FontGroups.DEFAULT, new Vec3(0f, 1.35f, 0f), 0.18f,
-                new Color(1f, 0.9f, 0.5f, 1f), TextLayer.HAlign.CENTER, true, BlendMode.ALPHA, 1f)
-        ));
-        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(3.5f));
-
-        return sceneCard("Mandelbulb — axis lines depth-compose through the field",
-            "Mandelbulb", viewport, Em.of(13f), Em.of(9f));
+    private enum VexelModel {
+        SPHERE("Sphere", 3.0f), BOX("Box", 3.0f), TORUS("Torus", 3.2f),
+        BLOBS("Blobs", 4.5f), MANDELBULB("Mandelbulb", 3.5f),
+        CSG_MONUMENT("CSG Monument", 4.0f), ALIEN_TREE("Alien Tree", 3.4f);
+        final String label; final float camDist;
+        VexelModel(String label, float camDist) { this.label = label; this.camDist = camDist; }
     }
 
-    /**
-     * Two raymarched fields in one scene: smooth-union blobs (the SDF
-     * smin melting three spheres into one organic form) beside a torus.
-     * Each is its own VexelRayLayer with its own bounding cube.
-     */
-    private static Component buildBlobsScene() {
-        Component.SceneView viewport = new Component.SceneView(
-            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
-        );
-
-        SceneStates.publish(viewport, SceneSnapshot.of(
-            VexelRayLayer.of(VexelRayLayer.Field.BLOBS)
-                .withCenter(new Vec3(-1.1f, 0f, 0f))
-                .withColor(new Color(0.45f, 0.9f, 0.6f, 1f)),
-            VexelRayLayer.of(VexelRayLayer.Field.TORUS)
-                .withCenter(new Vec3(1.1f, 0f, 0f))
-                .withColor(new Color(0.95f, 0.6f, 0.35f, 1f))
-        ));
-        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(4.5f));
-
-        return sceneCard("Smooth-union blobs + torus — two fields, one scene",
-            "Raymarched Fields", viewport, Em.of(13f), Em.of(9f));
+    private static VexelRayLayer vexelModel(VexelModel m, int maxSteps) {
+        return switch (m) {
+            case SPHERE     -> VexelRayLayer.of(VexelRayLayer.Field.SPHERE).withMaxSteps(maxSteps);
+            case BOX        -> VexelRayLayer.of(VexelRayLayer.Field.BOX).withMaxSteps(maxSteps);
+            case TORUS      -> VexelRayLayer.of(VexelRayLayer.Field.TORUS).withMaxSteps(maxSteps);
+            case BLOBS      -> VexelRayLayer.of(VexelRayLayer.Field.BLOBS)
+                                   .withColor(new Color(0.45f, 0.9f, 0.6f, 1f)).withMaxSteps(maxSteps);
+            case MANDELBULB -> VexelRayLayer.of(VexelRayLayer.Field.MANDELBULB)
+                                   .withColor(new Color(0.92f, 0.74f, 1.00f, 1f)).withMaxSteps(maxSteps);
+            case CSG_MONUMENT -> VexelRayLayer.csgBoxes(monumentOps(), MONUMENT_ROUNDING)
+                                   .withColor(MONUMENT_COLOR).withMaxSteps(maxSteps);
+            case ALIEN_TREE -> VexelRayLayer.of(VexelRayLayer.Field.ALIEN_PLANT).withMaxSteps(maxSteps);
+        };
     }
 
-    /**
-     * CSG_BOXES demo: a little arch monument built from nine axis-aligned
-     * boxes folded with hard unions, a smooth-union lintel (melts into
-     * its pillars), a hard window subtraction, and a smooth-subtracted
-     * scoop — finished with global edge rounding. The whole shape is a
-     * uniform array: every box, blend radius, and the rounding are
-     * animatable without a recompile.
-     */
+    private static Component buildVexelRayPane() {
+        Component.SceneView viewport = new Component.SceneView(
+            null, null, Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
+        );
+
+        Property<VexelModel> model = new Property<>(VexelModel.CSG_MONUMENT);
+        Property<Float> maxSteps = new Property<>(96f);
+        Property<VexelRayView> view = new Property<>(VexelRayView.LIT);
+
+        Runnable republish = () -> {
+            VexelModel m = model.get();
+            SceneStates.publish(viewport, SceneSnapshot.of(vexelModel(m, Math.round(maxSteps.get()))));
+            SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(m.camDist));
+        };
+        model.subscribe(v -> republish.run());
+        maxSteps.subscribe(v -> republish.run());
+        view.subscribe(VexelRayView::set);
+        republish.run(); // initial publish
+
+        List<Component> modelRows = new java.util.ArrayList<>();
+        for (VexelModel m : VexelModel.values()) modelRows.add(vexelRadioRow(model, m, m.label));
+
+        List<Component> viewRows = new java.util.ArrayList<>();
+        String[] viewLabels = {"Lit", "Normals", "AO", "Steps (cost)", "Escape iters", "Cost - escape"};
+        VexelRayView[] views = VexelRayView.values();
+        for (int i = 0; i < views.length; i++) viewRows.add(vexelRadioRow(view, views[i], viewLabels[i]));
+
+        Component stepsSlider = new Component.Slider(
+            Direction.ROW, Em.of(10f), Em.of(0.9f), Em.of(0.5f),
+            SL_TRACK, SL_FILL, SL_THUMB, maxSteps, 16f, 256f);
+
+        Component panelCol = new Component.Flex(
+            null, Em.AUTO, Em.of(0.6f), new Color(0f, 0f, 0f, 0f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.8f),
+            List.of(
+                new Component.Text("VexelRay Inspector", Em.of(1.1f), LABEL_FG),
+                vexelGroup("Model", modelRows),
+                vexelGroup("View", viewRows),
+                vexelGroup("Max steps (16–256)", List.of(stepsSlider))
+            ), false, 0);
+
+        Component panel = new Component.Scroll(
+            Em.of(15f), null, Em.of(0.4f), new Color(0.10f, 0.12f, 0.16f, 1f), panelCol, false, 0);
+
+        return new Component.Flex(
+            null, null, Em.ZERO, CONTENT_BG,
+            Direction.ROW, JustifyContent.START, AlignItems.STRETCH, Em.of(0.5f),
+            List.of(panel, viewport), false, 1);
+    }
+
+    private static <T> Component vexelRadioRow(Property<T> prop, T value, String label) {
+        return inlineRow(List.of(
+            new Component.Radio<>(Em.of(1.1f), RB_BOX, RB_DOT, prop, value),
+            new Component.Text(label, Em.of(0.9f), LABEL_FG)));
+    }
+
+    private static Component vexelGroup(String heading, List<Component> rows) {
+        List<Component> kids = new java.util.ArrayList<>();
+        kids.add(new Component.Text(heading, Em.of(0.95f), new Color(0.65f, 0.70f, 0.85f, 0.9f)));
+        kids.addAll(rows);
+        return new Component.Flex(
+            null, Em.AUTO, Em.of(0.2f), new Color(0f, 0f, 0f, 0f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.25f),
+            kids, false, 0);
+    }
+
+    /** Arch-monument CSG parameters — the inspector's CSG_MONUMENT model. */
     private static final float MONUMENT_ROUNDING = 0.10f;
     private static final Color MONUMENT_COLOR = new Color(0.88f, 0.80f, 0.66f, 1f);
 
@@ -1267,161 +1281,6 @@ public final class App {
             // Capstone, filleted onto the lintel.
             new CsgBox(CsgBox.Op.SMOOTH_UNION, new Vec3(0f, 0.70f, 0f), new Vec3(0.13f, 0.13f, 0.13f), 0.06f)
         );
-    }
-
-    private static Component buildCsgBoxScene() {
-        Component.SceneView viewport = new Component.SceneView(
-            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
-        );
-
-        SceneStates.publish(viewport, SceneSnapshot.of(
-            // Rounding wide enough to RESOLVE at card size — a fillet
-            // thinner than ~4px renders as an aliased bright wire along
-            // every edge and reads as an artifact.
-            VexelRayLayer.csgBoxes(monumentOps(), MONUMENT_ROUNDING).withColor(MONUMENT_COLOR)
-        ));
-        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(4.0f));
-
-        return sceneCard("CSG boxes — booleans, smooth joins, global rounding",
-            "CSG Boxes", viewport, Em.of(13f), Em.of(9f));
-    }
-
-    /**
-     * Experiment: the SAME monument, but instead of raymarching the field
-     * directly, sample its surface into a splat point cloud (CPU SDF →
-     * grid → Newton-project), bake view-independent shading (diffuse + the
-     * hemisphere AO) into per-point colour, and render THAT as a PointLayer.
-     * The first probe of the surface-cache thesis: does a baked splat cloud
-     * stand in for the marched surface? Watch the coverage gaps between
-     * dots — that's the empirical case for oriented surfels (R4).
-     */
-    private static Component buildCsgSplatScene() {
-        Component.SceneView viewport = new Component.SceneView(
-            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
-        );
-
-        float scale = 1.2f; // monument bounding-cube half-extent (matches the field demo)
-        ScalarField field = CsgField.of(monumentOps(), MONUMENT_ROUNDING);
-        SurfaceSampler.Result surf = SurfaceSampler.sample(
-            field, new Vec3(-scale, -scale, -scale), new Vec3(scale, scale, scale), 96, 0.6f);
-        // Fixed world light (view-independent bake → orbits correctly).
-        Vec3 light = new Vec3(0.40f, 0.75f, 0.52f);
-        float[] colors = FieldShading.bakeColors(field, surf.positions(), surf.normals(),
-            surf.count(), new Vec3(0.88f, 0.80f, 0.66f), light, scale);
-
-        SceneStates.publish(viewport, SceneSnapshot.of(
-            // OPAQUE so the dots WRITE depth and occlude each other — a
-            // surface splat must hide its own back side. (ALPHA points
-            // don't write depth, so the far surface shows through the
-            // gaps between near dots — reads as inverted backface culling.)
-            new PointLayer(surf.positions(), colors, null, 4f, BlendMode.OPAQUE, 1f)
-        ));
-        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(4.0f));
-
-        System.out.println("CSG splat bake: " + surf.count() + " surface points");
-        return sceneCard("CSG monument (splat) — surface-sampled SDF, baked shading",
-            "CSG Splat", viewport, Em.of(13f), Em.of(9f));
-    }
-
-    /**
-     * Alien flora: a folded-IFS plant. Nine generations of one mirrored,
-     * golden-angle-spun, shrinking stem capsule represent ~512 branches
-     * for nine capsule evaluations per field sample; branch depth drives
-     * a teal-to-magenta hue rotation and an emissive tip glow that shines
-     * through shadow. The entire organism is four floats —
-     * (tilt, shrink, generations, sway) — every one animatable without a
-     * recompile.
-     */
-    private static Component buildAlienPlantScene() {
-        Component.SceneView viewport = new Component.SceneView(
-            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.02f, 0.03f, 0.06f, 1f), true, 1
-        );
-
-        SceneStates.publish(viewport, SceneSnapshot.of(
-            VexelRayLayer.of(VexelRayLayer.Field.ALIEN_PLANT)
-                .withMaxSteps(128) // thin branches want march headroom
-        ));
-        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(3.4f));
-
-        return sceneCard("Alien flora — folded IFS, phyllotaxis, bioluminescent tips",
-            "Alien Flora", viewport, Em.of(13f), Em.of(9f));
-    }
-
-    /**
-     * Card wrapper around a scene viewport with the thumbnail-and-overlay
-     * swap pattern: the viewport lives in a {@code DynamicChildren} slot,
-     * and a click on the card (its label/padding — clicks on the viewport
-     * itself are consumed by the camera controller) expands the SAME
-     * instance into a fullscreen modal. Scene, camera, and GPU buffers
-     * follow the component identity for free.
-     */
-    private static Component sceneCard(String caption, String overlayTitle,
-                                       Component.SceneView viewport, Em slotW, Em slotH) {
-        Component.Flex slot = new Component.Flex(
-            slotW, slotH, Em.ZERO, new Color(0f, 0f, 0f, 0f),
-            Direction.COLUMN, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
-            List.of(), false, 0
-        );
-        DynamicChildren.add(slot, viewport);
-
-        Component label = new Component.Text(caption, Em.of(0.85f), LABEL_FG);
-        Component subtitle = new Component.Text("click frame to expand",
-            Em.of(0.72f), new Color(0.65f, 0.70f, 0.85f, 0.75f));
-
-        Component.Flex card = new Component.Flex(
-            Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
-            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
-            List.of(label, slot, subtitle), true, 0
-        );
-        Handlers.onClick(card, () -> openSceneOverlay(overlayTitle, viewport, slot, slotW, slotH));
-        return card;
-    }
-
-    /**
-     * Move a scene viewport into a fullscreen modal overlay, leaving a
-     * placeholder in its slot; dismissal swaps it back. Mirrors
-     * {@link #openPointCloudOverlay} minus the camera-mode buttons.
-     */
-    private static void openSceneOverlay(String titleText, Component.SceneView viewport,
-                                         Component slot, Em slotW, Em slotH) {
-        Component placeholder = new Component.Box(
-            slotW, slotH, Em.ZERO,
-            new Color(0.04f, 0.05f, 0.08f, 0.6f),
-            List.of(new Component.Text("Viewing in popup", Em.of(0.85f),
-                new Color(0.65f, 0.70f, 0.85f, 0.85f)))
-        );
-        DynamicChildren.remove(slot, viewport);
-        DynamicChildren.add(slot, placeholder);
-
-        Component closeBtn = Themed.button("Close", Em.of(6f), Variant.PRIMARY, 0);
-        Component title    = new Component.Text(titleText + " — Expanded", Em.of(1.1f), LABEL_FG);
-        Component spacer   = new Component.Box(Em.of(1f), Em.of(0f), Em.ZERO, new Color(0f, 0f, 0f, 0f))
-                                  .withFlexGrow(1);
-        Component header = new Component.Flex(
-            null, Em.of(2.6f), Em.of(0.5f), TOOLBAR_BG,
-            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
-            List.of(title, spacer, closeBtn),
-            false, 0
-        );
-
-        // 1000em clamps to the viewport via OverlayStack.computeOverlayRect
-        // — a fullscreen modal.
-        Component.Flex overlayRoot = new Component.Flex(
-            Em.of(1000f), Em.of(1000f), Em.of(0.4f), CONTENT_BG,
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
-            List.of(header), false, 0
-        );
-        DynamicChildren.add(overlayRoot, viewport);
-
-        Runnable restore = () -> {
-            DynamicChildren.remove(overlayRoot, viewport);
-            DynamicChildren.remove(slot, placeholder);
-            DynamicChildren.add(slot, viewport);
-            Components.detach(overlayRoot);
-            Components.detach(placeholder);
-        };
-        Handlers.onClick(closeBtn, OverlayStack::pop);
-        OverlayStack.push(new OverlayStack.Overlay(overlayRoot, Anchor.CENTER, true, restore));
     }
 
     /** Append an axis-aligned quad as two triangles at {@code off} in {@code verts}/{@code cols}. */

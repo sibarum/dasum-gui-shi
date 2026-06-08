@@ -15,6 +15,7 @@ uniform int u_fieldType;    // 0 SPHERE, 1 BOX, 2 TORUS, 3 BLOBS, 4 MANDELBULB, 
 uniform vec4 u_params;
 uniform vec4 u_color;       // base colour, alpha = color.a * layer opacity
 uniform int u_maxSteps;
+uniform int u_viewMode;     // 0 LIT, 1 NORMALS, 2 AO, 3 STEPS (heatmap) — VexelRayView
 // CSG_BOXES program: 2 vec4s per op — (center.xyz, opcode), (halfExtents.xyz, smoothK).
 uniform vec4 u_csg[96];
 uniform int u_csgCount;     // ops (not vec4s)
@@ -52,16 +53,23 @@ float sdBlobs(vec3 p) {
     return d;
 }
 
+// Escape-iteration count at the last-sampled bulb point, normalized to
+// [0,1] — a STRUCTURE map (how deep the point sits in the set), distinct
+// from the step-count cost map. Written by sdMandelbulb, snapshotted at
+// the hit. Zero for non-fractal fields.
+float g_bulbIters = 0.0;
+
 float sdMandelbulb(vec3 p) {
     float power = u_params.x;
     int iters = int(u_params.y);
     vec3 z = p;
     float dr = 1.0;
     float r = 0.0;
+    int esc = iters;
     for (int i = 0; i < 16; i++) {
         if (i >= iters) break;
         r = length(z);
-        if (r > 2.0) break;
+        if (r > 2.0) { esc = i; break; }
         // Triplex power: convert to spherical, raise to N, convert back.
         float theta = acos(clamp(z.z / max(r, 1e-9), -1.0, 1.0));
         float phi = atan(z.y, z.x);
@@ -71,6 +79,7 @@ float sdMandelbulb(vec3 p) {
         phi *= power;
         z = zr * vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta)) + p;
     }
+    g_bulbIters = float(esc) / float(max(iters, 1));
     return 0.5 * log(max(r, 1e-9)) * r / dr;
 }
 
@@ -310,6 +319,12 @@ float softShadow(vec3 p, vec3 n) {
     return clamp(res, 0.0, 1.0);
 }
 
+// Blue (low) → green → yellow → red (high) ramp for the diagnostic maps.
+vec3 heat(float t) {
+    t = clamp(t, 0.0, 1.0);
+    return clamp(vec3(t * 2.0, 1.0 - abs(t - 0.5) * 2.0, 1.0 - t * 2.0), 0.0, 1.0);
+}
+
 // Ray / AABB slab intersection against the bounding cube.
 // Returns (tEnter, tExit); miss when tEnter > tExit.
 vec2 cubeSpan(vec3 ro, vec3 rd) {
@@ -353,8 +368,10 @@ void main() {
 
     bool hit = false;
     vec3 p = ro;
+    int stepsTaken = 0;
     for (int i = 0; i < 512; i++) {
         if (i >= u_maxSteps || t > tEnd) break;
+        stepsTaken = i + 1;
         p = ro + rd * t;
         float d = sdf(p);
         if (d < EPS * epsScale * max(t, 1.0)) { hit = true; break; }
@@ -368,9 +385,10 @@ void main() {
     for (int i = 0; i < 3; i++) {
         p += rd * sdf(p);
     }
-    // Snapshot the plant's orbit trap at the refined hit -- the
-    // normal/AO/shadow evaluations below all clobber the global.
+    // Snapshot the per-field traps at the refined hit -- the normal/AO/
+    // shadow evaluations below all re-call sdf() and clobber the globals.
     float plantTrap = g_plantTrap;
+    float bulbIters = g_bulbIters;
 
     // Blinn-Phong with field-derived occlusion: colored ambient +
     // diffuse, white specular highlight, soft shadows toward the key
@@ -407,6 +425,29 @@ void main() {
         // Bioluminescence: emissive tip glow added AFTER lighting, so
         // pods shine from inside their own shadow.
         col += albedo * (pow(plantTrap, 3.0) * 0.85);
+    }
+
+    // Inspection view modes (VexelRayView): swap the final colour for a
+    // diagnostic channel. Geometry/depth are unchanged so vector layers
+    // still compose correctly in every mode.
+    if (u_viewMode == 1) {
+        col = n * 0.5 + 0.5;                 // NORMALS
+    } else if (u_viewMode == 2) {
+        col = vec3(ao);                      // AO
+    } else if (u_viewMode == 3) {
+        // STEPS = near-miss / cost map: how long the ray took to resolve.
+        col = heat(float(stepsTaken) / float(u_maxSteps));
+    } else if (u_viewMode == 4) {
+        // ESCAPE_ITERS = fractal structure map (bulb only; 0 elsewhere).
+        col = heat(bulbIters);
+    } else if (u_viewMode == 5) {
+        // COST − STRUCTURE: signed diverging map. Red = render cost beyond
+        // what the fractal depth justifies (grazing/halo waste); blue =
+        // deep structure that's nonetheless cheap to march; dark = balanced.
+        float c = float(stepsTaken) / float(u_maxSteps);
+        float d = clamp(c - bulbIters, -1.0, 1.0);
+        col = d >= 0.0 ? mix(vec3(0.08), vec3(1.0, 0.25, 0.12), d)
+                       : mix(vec3(0.08), vec3(0.12, 0.35, 1.0), -d);
     }
     fragColor = vec4(col, u_color.a);
 
