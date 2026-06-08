@@ -590,7 +590,16 @@ public final class Layout {
         float usedMain = gap * Math.max(0, n - 1);
         float maxChildCross = 0f;
         for (int i = 0; i < n; i++) {
-            mainSize[i] = intrinsicMain(kids.get(i), row);
+            // A COLUMN child's main extent is its height, which for a
+            // wrapping ROW descendant depends on the width it gets — use
+            // the width-aware measure (crossAvail is the column's content
+            // width, the width a STRETCH child receives). Identical to
+            // intrinsicMain for everything without a wrapping descendant,
+            // so non-wrap layout is unchanged. ROW parents size by width
+            // as before. Without this a wrapping row is allocated only one
+            // row's height and its extra rows overflow onto the next sibling.
+            mainSize[i] = row ? intrinsicMain(kids.get(i), true)
+                              : contentHeightPx(kids.get(i), crossAvail);
             grow[i] = kids.get(i).flexGrow();
             totalGrow += grow[i];
             usedMain += mainSize[i];

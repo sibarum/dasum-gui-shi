@@ -63,6 +63,31 @@ final class LayoutWrapTest {
     }
 
     @Test
+    void columnPositionsSiblingBelowWrappedRowHeight() {
+        // A wrapping row (3 boxes, 2 rows at this width) followed by a
+        // marker box, inside a COLUMN. The marker must sit BELOW the full
+        // two-row height — not overlap it (the bug: column allocated the
+        // row only one row's height, so the next sibling painted on top).
+        Component.Flex wrappingRow = row(true, null); // fills column width
+        Component.Box marker = box(4f, 3f);
+        // STRETCH so the null-width wrapping row fills the column width and
+        // has a definite extent to wrap within — the normal container setup.
+        Component.Flex column = new Component.Flex(
+            Em.of(25f), null, Em.ZERO, CLEAR,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            List.of(wrappingRow, marker), false, 0);
+        LayoutResult lr = Layout.compute(column, new PixelRect(0f, 0f, 400f, 600f));
+
+        PixelRect rowRect = lr.rectOf(wrappingRow);
+        PixelRect lastBox = lr.rectOf(wrappingRow.children().get(2)); // wrapped onto row 2
+        PixelRect markerRect = lr.rectOf(marker);
+        assertTrue(markerRect.y() >= lastBox.y() + 100f,
+            "marker must clear the wrapped second row, not overlap it (marker y="
+            + markerRect.y() + ", row2 box y=" + lastBox.y() + ")");
+        assertTrue(rowRect.height() > 300f, "row reports its two-row stacked height");
+    }
+
+    @Test
     void scrollExposesWrappedHeight() {
         // Two rows of 12em (192px) boxes inside a 20em (320px) scroll →
         // content ~384px → ~64px of vertical overflow the scroll must expose.
