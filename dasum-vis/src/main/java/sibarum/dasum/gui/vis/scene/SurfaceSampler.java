@@ -30,13 +30,24 @@ public final class SurfaceSampler {
      *               axis-aligned banding (deterministic from grid index)
      */
     public static Result sample(ScalarField f, Vec3 min, Vec3 max, int res, float jitter) {
+        return sample(f, min, max, res, jitter, 4, 0.05f);
+    }
+
+    /**
+     * As {@link #sample(ScalarField, Vec3, Vec3, int, float)}, with tunable
+     * {@code newtonSteps} and {@code epsFactor} (× cell size) — fractal
+     * fields (noisy distance estimates) want more projection steps and a
+     * looser acceptance band than exact analytic surfaces.
+     */
+    public static Result sample(ScalarField f, Vec3 min, Vec3 max, int res, float jitter,
+                                int newtonSteps, float epsFactor) {
         float cx = (max.x() - min.x()) / res;
         float cy = (max.y() - min.y()) / res;
         float cz = (max.z() - min.z()) / res;
         float cell = Math.max(cx, Math.max(cy, cz));
         float shell = cell * 1.5f;             // keep points near the surface
         float h = cell * 0.25f;                // normal-tap offset
-        float eps = cell * 0.05f;              // post-projection acceptance
+        float eps = cell * epsFactor;          // post-projection acceptance
 
         float[] pos = new float[1024 * 3];
         float[] nrm = new float[1024 * 3];
@@ -55,7 +66,7 @@ public final class SurfaceSampler {
                     if (Math.abs(f.at(x, y, z)) > shell) continue; // not near surface
 
                     // Newton-project onto the surface along the gradient.
-                    for (int s = 0; s < 4; s++) {
+                    for (int s = 0; s < newtonSteps; s++) {
                         float d = f.at(x, y, z);
                         Vec3 n = CsgField.normal(f, x, y, z, h);
                         x -= d * n.x();

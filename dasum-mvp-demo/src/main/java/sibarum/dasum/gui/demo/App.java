@@ -88,6 +88,8 @@ import sibarum.dasum.gui.vis.pointcloud.PointCloudSnapshot;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
 import sibarum.dasum.gui.vis.scene.BlendMode;
 import sibarum.dasum.gui.vis.scene.CsgBox;
+import sibarum.dasum.gui.vis.scene.MandelbulbField;
+import sibarum.dasum.gui.vis.scene.SurfaceSampler;
 import sibarum.dasum.gui.vis.scene.VexelRayView;
 import sibarum.dasum.gui.vis.scene.ImageLayer;
 import sibarum.dasum.gui.vis.scene.InteractionSpec;
@@ -913,6 +915,7 @@ public final class App {
             List.of(
                 section("Three viewports, off-centre rects", triple),
                 section("Layered scene — direct SceneSnapshot, mixed blend modes", buildBlendScene()),
+                section("Surface probes — uniform vs iteration-weighted (Mandelbulb, same budget)", buildBulbProbeScene()),
                 section("Image + text layers", new Component.Flex(
                     null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
                     Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
@@ -1281,6 +1284,92 @@ public final class App {
             // Capstone, filleted onto the lintel.
             new CsgBox(CsgBox.Op.SMOOTH_UNION, new Vec3(0f, 0.70f, 0f), new Vec3(0.13f, 0.13f, 0.13f), 0.06f)
         );
+    }
+
+    /**
+     * Experiment A — iteration-weighted probe placement. Sample the
+     * Mandelbulb surface once (CPU MandelbulbField), then draw the SAME
+     * probe budget two ways: uniform random placement vs. placement
+     * weighted by the field's intrinsic escape-iteration count. The
+     * weighted cloud concentrates probes on the high-iteration filigree
+     * and thins them on the smooth lobes — and because the iteration count
+     * is view-INDEPENDENT, the placement stays optimal as you orbit (unlike
+     * a step-count/cost basis, which would thrash on camera motion). Splats
+     * are coloured by complexity so the allocation is visible. Both clouds
+     * are baked once at startup.
+     */
+    private static Component buildBulbProbeScene() {
+        MandelbulbField bulb = new MandelbulbField(8f, 14);
+        float s = 1.3f;
+        SurfaceSampler.Result surf = SurfaceSampler.sample(
+            bulb, new Vec3(-s, -s, -s), new Vec3(s, s, s), 110, 0.6f, 6, 0.18f);
+        int n = surf.count();
+        float[] pos = surf.positions();
+        float[] comp = new float[n];
+        double sumW = 0;
+        final float EXP = 2.0f;          // sharpen the density bias toward detail
+        for (int i = 0; i < n; i++) {
+            comp[i] = bulb.complexityAt(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+            sumW += Math.pow(comp[i], EXP);
+        }
+        float keep = 0.30f;              // shared probe budget (fraction of base samples)
+        float scale = (float) ((keep * n) / Math.max(sumW, 1e-6));
+
+        float[] uniProb = new float[n];
+        float[] wgtProb = new float[n];
+        for (int i = 0; i < n; i++) {
+            uniProb[i] = keep;
+            wgtProb[i] = Math.min(1f, (float) Math.pow(comp[i], EXP) * scale);
+        }
+
+        Component uni = bulbProbeCard("Uniform placement", pos, comp, n, uniProb);
+        Component wgt = bulbProbeCard("Iteration-weighted (same budget)", pos, comp, n, wgtProb);
+        return new Component.Flex(
+            null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
+            List.of(uni, wgt), false, 0, true);
+    }
+
+    /** Keep points by per-point probability, colour by complexity, splat them in a labelled card. */
+    private static Component bulbProbeCard(String caption, float[] pos, float[] comp, int n, float[] prob) {
+        int kept = 0;
+        for (int i = 0; i < n; i++) if (hash01(i) < prob[i]) kept++;
+        float[] kpos = new float[kept * 3];
+        float[] kcol = new float[kept * 3];
+        int w = 0;
+        for (int i = 0; i < n; i++) {
+            if (hash01(i) >= prob[i]) continue;
+            kpos[w * 3] = pos[i * 3]; kpos[w * 3 + 1] = pos[i * 3 + 1]; kpos[w * 3 + 2] = pos[i * 3 + 2];
+            heat(comp[i], kcol, w * 3);
+            w++;
+        }
+        System.out.println("Bulb probes — " + caption + ": " + kept + " / " + n);
+
+        Component.SceneView viewport = new Component.SceneView(
+            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 0);
+        SceneStates.publish(viewport, SceneSnapshot.of(
+            new PointLayer(kpos, kcol, null, 5f, BlendMode.OPAQUE, 1f)));
+        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(3.6f));
+
+        return new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
+            List.of(new Component.Text(caption, Em.of(0.85f), LABEL_FG), viewport), false, 0);
+    }
+
+    /** Blue→red complexity ramp (matches the shader's heat()). */
+    private static void heat(float t, float[] out, int o) {
+        t = Math.max(0f, Math.min(1f, t));
+        out[o]     = Math.max(0f, Math.min(1f, t * 2f));
+        out[o + 1] = Math.max(0f, Math.min(1f, 1f - Math.abs(t - 0.5f) * 2f));
+        out[o + 2] = Math.max(0f, Math.min(1f, 1f - t * 2f));
+    }
+
+    /** Deterministic per-index [0,1) hash, so the bake is reproducible. */
+    private static float hash01(int i) {
+        int x = i * 374761393 + 668265263;
+        x = (x ^ (x >>> 13)) * 1274126177;
+        return ((x >>> 8) & 0xFFFFFF) / (float) 0x1000000;
     }
 
     /** Append an axis-aligned quad as two triangles at {@code off} in {@code verts}/{@code cols}. */
