@@ -1179,14 +1179,16 @@ public final class App {
         VexelModel(String label, float camDist) { this.label = label; this.camDist = camDist; }
     }
 
-    private static VexelRayLayer vexelModel(VexelModel m, int maxSteps) {
+    private static VexelRayLayer vexelModel(VexelModel m, int maxSteps, int bulbIters, float escapeR, float iterLod) {
         return switch (m) {
             case SPHERE     -> VexelRayLayer.of(VexelRayLayer.Field.SPHERE).withMaxSteps(maxSteps);
             case BOX        -> VexelRayLayer.of(VexelRayLayer.Field.BOX).withMaxSteps(maxSteps);
             case TORUS      -> VexelRayLayer.of(VexelRayLayer.Field.TORUS).withMaxSteps(maxSteps);
             case BLOBS      -> VexelRayLayer.of(VexelRayLayer.Field.BLOBS)
                                    .withColor(new Color(0.45f, 0.9f, 0.6f, 1f)).withMaxSteps(maxSteps);
+            // params: x=power, y=iterations, z=escape radius, w=iteration-LOD strength.
             case MANDELBULB -> VexelRayLayer.of(VexelRayLayer.Field.MANDELBULB)
+                                   .withParams(new float[]{8f, bulbIters, escapeR, iterLod})
                                    .withColor(new Color(0.92f, 0.74f, 1.00f, 1f)).withMaxSteps(maxSteps);
             case CSG_MONUMENT -> VexelRayLayer.csgBoxes(monumentOps(), MONUMENT_ROUNDING)
                                    .withColor(MONUMENT_COLOR).withMaxSteps(maxSteps);
@@ -1201,15 +1203,23 @@ public final class App {
 
         Property<VexelModel> model = new Property<>(VexelModel.CSG_MONUMENT);
         Property<Float> maxSteps = new Property<>(96f);
+        Property<Float> bulbIters = new Property<>(10f);  // Mandelbulb only
+        Property<Float> escapeR = new Property<>(2f);     // Mandelbulb only
+        Property<Float> iterLod = new Property<>(0f);     // Mandelbulb only (0 = off)
         Property<VexelRayView> view = new Property<>(VexelRayView.LIT);
 
         Runnable republish = () -> {
             VexelModel m = model.get();
-            SceneStates.publish(viewport, SceneSnapshot.of(vexelModel(m, Math.round(maxSteps.get()))));
+            SceneStates.publish(viewport, SceneSnapshot.of(
+                vexelModel(m, Math.round(maxSteps.get()), Math.round(bulbIters.get()),
+                           escapeR.get(), iterLod.get())));
             SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(m.camDist));
         };
         model.subscribe(v -> republish.run());
         maxSteps.subscribe(v -> republish.run());
+        bulbIters.subscribe(v -> republish.run());
+        escapeR.subscribe(v -> republish.run());
+        iterLod.subscribe(v -> republish.run());
         view.subscribe(VexelRayView::set);
         republish.run(); // initial publish
 
@@ -1217,13 +1227,22 @@ public final class App {
         for (VexelModel m : VexelModel.values()) modelRows.add(vexelRadioRow(model, m, m.label));
 
         List<Component> viewRows = new java.util.ArrayList<>();
-        String[] viewLabels = {"Lit", "Normals", "AO", "Steps (cost)", "Escape iters", "Cost - escape"};
+        String[] viewLabels = {"Lit", "Normals", "AO", "Steps (cost)", "Escape iters", "Cost - escape", "Work (iters)"};
         VexelRayView[] views = VexelRayView.values();
         for (int i = 0; i < views.length; i++) viewRows.add(vexelRadioRow(view, views[i], viewLabels[i]));
 
         Component stepsSlider = new Component.Slider(
             Direction.ROW, Em.of(10f), Em.of(0.9f), Em.of(0.5f),
             SL_TRACK, SL_FILL, SL_THUMB, maxSteps, 16f, 256f);
+        Component itersSlider = new Component.Slider(
+            Direction.ROW, Em.of(10f), Em.of(0.9f), Em.of(0.5f),
+            SL_TRACK, SL_FILL, SL_THUMB, bulbIters, 2f, 20f);
+        Component escapeSlider = new Component.Slider(
+            Direction.ROW, Em.of(10f), Em.of(0.9f), Em.of(0.5f),
+            SL_TRACK, SL_FILL, SL_THUMB, escapeR, 1.2f, 12f);
+        Component lodSlider = new Component.Slider(
+            Direction.ROW, Em.of(10f), Em.of(0.9f), Em.of(0.5f),
+            SL_TRACK, SL_FILL, SL_THUMB, iterLod, 0f, 1f);
 
         Component panelCol = new Component.Flex(
             null, Em.AUTO, Em.of(0.6f), new Color(0f, 0f, 0f, 0f),
@@ -1232,7 +1251,10 @@ public final class App {
                 new Component.Text("VexelRay Inspector", Em.of(1.1f), LABEL_FG),
                 vexelGroup("Model", modelRows),
                 vexelGroup("View", viewRows),
-                vexelGroup("Max steps (16–256)", List.of(stepsSlider))
+                vexelGroup("Max steps (16–256)", List.of(stepsSlider)),
+                vexelGroup("Mandelbulb iters (2–20)", List.of(itersSlider)),
+                vexelGroup("Mandelbulb escape R (1.2–12)", List.of(escapeSlider)),
+                vexelGroup("Mandelbulb iter-LOD (0=off)", List.of(lodSlider))
             ), false, 0);
 
         Component panel = new Component.Scroll(

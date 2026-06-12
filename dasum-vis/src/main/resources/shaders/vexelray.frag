@@ -59,17 +59,35 @@ float sdBlobs(vec3 p) {
 // the hit. Zero for non-fractal fields.
 float g_bulbIters = 0.0;
 
+// Iteration-LOD plumbing. The escape-time set is MONOTONE in the iteration
+// budget — a point that survives N iterations also survived every smaller
+// budget — so a lower budget yields a strictly LARGER, enclosing hull whose
+// DE under-reports the true distance. That makes a capped march conservative
+// (it stops at/before the true surface, never tunnels through), so we can run
+// few iterations far from the surface and ramp to full only as a ray closes
+// in. g_bulbIterBudget caps the loop (256 = uncapped); g_bulbWork accumulates
+// the iterations actually executed — the honest per-eval cost the march-count
+// (STEPS) map can't see, since LOD makes each step cheaper, not rarer.
+int g_bulbIterBudget = 256;
+float g_bulbWork = 0.0;
+
 float sdMandelbulb(vec3 p) {
     float power = u_params.x;
-    int iters = int(u_params.y);
+    int iters = min(int(u_params.y), g_bulbIterBudget);
+    // Bailout / escape radius rides u_params.z (0 → default 2.0). Smaller
+    // erodes the set + degrades the DE; larger smooths the DE and de-bands
+    // the escape count, at the cost of more iterations to escape.
+    float escapeR = u_params.z > 0.0 ? u_params.z : 2.0;
     vec3 z = p;
     float dr = 1.0;
     float r = 0.0;
     int esc = iters;
-    for (int i = 0; i < 16; i++) {
+    int ran = 0;
+    for (int i = 0; i < 24; i++) {
         if (i >= iters) break;
+        ran = i + 1;
         r = length(z);
-        if (r > 2.0) { esc = i; break; }
+        if (r > escapeR) { esc = i; break; }
         // Triplex power: convert to spherical, raise to N, convert back.
         float theta = acos(clamp(z.z / max(r, 1e-9), -1.0, 1.0));
         float phi = atan(z.y, z.x);
@@ -79,6 +97,7 @@ float sdMandelbulb(vec3 p) {
         phi *= power;
         z = zr * vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta)) + p;
     }
+    g_bulbWork += float(ran);
     g_bulbIters = float(esc) / float(max(iters, 1));
     return 0.5 * log(max(r, 1e-9)) * r / dr;
 }
@@ -366,6 +385,15 @@ void main() {
     float relax = fractal ? 0.6 : (u_fieldType == 6 ? 0.85 : 1.0);
     float epsScale = fractal ? 0.35 : 1.0;
 
+    // Iteration-LOD (bulb only): u_params.w in (0,1] reduces the bulb's
+    // iteration budget far from the surface and ramps it to full near it.
+    // prevD (last step's distance estimate) is the proximity signal; the
+    // budget for a step is set from the PRIOR step's distance — a one-step
+    // lag that's safe because the cap only ever SHRINKS the solid (the hull
+    // is conservative), so we approach the true surface, never overshoot it.
+    float lod = fractal ? u_params.w : 0.0;
+    float prevD = tEnd;
+
     bool hit = false;
     vec3 p = ro;
     int stepsTaken = 0;
@@ -373,11 +401,23 @@ void main() {
         if (i >= u_maxSteps || t > tEnd) break;
         stepsTaken = i + 1;
         p = ro + rd * t;
+        if (lod > 0.0) {
+            // c: 0 far (≥ half the cube), 1 at the surface.
+            float c = 1.0 - clamp(prevD / (0.5 * u_scale), 0.0, 1.0);
+            float farIters = mix(u_params.y, 2.0, lod);   // floor at full lod
+            g_bulbIterBudget = int(floor(mix(farIters, u_params.y, c) + 0.5));
+        }
         float d = sdf(p);
+        prevD = d;
         if (d < EPS * epsScale * max(t, 1.0)) { hit = true; break; }
         t += d * relax;
     }
     if (!hit) discard;
+
+    // Restore full detail for refinement + every shading tap (normal, AO,
+    // shadow re-call sdf and must read the true surface, not the hull).
+    float bulbWork = g_bulbWork;
+    g_bulbIterBudget = 256;
 
     // Refine the hit: a few extra relaxation steps converge p onto the
     // surface well past the march tolerance, so the normal/AO taps read
@@ -448,6 +488,12 @@ void main() {
         float d = clamp(c - bulbIters, -1.0, 1.0);
         col = d >= 0.0 ? mix(vec3(0.08), vec3(1.0, 0.25, 0.12), d)
                        : mix(vec3(0.08), vec3(0.12, 0.35, 1.0), -d);
+    } else if (u_viewMode == 6) {
+        // WORK = total bulb iterations executed during the primary march,
+        // normalized to the worst case (every step at full iters). The honest
+        // eval-cost map: with iteration-LOD on, the far-field halo collapses
+        // here even though the STEPS (march-count) map barely moves. Bulb only.
+        col = heat(bulbWork / max(float(u_maxSteps) * u_params.y, 1.0));
     }
     fragColor = vec4(col, u_color.a);
 

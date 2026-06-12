@@ -29,7 +29,12 @@ public enum VexelRayView {
     /** Signed cost − structure diverging map: red = cost beyond structural
      *  justification (grazing waste), blue = deep-but-cheap, dark = balanced
      *  (Mandelbulb only). */
-    COST_MINUS_ESCAPE;
+    COST_MINUS_ESCAPE,
+    /** Total bulb iterations executed during the primary march, normalized to
+     *  the worst case — the honest per-eval cost map. Iteration-LOD collapses
+     *  the far-field halo here while the march-count (STEPS) map barely moves
+     *  (Mandelbulb only). */
+    WORK;
 
     private static volatile VexelRayView current = LIT;
 
