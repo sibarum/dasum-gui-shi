@@ -88,6 +88,24 @@ final class LayoutWrapTest {
     }
 
     @Test
+    void singleLineCenterVerticallyCentersChild() {
+        // A ROW taller than its only child, AlignItems.CENTER: the child must
+        // sit centered on the cross axis, not pinned to the top. Regression:
+        // the flex-wrap refactor aligned a single line within the child's own
+        // height instead of the container's, riding icon glyphs to the top
+        // edge of their buttons.
+        Component.Box child = box(2f, 2f);              // 32x32 px
+        Component.Flex bar = new Component.Flex(
+            Em.of(10f), Em.of(4f), Em.ZERO, CLEAR,      // 160x64 px
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.ZERO,
+            List.of(child), false, 0);
+        LayoutResult lr = Layout.compute(bar, new PixelRect(0f, 0f, 160f, 64f));
+        PixelRect c = lr.rectOf(child);
+        assertEquals(16f, c.y(), 0.5f,
+            "single-line CENTER centers the child vertically (64px bar, 32px child -> y=16)");
+    }
+
+    @Test
     void scrollExposesWrappedHeight() {
         // Two rows of 12em (192px) boxes inside a 20em (320px) scroll →
         // content ~384px → ~64px of vertical overflow the scroll must expose.

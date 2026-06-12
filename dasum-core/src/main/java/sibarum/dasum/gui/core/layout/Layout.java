@@ -536,10 +536,11 @@ public final class Layout {
             ? wrapLines(kids, mainAvail, gap)
             : List.of(kids);
 
+        boolean singleLine = lines.size() == 1;
         float lineCross = originCross;
         for (List<Component> line : lines) {
             float maxCross = layoutLine(flex, line, row, mainAvail, crossAvail,
-                                        gap, originMain, lineCross, rects);
+                                        gap, originMain, lineCross, singleLine, rects);
             // Advance to the next line on the cross axis (wrap only ever
             // produces >1 line for ROW; STRETCH within a line still works
             // because crossAvail for a wrapped line is that line's height).
@@ -581,7 +582,7 @@ public final class Layout {
      */
     private static float layoutLine(Component.Flex flex, List<Component> kids, boolean row,
                                     float mainAvail, float crossAvail, float gap,
-                                    float originMain, float originCross,
+                                    float originMain, float originCross, boolean singleLine,
                                     Map<Component, PixelRect> rects) {
         int n = kids.size();
         float[] mainSize = new float[n];
@@ -624,10 +625,15 @@ public final class Layout {
             }
         }
 
-        // STRETCH stretches to the line's own cross extent when wrapping
-        // (so rows don't each balloon to the whole container height);
-        // for a single non-wrapped line that's the full crossAvail.
-        float lineCross = (flex.align() == AlignItems.STRETCH) ? crossAvail : maxChildCross;
+        // Cross extent that align-items resolves against. A single
+        // (non-wrapped) line aligns within the container's full cross extent,
+        // so CENTER/END actually have room — without this a CENTER child
+        // smaller than the container pins to the top (icon glyphs riding the
+        // top edge of their buttons). A WRAPPED line aligns within its own
+        // tallest child instead, so stacked rows don't each balloon to the
+        // whole container height. STRETCH always fills crossAvail.
+        float lineCross = (flex.align() == AlignItems.STRETCH || singleLine)
+            ? crossAvail : maxChildCross;
 
         float cur = originMain + startMain;
         for (int i = 0; i < n; i++) {
