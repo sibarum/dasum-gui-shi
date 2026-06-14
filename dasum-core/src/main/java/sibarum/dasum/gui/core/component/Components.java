@@ -11,12 +11,14 @@ import sibarum.dasum.gui.core.graph.NodeInstances;
 import sibarum.dasum.gui.core.graph.Ports;
 import sibarum.dasum.gui.core.graph.SubgraphNodes;
 import sibarum.dasum.gui.core.input.ContextMenuStates;
+import sibarum.dasum.gui.core.input.DataTableHandlers;
 import sibarum.dasum.gui.core.input.FocusState;
 import sibarum.dasum.gui.core.input.Handlers;
 import sibarum.dasum.gui.core.input.HoverState;
 import sibarum.dasum.gui.core.input.ScrollStates;
 import sibarum.dasum.gui.core.input.TextStates;
 import sibarum.dasum.gui.core.input.TextStyleStates;
+import sibarum.dasum.gui.core.nav.NavId;
 import sibarum.dasum.gui.core.overlay.Tooltips;
 
 import java.util.ArrayList;
@@ -144,7 +146,9 @@ public final class Components {
         NodeInstances.migrate(from, to);
         SubgraphNodes.migrate(from, to);
         DataTableStates.migrate(from, to);
+        DataTableHandlers.migrate(from, to);
         DynamicChildren.migrate(from, to);
+        NavId.migrate(from, to);
         Tooltips.migrate(from, to);
         for (BiConsumer<Component, Component> ext : EXTERNAL_MIGRATORS) {
             ext.accept(from, to);
@@ -245,7 +249,9 @@ public final class Components {
         // outer node itself (Ports / Connections already cleared above).
         SubgraphNodes.clear(c);
         DataTableStates.clear(c);
+        DataTableHandlers.clear(c);
         DynamicChildren.clear(c);
+        NavId.clear(c);
         // Tooltips: clear last so its onComponentDetached → hideAll
         // sees an already-cleared state for the component. Order doesn't
         // strictly matter (sidecars are independent) but keeping it at

@@ -17,6 +17,7 @@
         <module>dasum-glfw</module>
         <module>dasum-nfd</module>
         <module>dasum-vis</module>
+        <module>dasum-files</module>
     </modules>
 
     <properties>

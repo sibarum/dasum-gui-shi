@@ -47,6 +47,8 @@ import sibarum.dasum.gui.core.input.InputState;
 import sibarum.dasum.gui.core.input.ScrollStates;
 import sibarum.dasum.gui.core.input.ScrollbarController;
 import sibarum.dasum.gui.core.input.SliderController;
+import sibarum.dasum.gui.core.nav.NavId;
+import sibarum.dasum.gui.core.nav.NavRegistry;
 import sibarum.dasum.gui.core.input.TabsController;
 import sibarum.dasum.gui.core.input.TextInputController;
 import sibarum.dasum.gui.core.input.TextState;
@@ -536,6 +538,11 @@ public final class App {
         Tooltips.set(rbDark,  "Use dark theme");
         Tooltips.set(rbAuto,  "Follow system theme preference");
         Tooltips.set(volumeSlider, "Drag to set volume (0 — 100)");
+
+        // Navigation destination: reachable via the Everything Menu ("Go to:
+        // Volume slider") or Navigator.navigate("widgets.volume").
+        NavId.tag(volumeSlider, "widgets.volume");
+        NavRegistry.register("widgets.volume", "Volume slider");
 
         // ---- Tooltip showcase section: trigger mode + edge-overflow + long-text ----
         Component tooltipSection = buildTooltipShowcase();
@@ -1431,6 +1438,11 @@ public final class App {
             true, true, true, false, 0
         );
 
+        // Navigation destination in a different tab — exercises cross-tab
+        // switching plus scroll-into-view on arrival.
+        NavId.tag(paragraphText, "text.editor");
+        NavRegistry.register("text.editor", "Editable text");
+
         return new Component.Scroll(
             null, null, Em.of(1f), CONTENT_BG,
             buildStyledColumn(paragraphText), false, 1
@@ -1614,6 +1626,10 @@ public final class App {
 
         TableContextMenu.registerDefaults(leftTable);
         TableContextMenu.registerDefaults(rightTable);
+
+        // Navigation destination in the Tables tab.
+        NavId.tag(rightTable, "tables.editable");
+        NavRegistry.register("tables.editable", "Editable table");
 
         Component leftLabel  = new Component.Text("Synthetic 1M × 20 (read-only)", Em.of(0.95f), LABEL_FG);
         Component rightLabel = new Component.Text("Editable 5 × 3 — try F2, Enter, Tab", Em.of(0.95f), LABEL_FG);

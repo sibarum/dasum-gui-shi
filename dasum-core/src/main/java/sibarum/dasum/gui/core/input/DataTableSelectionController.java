@@ -15,6 +15,7 @@ import sibarum.dasum.gui.natives.glfw.Glfw;
 
 import java.lang.foreign.MemorySegment;
 import java.util.OptionalLong;
+import java.util.function.Consumer;
 
 /**
  * Mouse + keyboard dispatch for {@code Component.DataTable}. Slots into
@@ -42,6 +43,9 @@ public final class DataTableSelectionController {
 
     private static final float DRAG_THRESHOLD_PX_SQ = 4f * 4f;
 
+    /** Max gap between two presses on the same cell to count as a double-click. */
+    private static final long DOUBLE_CLICK_NANOS = 400_000_000L; // 400 ms
+
     /** Region of the table the cursor hit on press. */
     public enum Region { BODY, HEADER, GUTTER, CORNER, NONE }
 
@@ -50,6 +54,15 @@ public final class DataTableSelectionController {
     private static double pressX = 0d, pressY = 0d;
     private static int pressRow = -1, pressCol = -1;
     private static boolean dragStarted = false;
+
+    // Double-click tracking — the prior qualifying press, so a second press on
+    // the same cell within DOUBLE_CLICK_NANOS fires an activation. Centralized
+    // here (rather than re-implemented in each app's GLFW callbacks) so the
+    // table owns its own activation gesture. See {@link DataTableHandlers}.
+    private static Component.DataTable lastClickTable = null;
+    private static int  lastClickRow   = -1;
+    private static int  lastClickCol   = -1;
+    private static long lastClickNanos = 0L;
 
     private DataTableSelectionController() {}
 
@@ -142,7 +155,34 @@ public final class DataTableSelectionController {
             default -> sel = null;
         }
         if (sel != null) DataTableStates.setSelection(table, sel);
+
+        // Double-click → activation. Only tracked / fired when the app has
+        // registered an activation handler; otherwise a double-click is just
+        // two ordinary selecting clicks (preserves prior behavior for tables
+        // that don't opt in). Shift-clicks extend selection, never activate.
+        if (!shift && info.region != Region.NONE && DataTableHandlers.handlerFor(table) != null) {
+            long now = System.nanoTime();
+            boolean sameSpot = table == lastClickTable
+                && info.row == lastClickRow && info.col == lastClickCol;
+            if (sameSpot && (now - lastClickNanos) < DOUBLE_CLICK_NANOS) {
+                fireActivation(table, info.row, info.col, info.region,
+                    DataTableHandlers.Activation.Source.MOUSE);
+                // Reset so a rapid third click doesn't re-fire as another pair.
+                lastClickTable = null; lastClickRow = -1; lastClickCol = -1; lastClickNanos = 0L;
+            } else {
+                lastClickTable = table; lastClickRow = info.row;
+                lastClickCol = info.col; lastClickNanos = now;
+            }
+        }
         return true;
+    }
+
+    /** Deliver an activation to the table's registered handler, if any. */
+    private static void fireActivation(Component.DataTable table, int row, int col,
+                                       Region region, DataTableHandlers.Activation.Source source) {
+        Consumer<DataTableHandlers.Activation> h = DataTableHandlers.handlerFor(table);
+        if (h == null) return;
+        h.accept(new DataTableHandlers.Activation(table, row, col, region, source));
     }
 
     /** On cursor-move during a press: drag past threshold upgrades to a block / range selection. */
@@ -311,7 +351,16 @@ public final class DataTableSelectionController {
             // F2 = 291, KP_ENTER = 335. Not in the bundled Glfw constants;
             // hardcoded to avoid bloating the native wrapper.
             case 291, Glfw.GLFW_KEY_ENTER, 335 -> {
-                beginEdit(table, s);
+                // F2 always edits. Enter / Keypad-Enter activate the current
+                // selection when an activation handler is registered (so a
+                // file browser opens the row); otherwise they begin an edit
+                // (so a spreadsheet edits the cell).
+                if (key != 291 && s.selection != null && DataTableHandlers.handlerFor(table) != null) {
+                    fireActivation(table, currentRow(s), currentCol(s), Region.BODY,
+                        DataTableHandlers.Activation.Source.KEYBOARD);
+                } else {
+                    beginEdit(table, s);
+                }
                 return true;
             }
             case Glfw.GLFW_KEY_DELETE, Glfw.GLFW_KEY_BACKSPACE -> {

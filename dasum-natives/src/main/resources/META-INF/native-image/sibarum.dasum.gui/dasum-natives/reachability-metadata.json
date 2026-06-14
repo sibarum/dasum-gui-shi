@@ -6,7 +6,8 @@
       { "returnType": "void", "parameterTypes": ["void*", "int", "int"] },
       { "returnType": "void", "parameterTypes": ["void*", "double", "double"] },
       { "returnType": "void", "parameterTypes": ["void*", "int", "int", "int"] },
-      { "returnType": "void", "parameterTypes": ["void*", "int"] }
+      { "returnType": "void", "parameterTypes": ["void*", "int"] },
+      { "returnType": "void", "parameterTypes": ["void*"] }
     ],
     "downcalls": [
       { "returnType": "int",   "parameterTypes": [] },

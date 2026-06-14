@@ -94,8 +94,19 @@ public final class Status {
     private static Variant defaultVariant = Variant.DEFAULT;
     private static final AtomicLong eventCounter = new AtomicLong(0L);
 
+    // ----- docked field (permanent, app-controlled, never overwritten by events) -----
+    private static String  dockedMessage = "";
+    private static Variant dockedVariant = Variant.DEFAULT;
+
     // ----- visuals (lazily built by wrap) -----
     private static Component.Flex ribbon = null;
+    // The ribbon is split into two sibling zones so the always-present docked
+    // field can't be clobbered by the event/idle message refresh: the message
+    // zone grows to fill (pushing the docked zone to the trailing edge) and is
+    // the only one cleared by refresh(); the docked zone is owned by
+    // refreshDocked() alone.
+    private static Component.Flex messageZone = null;
+    private static Component.Flex dockedZone = null;
     private static boolean wrapped = false;
 
     // ----- close-icon registration -----
@@ -155,6 +166,34 @@ public final class Status {
             defaultVariant = variant == null ? Variant.DEFAULT : variant;
             if (activeEvent == null) refresh();
         }
+    }
+
+    /**
+     * Set the text shown in the ribbon's permanently-docked field, anchored to
+     * the trailing (right) edge. Unlike {@link #setDefaultMessage}, this field
+     * is independent of the event/idle message: it stays put when a
+     * {@link #log} event is displayed and never overlaps the message field.
+     * Typical use: a persistent indicator such as current mode, cursor
+     * position, or a clock. Pass an empty string to hide it.
+     *
+     * <p>May be called before {@link #wrap}; the value is shown once the ribbon
+     * is built. Thread-safe.
+     */
+    public static void setDockedMessage(String text) {
+        setDockedMessage(text, Variant.DEFAULT);
+    }
+
+    public static void setDockedMessage(String text, Variant variant) {
+        synchronized (LOCK) {
+            dockedMessage = text == null ? "" : text;
+            dockedVariant = variant == null ? Variant.DEFAULT : variant;
+            refreshDocked();
+        }
+    }
+
+    /** The current docked-field text (empty string when unset). Safe from any thread. */
+    public static String dockedMessage() {
+        synchronized (LOCK) { return dockedMessage; }
     }
 
     /** Log + display an event. Variant defaults to {@link Variant#DEFAULT}. */
@@ -271,18 +310,30 @@ public final class Status {
 
     private static void ensureRibbon() {
         if (ribbon != null) return;
+        // Leading zone: grows to fill, so the trailing docked zone is pushed to
+        // the right edge. Only this zone is touched by refresh().
+        messageZone = new Component.Flex(
+            null, null, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
+            List.of(), false, 1);
+        // Trailing zone: hugs its content at the right edge. Owned by refreshDocked().
+        dockedZone = new Component.Flex(
+            null, null, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.END, AlignItems.CENTER, Em.of(0.5f),
+            List.of(), false, 0);
         ribbon = new Component.Flex(
             null, RIBBON_HEIGHT_EM, Em.of(0.4f), RIBBON_BG,
             Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
-            List.of(), true, 0);
+            List.of(messageZone, dockedZone), true, 0);
         Handlers.onClick(ribbon, Status::onRibbonClicked);
         refresh();
+        refreshDocked();
     }
 
-    /** Rebuild the ribbon's content under {@link #LOCK}. */
+    /** Rebuild the message zone's content under {@link #LOCK}. */
     private static void refresh() {
-        if (ribbon == null) return;
-        DynamicChildren.clearChildren(ribbon);
+        if (messageZone == null) return;
+        DynamicChildren.clearChildren(messageZone);
         StatusEvent ev = activeEvent;
         String text;
         Variant variant;
@@ -294,14 +345,24 @@ public final class Status {
             variant = defaultVariant;
         }
         if (text != null && !text.isEmpty()) {
-            DynamicChildren.add(ribbon, buildRibbonText(text, variant));
+            DynamicChildren.add(messageZone, buildRibbonText(text, variant));
         }
         // Always trail with a faded "click for log" hint when no event is
         // active and the default text isn't already serving that purpose —
         // discoverable signal that the bar is clickable.
         if (ev == null && (text == null || text.isEmpty())) {
-            DynamicChildren.add(ribbon, buildRibbonText(
+            DynamicChildren.add(messageZone, buildRibbonText(
                 "Click for event log", Variant.DEFAULT));
+        }
+        Invalidator.invalidate();
+    }
+
+    /** Rebuild the docked zone's content under {@link #LOCK}; independent of refresh(). */
+    private static void refreshDocked() {
+        if (dockedZone == null) return;
+        DynamicChildren.clearChildren(dockedZone);
+        if (dockedMessage != null && !dockedMessage.isEmpty()) {
+            DynamicChildren.add(dockedZone, buildRibbonText(dockedMessage, dockedVariant));
         }
         Invalidator.invalidate();
     }
