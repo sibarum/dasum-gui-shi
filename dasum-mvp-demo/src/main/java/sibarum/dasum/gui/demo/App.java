@@ -102,6 +102,16 @@ import sibarum.dasum.gui.vis.scene.SceneStates;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
 import sibarum.dasum.gui.vis.scene.VexelRayLayer;
+import sibarum.dasum.gui.vis.plot.Axis;
+import sibarum.dasum.gui.vis.plot.ComplexColorMaps;
+import sibarum.dasum.gui.vis.plot.ComplexField2D;
+import sibarum.dasum.gui.vis.plot.ComplexField3D;
+import sibarum.dasum.gui.vis.plot.FieldSlicePlot;
+import sibarum.dasum.gui.vis.plot.LinePlot;
+import sibarum.dasum.gui.vis.plot.PlotFrame;
+import sibarum.dasum.gui.vis.plot.PlotStyle;
+import sibarum.dasum.gui.vis.plot.PlotView;
+import sibarum.dasum.gui.vis.plot.Series;
 import sibarum.dasum.gui.vis.math.Vec3;
 import sibarum.dasum.gui.vis.pointcloud.PointHandlers;
 
@@ -345,6 +355,7 @@ public final class App {
                 new Component.Tabs.TabPanel("Text",        buildTextPane()),
                 new Component.Tabs.TabPanel("Stress",      buildStressPane()),
                 new Component.Tabs.TabPanel("VexelRay",    buildVexelRayPane()),
+                new Component.Tabs.TabPanel("Plots",       buildPlotsPane()),
                 new Component.Tabs.TabPanel("Tables",      buildTablesPane())
             ),
             activeTab,
@@ -939,6 +950,103 @@ public final class App {
         return new Component.Scroll(
             null, null, Em.ZERO, CONTENT_BG, column, false, 1
         );
+    }
+
+    /**
+     * Plotting toolkit showcase ({@code dasum-vis.plot}): a multi-series
+     * line+curve chart, a 2D complex domain-colouring map, and a 3D complex
+     * volume sliced live by a Slider. All three are ordinary SceneViews fed
+     * through {@link PlotView}/{@link FieldSlicePlot}; PAN_ZOOM_2D is enabled
+     * so dragging pans and scrolling zooms (and the chart re-ticks on zoom).
+     */
+    private static Component buildPlotsPane() {
+        PlotStyle style = PlotStyle.defaults();
+        Color plotBg = new Color(0.04f, 0.05f, 0.08f, 1f);
+
+        // ---- 1. Line + curve chart -------------------------------------
+        Component.SceneView chartView = new Component.SceneView(
+            Em.of(22f), Em.of(12f), Em.ZERO, plotBg, true, 0);
+        int n = 40;
+        double[] xs = new double[n], sine = new double[n], noisy = new double[n];
+        java.util.Random rng = new java.util.Random(7);
+        for (int i = 0; i < n; i++) {
+            xs[i] = i * (2 * Math.PI / (n - 1));
+            sine[i] = Math.sin(xs[i]);
+            noisy[i] = 0.6 * Math.cos(xs[i]) + (rng.nextDouble() - 0.5) * 0.3;
+        }
+        List<Series> series = List.of(
+            Series.curve(xs, sine, new Color(0.40f, 0.80f, 1.0f, 1f)).withThickness(0.06f),
+            Series.line(xs, noisy, new Color(1.0f, 0.65f, 0.30f, 1f))
+        );
+        PlotView chart = new PlotView(chartView);
+        chart.showLinePlot(LinePlot.autoFrame(0f, 0f, 10f, 5.5f, series), series, style);
+        SceneStates.setInteraction(chartView, InteractionSpec.panZoom2d());
+
+        // ---- 2. 2D complex domain-colouring map ------------------------
+        Component.SceneView mapView = new Component.SceneView(
+            Em.of(13f), Em.of(13f), Em.ZERO, plotBg, true, 0);
+        int res = 256;
+        ComplexField2D fz = ComplexField2D.of(res, res, (px, py, out) -> {
+            // z over [-1.6, 1.6]^2 (top row = +imag), f(z) = z^2 - 1
+            double zr = -1.6 + 3.2 * px / (res - 1);
+            double zi =  1.6 - 3.2 * py / (res - 1);
+            double fr = zr * zr - zi * zi - 1.0;
+            double fi = 2 * zr * zi;
+            out[0] = (float) fr; out[1] = (float) fi;
+        });
+        PlotFrame mapFrame = new PlotFrame(0f, 0f, 6f, 6f, Axis.linear(-1.6, 1.6), Axis.linear(-1.6, 1.6));
+        PlotView fieldMap = new PlotView(mapView);
+        fieldMap.showFieldMap(mapFrame, fz, ComplexColorMaps.domainColoring(), style);
+        SceneStates.setInteraction(mapView, InteractionSpec.panZoom2d());
+
+        // ---- 3. 3D complex volume + slice slider -----------------------
+        Component.SceneView sliceView = new Component.SceneView(
+            Em.of(13f), Em.of(13f), Em.ZERO, plotBg, true, 0);
+        int vr = 96, vd = 32;
+        ComplexField3D volume = ComplexField3D.Array.from(vr, vr, vd, (x, y, z, out) -> {
+            double cx = -1.5 + 3.0 * x / (vr - 1);
+            double cy =  1.5 - 3.0 * y / (vr - 1);
+            double phase = z * 0.35;                 // slice scrubs the wave phase
+            double env = Math.exp(-(cx * cx + cy * cy) * 0.7);
+            double k = 3.0;
+            out[0] = (float) (env * Math.cos(k * cx + phase));
+            out[1] = (float) (env * Math.sin(k * cy + phase));
+        });
+        PlotFrame sliceFrame = new PlotFrame(0f, 0f, 6f, 6f, Axis.linear(-1.5, 1.5), Axis.linear(-1.5, 1.5));
+        Property<Float> sliceIdx = new Property<>(0f);
+        Component.Slider sliceSlider = new Component.Slider(
+            Direction.ROW, Em.of(13f), Em.of(1.0f), Em.of(0.6f),
+            SL_TRACK, SL_FILL, SL_THUMB, sliceIdx, 0f, vd - 1);
+        Tooltips.set(sliceSlider, "Scrub the Z slice through the 3D complex volume");
+        FieldSlicePlot slicePlot = new FieldSlicePlot(
+            sliceView, sliceFrame, volume, ComplexField3D.Axis3.Z,
+            ComplexColorMaps.domainColoring(), style, sliceSlider, null);
+        slicePlot.bind();
+
+        Component sliceCard = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.4f),
+            List.of(sliceView, inlineRow(List.of(
+                new Component.Text("Slice:", Em.of(0.95f), LABEL_FG), sliceSlider))),
+            false, 0);
+
+        Component maps = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.8f),
+            List.of(
+                section("2D complex map — domain colouring of f(z) = z² − 1", mapView),
+                section("3D complex volume — Z-slice driven by the slider", sliceCard)),
+            false, 0, true);
+
+        Component column = new Component.Flex(
+            null, Em.AUTO, Em.of(1.2f), CONTENT_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(1.2f),
+            List.of(
+                section("Line + curve chart — auto-ranged axes, nice-number ticks, smooth curve", chartView),
+                maps),
+            false, 0);
+
+        return new Component.Scroll(null, null, Em.ZERO, CONTENT_BG, column, false, 1);
     }
 
     /**
