@@ -273,6 +273,17 @@ public final class Render {
         FontGroup fg = FontGroups.getOrDefault(text.fontGroup());
         String content = TextStates.contentOf(text);
 
+        // text-overflow: ellipsis — a single-line label truncates to the rect
+        // it was laid out into (the layout shrinks that rect to the available
+        // width) instead of spilling past it. Done before any measurement
+        // below so glyphs, width, selection, and clip all agree on the shown
+        // string. No effect on wrapped or multi-line text.
+        if (text.ellipsize() && text.wrapWidth() == null && content.indexOf('\n') < 0) {
+            float avail = rect.width() - 2f * text.padding().toPixels()
+                - TextMetrics.gutterWidthPixels(text, content);
+            content = TextMetrics.ellipsize(text, content, avail);
+        }
+
         // overflow:hidden — scissor-clip glyphs and decorations to the text rect.
         boolean clipping = text.clip();
         if (clipping) {

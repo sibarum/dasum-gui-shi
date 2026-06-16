@@ -614,6 +614,21 @@ public final class Layout {
         if (remaining > 0f && totalGrow > 0) {
             float perUnit = remaining / totalGrow;
             for (int i = 0; i < n; i++) mainSize[i] += grow[i] * perUnit;
+        } else if (remaining < 0f && totalGrow > 0) {
+            // Overflow with flexible children present: the rigid (grow=0)
+            // siblings keep their intrinsic size and position; the flexible
+            // ones absorb the whole deficit, shrinking proportionally to their
+            // current size and flooring at 0. This is what makes a trailing
+            // anchored field (grow=0) hold the right edge while a leading
+            // grow=1 region gives way — the docked-status-bar pattern, made
+            // structural rather than conventional. (Deliberately minimal: only
+            // the overflow case, only grow>0 children, no per-child basis.)
+            float shrinkable = 0f;
+            for (int i = 0; i < n; i++) if (grow[i] > 0) shrinkable += mainSize[i];
+            if (shrinkable > 0f) {
+                float scale = Math.max(0f, (shrinkable + remaining) / shrinkable); // remaining < 0
+                for (int i = 0; i < n; i++) if (grow[i] > 0) mainSize[i] *= scale;
+            }
         } else if (remaining > 0f) {
             switch (flex.justify()) {
                 case START          -> startMain = 0f;

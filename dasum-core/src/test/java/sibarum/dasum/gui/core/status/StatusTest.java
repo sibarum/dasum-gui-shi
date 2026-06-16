@@ -79,6 +79,13 @@ final class StatusTest {
 
         // Distinct sibling containers — they can't overlap.
         assertNotSame(messageZone, dockedZone, "message and docked fields are separate zones");
+
+        // The docked zone must fit-content (Em.AUTO), not null: a null-width
+        // flex collapses to 0 in intrinsic sizing, so the docked text would
+        // spill past the right edge instead of right-aligning.
+        assertTrue(((Component.Flex) dockedZone).width() != null
+                && ((Component.Flex) dockedZone).width().isAuto(),
+            "docked zone width is Em.AUTO so it hugs its content");
         assertEquals(1, DynamicChildren.effectiveChildren(dockedZone).size(),
             "docked field is shown");
 

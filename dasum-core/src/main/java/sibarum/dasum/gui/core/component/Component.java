@@ -130,13 +130,13 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
     record Text(
         String content, String fontGroup, Em fontSize, Color color,
         Em width, Em height, Em padding,
-        Em wrapWidth, boolean clip, boolean lineNumbers,
+        Em wrapWidth, boolean clip, boolean ellipsize, boolean lineNumbers,
         boolean interactive, boolean selectable, boolean editable, boolean acceptsTab, int flexGrow
     ) implements Component {
 
         public Text(String content, Em fontSize, Color color) {
             this(content, sibarum.dasum.gui.core.text.FontGroups.DEFAULT, fontSize, color,
-                 null, null, Em.ZERO, null, false, false, false, false, false, false, 0);
+                 null, null, Em.ZERO, null, false, false, false, false, false, false, false, 0);
         }
 
         /** Pre-lineNumbers canonical shape — kept so existing positional call sites don't break. */
@@ -145,30 +145,30 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
                     Em wrapWidth, boolean clip,
                     boolean interactive, boolean selectable, boolean editable, boolean acceptsTab, int flexGrow) {
             this(content, fontGroup, fontSize, color, width, height, padding,
-                 wrapWidth, clip, false, interactive, selectable, editable, acceptsTab, flexGrow);
+                 wrapWidth, clip, false, false, interactive, selectable, editable, acceptsTab, flexGrow);
         }
 
-        public Text withInteractive(boolean v) { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, lineNumbers, v, selectable, editable, acceptsTab, flexGrow); }
-        public Text withFlexGrow(int g)        { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, lineNumbers, interactive, selectable, editable, acceptsTab, g); }
-        public Text withContent(String c)      { return new Text(c, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
-        public Text withColor(Color c)         { return new Text(content, fontGroup, fontSize, c, width, height, padding, wrapWidth, clip, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
-        public Text withWidth(Em w)            { return new Text(content, fontGroup, fontSize, color, w, height, padding, wrapWidth, clip, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
-        public Text withHeight(Em h)           { return new Text(content, fontGroup, fontSize, color, width, h, padding, wrapWidth, clip, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
-        public Text withFontGroup(String fg)   { return new Text(content, fg, fontSize, color, width, height, padding, wrapWidth, clip, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
-        public Text withPadding(Em p)          { return new Text(content, fontGroup, fontSize, color, width, height, p, wrapWidth, clip, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
+        public Text withInteractive(boolean v) { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, ellipsize, lineNumbers, v, selectable, editable, acceptsTab, flexGrow); }
+        public Text withFlexGrow(int g)        { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, ellipsize, lineNumbers, interactive, selectable, editable, acceptsTab, g); }
+        public Text withContent(String c)      { return new Text(c, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, ellipsize, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
+        public Text withColor(Color c)         { return new Text(content, fontGroup, fontSize, c, width, height, padding, wrapWidth, clip, ellipsize, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
+        public Text withWidth(Em w)            { return new Text(content, fontGroup, fontSize, color, w, height, padding, wrapWidth, clip, ellipsize, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
+        public Text withHeight(Em h)           { return new Text(content, fontGroup, fontSize, color, width, h, padding, wrapWidth, clip, ellipsize, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
+        public Text withFontGroup(String fg)   { return new Text(content, fg, fontSize, color, width, height, padding, wrapWidth, clip, ellipsize, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
+        public Text withPadding(Em p)          { return new Text(content, fontGroup, fontSize, color, width, height, p, wrapWidth, clip, ellipsize, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
 
         /** Selectable implies interactive — selection requires hit-test + focus participation. */
-        public Text withSelectable(boolean s)  { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, lineNumbers, s || interactive, s, editable, acceptsTab, flexGrow); }
+        public Text withSelectable(boolean s)  { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, ellipsize, lineNumbers, s || interactive, s, editable, acceptsTab, flexGrow); }
 
         /** Editable implies selectable + interactive — editing requires hit-test, focus, and selection. */
-        public Text withEditable(boolean e)    { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, lineNumbers, e || interactive, e || selectable, e, acceptsTab, flexGrow); }
+        public Text withEditable(boolean e)    { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, ellipsize, lineNumbers, e || interactive, e || selectable, e, acceptsTab, flexGrow); }
 
         /**
          * When {@code true}, the Tab key inserts a literal {@code '\t'} character
          * instead of being consumed as focus cycling. Only meaningful when
          * {@code editable}.
          */
-        public Text withAcceptsTab(boolean a)  { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, lineNumbers, interactive, selectable, editable, a, flexGrow); }
+        public Text withAcceptsTab(boolean a)  { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, ellipsize, lineNumbers, interactive, selectable, editable, a, flexGrow); }
 
         /**
          * Max line width in em. When non-null, the text wraps to fit:
@@ -176,10 +176,21 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
          * and letter/digit transitions; long unbreakable words overflow on
          * their current line rather than wasting an empty break.
          */
-        public Text withWrapWidth(Em w)        { return new Text(content, fontGroup, fontSize, color, width, height, padding, w, clip, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
+        public Text withWrapWidth(Em w)        { return new Text(content, fontGroup, fontSize, color, width, height, padding, w, clip, ellipsize, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
 
         /** When {@code true}, glyphs that fall outside the text rect are scissor-clipped. */
-        public Text withClip(boolean c)        { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, c, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
+        public Text withClip(boolean c)        { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, c, ellipsize, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
+
+        /**
+         * When {@code true}, a single-line ({@code wrapWidth == null}) label
+         * whose content is wider than the rect it's laid out into is truncated
+         * with a trailing ellipsis ({@code …}) instead of overflowing. Pairs
+         * with {@code clip} (the scissor backstop) and a {@code flexGrow > 0}
+         * slot so the layout shrinks the rect to the available width — see the
+         * docked-status-field pattern in {@code Status}. No effect on wrapped
+         * or editable text.
+         */
+        public Text withEllipsize(boolean e)   { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, e, lineNumbers, interactive, selectable, editable, acceptsTab, flexGrow); }
 
         /**
          * When {@code true}, a line-number gutter is rendered left of the
@@ -193,7 +204,7 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
          * measures the text itself; the component's intrinsic width grows by
          * the gutter.
          */
-        public Text withLineNumbers(boolean n) { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, n, interactive, selectable, editable, acceptsTab, flexGrow); }
+        public Text withLineNumbers(boolean n) { return new Text(content, fontGroup, fontSize, color, width, height, padding, wrapWidth, clip, ellipsize, n, interactive, selectable, editable, acceptsTab, flexGrow); }
     }
 
     /**

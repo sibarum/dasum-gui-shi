@@ -63,6 +63,39 @@ public final class TextMetrics {
         return digits * fg.layout().advance('0', fontPx) + GUTTER_GAP * fontPx;
     }
 
+    /** Glyphs appended when a label is truncated; ASCII so atlas coverage is guaranteed. */
+    public static final String ELLIPSIS = "...";
+
+    /**
+     * Single-line truncation to {@code availContentPx} (the content-box width,
+     * i.e. the rect width minus padding and any gutter). Returns {@code content}
+     * unchanged when it already fits; otherwise the longest codepoint prefix
+     * whose width plus an {@link #ELLIPSIS} fits, with the ellipsis appended.
+     * Falls back to just the ellipsis (or {@code ""} when even that can't fit).
+     * Intended for single-line labels — callers gate on {@code wrapWidth == null}.
+     */
+    public static String ellipsize(Component.Text text, String content, float availContentPx) {
+        if (content.isEmpty()) return content;
+        FontGroup fg = FontGroups.getOrDefault(text.fontGroup());
+        float fontPx = text.fontSize().toPixels();
+        if (lineAdvance(fg, content, 0, content.length(), fontPx) <= availContentPx) return content;
+
+        float ell = lineAdvance(fg, ELLIPSIS, 0, ELLIPSIS.length(), fontPx);
+        float budget = availContentPx - ell;
+        if (budget <= 0f) return availContentPx > 0f ? ELLIPSIS : "";
+
+        int end = 0;
+        float w = 0f;
+        while (end < content.length()) {
+            int cp = content.codePointAt(end);
+            float adv = fg.layout().advance(cp, fontPx);
+            if (w + adv > budget) break;
+            w += adv;
+            end += Character.charCount(cp);
+        }
+        return content.substring(0, end) + ELLIPSIS;
+    }
+
     public static float lineAdvance(FontGroup fg, String s, int from, int to, float fontPx) {
         float total = 0f;
         for (int j = from; j < to; ) {

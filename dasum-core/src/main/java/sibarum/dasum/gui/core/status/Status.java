@@ -68,6 +68,8 @@ public final class Status {
     public static final int MAX_HISTORY = 1000;
 
     private static final Em RIBBON_HEIGHT_EM = Em.of(1.7f);
+    /** Clear space between the (truncating) message and the docked field. */
+    private static final Em DOCK_MARGIN_EM = Em.of(1.25f);
     /** Max dialog size on large viewports — past this, the dialog stops growing and centers. */
     private static final Em LOG_DIALOG_MAX_W = Em.of(120f);
     private static final Em LOG_DIALOG_MAX_H = Em.of(60f);
@@ -310,20 +312,29 @@ public final class Status {
 
     private static void ensureRibbon() {
         if (ribbon != null) return;
-        // Leading zone: grows to fill, so the trailing docked zone is pushed to
-        // the right edge. Only this zone is touched by refresh().
+        // Anchored-trailing-field pattern (ROW): a leading flexGrow=1 zone and a
+        // trailing rigid (flexGrow=0) zone. Three rules make it hold up under
+        // both empty and overflowing content:
+        //   1. Leading zone grows to fill, pushing the trailing zone to the
+        //      right edge.
+        //   2. Trailing zone uses Em.AUTO width (fit-content) — NOT null. A
+        //      null-width flex resolves to the 0 fallback in intrinsic context,
+        //      collapsing the zone so its content spills past the right edge.
+        //   3. The leading content (flexGrow=1, ellipsize) yields to the rigid
+        //      trailing zone when space runs out — Layout shrinks grow>0
+        //      children first — so the message truncates with "..." instead of
+        //      running under the docked field. DOCK_MARGIN_EM keeps them apart.
         messageZone = new Component.Flex(
             null, null, Em.ZERO, TRANSPARENT,
             Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
             List.of(), false, 1);
-        // Trailing zone: hugs its content at the right edge. Owned by refreshDocked().
         dockedZone = new Component.Flex(
-            null, null, Em.ZERO, TRANSPARENT,
+            Em.AUTO, null, Em.ZERO, TRANSPARENT,
             Direction.ROW, JustifyContent.END, AlignItems.CENTER, Em.of(0.5f),
             List.of(), false, 0);
         ribbon = new Component.Flex(
             null, RIBBON_HEIGHT_EM, Em.of(0.4f), RIBBON_BG,
-            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, DOCK_MARGIN_EM,
             List.of(messageZone, dockedZone), true, 0);
         Handlers.onClick(ribbon, Status::onRibbonClicked);
         refresh();
@@ -345,13 +356,13 @@ public final class Status {
             variant = defaultVariant;
         }
         if (text != null && !text.isEmpty()) {
-            DynamicChildren.add(messageZone, buildRibbonText(text, variant));
+            DynamicChildren.add(messageZone, buildMessageText(text, variant));
         }
         // Always trail with a faded "click for log" hint when no event is
         // active and the default text isn't already serving that purpose —
         // discoverable signal that the bar is clickable.
         if (ev == null && (text == null || text.isEmpty())) {
-            DynamicChildren.add(messageZone, buildRibbonText(
+            DynamicChildren.add(messageZone, buildMessageText(
                 "Click for event log", Variant.DEFAULT));
         }
         Invalidator.invalidate();
@@ -374,6 +385,19 @@ public final class Status {
             text, FontGroups.DEFAULT, Em.of(0.9f), fg,
             null, null, Em.ZERO, null, true,
             false, false, false, false, 0);
+    }
+
+    /**
+     * Message-zone label: like {@link #buildRibbonText} but flexible and
+     * truncating. {@code flexGrow=1} lets the layout shrink it to the space
+     * left of the docked field (the docked field is rigid, so it wins the
+     * right edge); {@code ellipsize} then trims the text with a trailing
+     * "..." instead of letting it run under the docked text.
+     */
+    private static Component buildMessageText(String text, Variant variant) {
+        return ((Component.Text) buildRibbonText(text, variant))
+            .withEllipsize(true)
+            .withFlexGrow(1);
     }
 
     private static void tryRevert(long id) {
