@@ -83,6 +83,24 @@ public final class Window implements AutoCloseable {
     public void requestClose() { Glfw.glfwSetWindowShouldClose(handle, true); }
     public void swapBuffers() { Glfw.glfwSwapBuffers(handle); }
 
+    // --- Window geometry (screen coordinates), for persisting/restoring layout ---
+
+    /** Top-left position in screen coordinates: {@code [x, y]}. */
+    public int[] position() { return Glfw.glfwGetWindowPos(handle); }
+
+    /** Size in screen coordinates: {@code [width, height]} (distinct from the
+     *  DPI-scaled framebuffer size). */
+    public int[] size() { return Glfw.glfwGetWindowSize(handle); }
+
+    public void setPosition(int x, int y) { Glfw.glfwSetWindowPos(handle, x, y); }
+    public void setSize(int width, int height) { Glfw.glfwSetWindowSize(handle, width, height); }
+
+    public void maximize() { Glfw.glfwMaximizeWindow(handle); }
+
+    public boolean isMaximized() {
+        return Glfw.glfwGetWindowAttrib(handle, Glfw.GLFW_MAXIMIZED) == Glfw.GLFW_TRUE;
+    }
+
     @Override
     public void close() {
         Glfw.glfwDestroyWindow(handle);

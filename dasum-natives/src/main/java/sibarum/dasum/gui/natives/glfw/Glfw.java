@@ -71,6 +71,7 @@ public final class Glfw {
     public static final int GLFW_OPENGL_FORWARD_COMPAT = 0x00022006;
     public static final int GLFW_VISIBLE               = 0x00020004;
     public static final int GLFW_RESIZABLE             = 0x00020003;
+    public static final int GLFW_MAXIMIZED             = 0x00020008;
 
     public static final int GLFW_OPENGL_CORE_PROFILE = 0x00032001;
 
@@ -139,6 +140,12 @@ public final class Glfw {
     private static final MethodHandle GLFW_GET_PROC_ADDRESS        = dc("glfwGetProcAddress",          FunctionDescriptor.of(ADDRESS, ADDRESS));
     private static final MethodHandle GLFW_GET_WINDOW_CONTENT_SCALE= dc("glfwGetWindowContentScale",   FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
     private static final MethodHandle GLFW_GET_FRAMEBUFFER_SIZE    = dc("glfwGetFramebufferSize",      FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
+    private static final MethodHandle GLFW_GET_WINDOW_POS          = dc("glfwGetWindowPos",            FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
+    private static final MethodHandle GLFW_SET_WINDOW_POS          = dc("glfwSetWindowPos",            FunctionDescriptor.ofVoid(ADDRESS, JAVA_INT, JAVA_INT));
+    private static final MethodHandle GLFW_GET_WINDOW_SIZE         = dc("glfwGetWindowSize",           FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
+    private static final MethodHandle GLFW_SET_WINDOW_SIZE         = dc("glfwSetWindowSize",           FunctionDescriptor.ofVoid(ADDRESS, JAVA_INT, JAVA_INT));
+    private static final MethodHandle GLFW_MAXIMIZE_WINDOW         = dc("glfwMaximizeWindow",          FunctionDescriptor.ofVoid(ADDRESS));
+    private static final MethodHandle GLFW_GET_WINDOW_ATTRIB       = dc("glfwGetWindowAttrib",         FunctionDescriptor.of(JAVA_INT, ADDRESS, JAVA_INT));
 
     private Glfw() {}
 
@@ -346,6 +353,47 @@ public final class Glfw {
             GLFW_GET_FRAMEBUFFER_SIZE.invokeExact(window, w, h);
             return new int[] { w.get(JAVA_INT, 0), h.get(JAVA_INT, 0) };
         } catch (Throwable t) { throw rethrow(t); }
+    }
+
+    /** Window position in screen coordinates: {@code [x, y]}. */
+    public static int[] glfwGetWindowPos(MemorySegment window) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment x = arena.allocate(JAVA_INT);
+            MemorySegment y = arena.allocate(JAVA_INT);
+            GLFW_GET_WINDOW_POS.invokeExact(window, x, y);
+            return new int[] { x.get(JAVA_INT, 0), y.get(JAVA_INT, 0) };
+        } catch (Throwable t) { throw rethrow(t); }
+    }
+
+    public static void glfwSetWindowPos(MemorySegment window, int x, int y) {
+        try { GLFW_SET_WINDOW_POS.invokeExact(window, x, y); }
+        catch (Throwable t) { throw rethrow(t); }
+    }
+
+    /** Window size in screen coordinates: {@code [width, height]}. */
+    public static int[] glfwGetWindowSize(MemorySegment window) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment w = arena.allocate(JAVA_INT);
+            MemorySegment h = arena.allocate(JAVA_INT);
+            GLFW_GET_WINDOW_SIZE.invokeExact(window, w, h);
+            return new int[] { w.get(JAVA_INT, 0), h.get(JAVA_INT, 0) };
+        } catch (Throwable t) { throw rethrow(t); }
+    }
+
+    public static void glfwSetWindowSize(MemorySegment window, int width, int height) {
+        try { GLFW_SET_WINDOW_SIZE.invokeExact(window, width, height); }
+        catch (Throwable t) { throw rethrow(t); }
+    }
+
+    public static void glfwMaximizeWindow(MemorySegment window) {
+        try { GLFW_MAXIMIZE_WINDOW.invokeExact(window); }
+        catch (Throwable t) { throw rethrow(t); }
+    }
+
+    /** Read a window attribute (e.g. {@link #GLFW_MAXIMIZED}). */
+    public static int glfwGetWindowAttrib(MemorySegment window, int attrib) {
+        try { return (int) GLFW_GET_WINDOW_ATTRIB.invokeExact(window, attrib); }
+        catch (Throwable t) { throw rethrow(t); }
     }
 
     // Platform-specific native window accessors. Looked up lazily because the
