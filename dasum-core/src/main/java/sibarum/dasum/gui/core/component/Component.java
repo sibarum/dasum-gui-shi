@@ -5,6 +5,7 @@ import sibarum.dasum.gui.core.reactive.Property;
 import sibarum.dasum.gui.core.render.Color;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Sealed tree of component descriptors. Components are pure-data records;
@@ -318,6 +319,14 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
      * {@code Property<Integer>} for change events, or sets it
      * programmatically to switch tabs.
      * <p>
+     * {@link #onTabPressed} is a separate, discrete channel: it fires on
+     * <em>every</em> header press — including re-clicks of the already-active
+     * tab — whereas {@link #activeIndex} only notifies when the selection
+     * actually changes (its {@code Property} dedupes equal values). Use
+     * {@code activeIndex} for "which tab is shown" state and
+     * {@code onTabPressed} for click intent (e.g. reopening a panel/menu on
+     * re-click).
+     * <p>
      * Header click dispatch lives in
      * {@link sibarum.dasum.gui.core.input.TabsController} (scrollbar-style
      * sidecar for the synthesized tab cells); keyboard nav (Left/Right
@@ -336,6 +345,9 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
      * @param fontGroup             registered font group name for labels
      * @param tabs                  list of {@code (label, content)} pairs
      * @param activeIndex           reactive index of the currently-displayed tab
+     * @param onTabPressed          nullable; invoked with the pressed tab index on
+     *                              every header click, even when it doesn't change
+     *                              {@code activeIndex}
      */
     record Tabs(
         Em width, Em height,
@@ -344,6 +356,7 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
         Em tabFontSize, String fontGroup,
         List<TabPanel> tabs,
         Property<Integer> activeIndex,
+        Consumer<Integer> onTabPressed,
         boolean interactive, int flexGrow
     ) implements Component {
 
@@ -355,8 +368,9 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
             return tabs.get(idx).content();
         }
 
-        public Tabs withFlexGrow(int g)        { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, interactive, g); }
-        public Tabs withInteractive(boolean v) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, v, flexGrow); }
+        public Tabs withFlexGrow(int g)        { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, interactive, g); }
+        public Tabs withInteractive(boolean v) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, v, flexGrow); }
+        public Tabs withOnTabPressed(Consumer<Integer> cb) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, cb, interactive, flexGrow); }
     }
 
     /**

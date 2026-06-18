@@ -180,7 +180,7 @@ public final class Themed {
             headerHeight, tabPadding, contentPadding,
             Theme.subtleBg(), p.base(), p.emphasis(), Theme.subtleBg(),
             tabFontSize, sibarum.dasum.gui.core.text.FontGroups.DEFAULT,
-            panels, activeIndex, true, 0
+            panels, activeIndex, null, true, 0
         );
     }
 }

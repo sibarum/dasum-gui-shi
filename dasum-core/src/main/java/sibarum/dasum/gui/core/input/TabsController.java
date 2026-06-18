@@ -66,11 +66,14 @@ public final class TabsController {
 
     // ---------- input dispatch ----------
 
-    /** Returns true if the press landed on a tab cell and switched the active index. */
+    /** Returns true if the press landed on a tab cell. */
     public static boolean onMouseDown(double cursorX, double cursorY) {
         Hit hit = hitTest((float) cursorX, (float) cursorY);
         if (hit == null) return false;
-        hit.tabs.activeIndex().set(hit.index);
+        hit.tabs.activeIndex().set(hit.index);   // selection state: deduped (no-op on re-click)
+        if (hit.tabs.onTabPressed() != null) {   // click intent: fires on every press
+            hit.tabs.onTabPressed().accept(hit.index);
+        }
         FocusState.set(hit.tabs);
         return true;
     }
