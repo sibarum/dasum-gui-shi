@@ -16,8 +16,22 @@ import java.util.Map;
  */
 public record AtlasData(AtlasInfo info, FontMetrics metrics, Map<Integer, GlyphData> glyphs) {
 
+    /**
+     * Codepoint of the synthetic "missing glyph" (tofu) box. The
+     * dasum-msdf-maven-plugin bakes a font-independent square-outline glyph
+     * into every text atlas at this slot (U+FFFD REPLACEMENT CHARACTER), so
+     * {@link GlyphLayout} can substitute it for any codepoint the font can't
+     * render. Returns {@code null} for atlases built before this feature.
+     */
+    public static final int NOTDEF_CODEPOINT = 0xFFFD;
+
     public GlyphData glyph(int codepoint) {
         return glyphs.get(codepoint);
+    }
+
+    /** The baked missing-glyph box, or {@code null} if this atlas lacks one. */
+    public GlyphData notdef() {
+        return glyphs.get(NOTDEF_CODEPOINT);
     }
 
     public static AtlasData loadFromResource(String classpathPath) {

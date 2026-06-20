@@ -153,6 +153,9 @@ public class GenerateAtlasMojo extends AbstractMojo {
             // picks up the previously-emitted Icons class on incremental
             // builds.
             if (cfg.icons != null) registerGeneratedSourceRoot(cfg.icons);
+            // The missing-glyph box is baked idempotently, so a previously
+            // generated (but not-yet-baked) atlas still gets it on this run.
+            bakeNotdef(cfg, pngOut, jsonOut);
             return;
         }
 
@@ -171,6 +174,21 @@ public class GenerateAtlasMojo extends AbstractMojo {
             File java = IconsCodegen.generate(cfg.icons, selectedIcons, cfg.icons.manifestFormat);
             getLog().info("Icons class generated: " + java + " (" + selectedIcons.size() + " constants)");
             registerGeneratedSourceRoot(cfg.icons);
+        }
+
+        bakeNotdef(cfg, pngOut, jsonOut);
+    }
+
+    /**
+     * Bake the font-independent missing-glyph (tofu) box into a text atlas.
+     * Skipped for icon atlases — they carry no digit to size the box against,
+     * and a missing icon codepoint is the calling app's concern, not the text
+     * renderer's. The op is idempotent (no-op if the box is already present).
+     */
+    private void bakeNotdef(AtlasConfig cfg, File pngOut, File jsonOut) throws MojoExecutionException {
+        if (cfg.icons != null) return;
+        if (NotdefGlyph.ensure(pngOut, jsonOut)) {
+            getLog().info("Atlas '" + cfg.name + "': baked missing-glyph box (U+FFFD).");
         }
     }
 
