@@ -14,6 +14,15 @@ Pre-1.0. Demo-driven — the `dasum-mvp-demo` module is the canonical "see what 
 - **Native-access flag at runtime**: `--enable-native-access=ALL-UNNAMED`. The demo's `exec:exec` config sets this automatically; you'll need it in your own apps too.
 - **GLFW dynamic library on the runtime path.** Bundled for Windows x64 in `dasum-glfw/src/main/resources/natives/windows-x64/`. macOS / Linux users currently need to place a `glfw3.dylib` / `libglfw3.so` somewhere `NativeLibLoader` can find it (resource path or system `java.library.path`).
 - **MSDF atlas tool** (`msdf-atlas-gen.exe`) bundled for Windows. macOS / Linux: activate the `msdf-prebuilt` Maven profile and place atlases at `dasum-mvp-demo/src/main/resources/dasum/atlas/` instead of regenerating.
+- **File dialogs need an explicit `dasum-nfd` dependency.** The `Nfd` binding class arrives transitively via `dasum-core`, so `FileDialog` *compiles* without it — but the native binary (`nfd.dll`) lives in the separate resource-only `dasum-nfd` module, which **is not** a transitive dependency. Omit it and you get an `UnsatisfiedLinkError` at the first dialog call, not at build time. Declare it directly with `runtime` scope:
+
+  ```xml
+  <dependency>
+      <groupId>sibarum.dasum.gui</groupId>
+      <artifactId>dasum-nfd</artifactId>
+      <scope>runtime</scope>
+  </dependency>
+  ```
 
 ### Build
 
