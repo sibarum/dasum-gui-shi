@@ -22,6 +22,7 @@ public final class Theme {
     private static Color subtleBg = new Color(0.18f, 0.20f, 0.25f, 1f);
     private static Em scrollbarThickness = Em.of(0.5f);
     private static Color overlayBackdrop = new Color(0f, 0f, 0f, 0.40f);
+    private static float wheelEmPerNotch = 2.5f;
 
     private static final Color WHITE      = new Color(1f, 1f, 1f, 1f);
     private static final Color NEAR_BLACK = new Color(0.10f, 0.10f, 0.12f, 1f);
@@ -85,4 +86,15 @@ public final class Theme {
     public static Color overlayBackdrop() { return overlayBackdrop; }
 
     public static void setOverlayBackdrop(Color c) { overlayBackdrop = c; }
+
+    /**
+     * Scroll distance per mouse-wheel notch, in em — consumed by the
+     * {@code WheelRouter}'s terminal scroll-container routing. Em-typed (not
+     * pixels) per the em-first mandate, so scroll speed tracks zoom: the
+     * default {@code 2.5em} reproduces the legacy {@code 40px}/notch feel at
+     * the default {@code 16px}/em.
+     */
+    public static float wheelEmPerNotch() { return wheelEmPerNotch; }
+
+    public static void setWheelEmPerNotch(float em) { wheelEmPerNotch = em; }
 }

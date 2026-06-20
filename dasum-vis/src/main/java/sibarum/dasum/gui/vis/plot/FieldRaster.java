@@ -55,4 +55,45 @@ public final class FieldRaster {
         };
         return new ImageLayer(field.width(), field.height(), rgba, corners, smooth, blend, 1f);
     }
+
+    /**
+     * Rasterize a continuous {@link ComplexFunction} over an arbitrary
+     * world-space sub-rectangle of {@code frame}, at an arbitrary pixel
+     * resolution — the building block for display-resolution field maps that
+     * re-sample the visible region as the user zooms. Each output pixel maps
+     * to a world point inside {@code [tx0, tx1] × [ty0, ty1]} (top row at
+     * {@code ty1}, world Y-up), which is converted to a data coordinate
+     * through the frame's axes (so LOG axes sample correctly) before
+     * evaluating {@code fn}. The returned {@link ImageLayer} covers exactly
+     * that world sub-rect.
+     *
+     * @param w pixels per row (≥ 1)
+     * @param h rows (≥ 1)
+     */
+    public static ImageLayer functionTile(ComplexFunction fn, ComplexColorMap map, PlotFrame frame,
+                                          float tx0, float ty0, float tx1, float ty1,
+                                          int w, int h, boolean smooth) {
+        byte[] rgba = new byte[w * h * 4];
+        float[] tmp = new float[2];
+        double fwx0 = frame.wx0(), fwx1 = frame.wx1();
+        double fwy0 = frame.wy0(), fwy1 = frame.wy1();
+        for (int j = 0; j < h; j++) {
+            // Top row first: world y runs from ty1 (top) down to ty0.
+            double wy = ty1 - (j + 0.5) / h * (ty1 - ty0);
+            double zi = frame.y().unitToData((wy - fwy0) / (fwy1 - fwy0));
+            for (int i = 0; i < w; i++) {
+                double wx = tx0 + (i + 0.5) / w * (tx1 - tx0);
+                double zr = frame.x().unitToData((wx - fwx0) / (fwx1 - fwx0));
+                fn.eval(zr, zi, tmp);
+                map.color(tmp[0], tmp[1], rgba, (j * w + i) * 4);
+            }
+        }
+        float[] corners = {
+            tx0, ty1, 0f,  // top-left
+            tx1, ty1, 0f,  // top-right
+            tx1, ty0, 0f,  // bottom-right
+            tx0, ty0, 0f,  // bottom-left
+        };
+        return new ImageLayer(w, h, rgba, corners, smooth, BlendMode.ALPHA, 1f);
+    }
 }

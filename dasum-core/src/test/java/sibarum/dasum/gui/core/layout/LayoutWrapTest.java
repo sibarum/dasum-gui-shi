@@ -105,6 +105,54 @@ final class LayoutWrapTest {
             "single-line CENTER centers the child vertically (64px bar, 32px child -> y=16)");
     }
 
+    /** A COLUMN card (align STRETCH) holding a wide "header" box and a fixed content box. */
+    private static Component.Flex card(Em width, AlignItems align) {
+        return new Component.Flex(
+            width, Em.AUTO, Em.ZERO, CLEAR,
+            Direction.COLUMN, JustifyContent.START, align, Em.ZERO,
+            List.of(box(20f, 2f), box(13f, 13f)),
+            false, 0);
+    }
+
+    /** Two cards inside a wrapping ROW that the parent stretches to a wide width. */
+    private static Component.Flex maps(Em cardWidth, AlignItems cardAlign) {
+        return new Component.Flex(
+            null, null, Em.ZERO, CLEAR,
+            Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.8f),
+            List.of(card(cardWidth, cardAlign), card(cardWidth, cardAlign)),
+            false, 0, true);
+    }
+
+    @Test
+    void nullWidthColumnCollapsesInsideWrappingRow() {
+        // Regression guard for the Plots-tab bug: a width=null ("fill parent")
+        // COLUMN has no intrinsic main extent, so inside a fit-content ROW it
+        // measures as 0 — both cards collapse and their content piles up at the
+        // origin. Em.AUTO (fit-content) is the right sizing for a row child.
+        Component.Flex flex = maps(null, AlignItems.STRETCH);
+        LayoutResult lr = Layout.compute(flex, new PixelRect(0f, 0f, 1000f, 600f));
+        Component.Flex card0 = (Component.Flex) flex.children().get(0);
+        PixelRect viewport0 = lr.rectOf(card0.children().get(1));
+        assertEquals(0f, viewport0.width(), 0.5f, "null-width card collapses to zero main extent");
+    }
+
+    @Test
+    void autoWidthColumnFitsContentInsideWrappingRow() {
+        // The fix: Em.AUTO cards take their fit-content width and sit side by
+        // side without overlap.
+        Component.Flex flex = maps(Em.AUTO, AlignItems.START);
+        LayoutResult lr = Layout.compute(flex, new PixelRect(0f, 0f, 1000f, 600f));
+        Component.Flex card0 = (Component.Flex) flex.children().get(0);
+        Component.Flex card1 = (Component.Flex) flex.children().get(1);
+        PixelRect viewport0 = lr.rectOf(card0.children().get(1)); // the 13em content box
+        PixelRect viewport1 = lr.rectOf(card1.children().get(1));
+
+        assertEquals(13f * 16f, viewport0.width(), 0.5f,
+            "START keeps the content box at its intrinsic 13em (no header-driven stretch)");
+        assertTrue(viewport1.x() >= viewport0.x() + 20f * 16f,
+            "second card clears the first (card width = widest child = 20em header), no overlap");
+    }
+
     @Test
     void scrollExposesWrappedHeight() {
         // Two rows of 12em (192px) boxes inside a 20em (320px) scroll →

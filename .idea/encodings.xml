@@ -3,6 +3,8 @@
   <component name="Encoding">
     <file url="file://$PROJECT_DIR$/dasum-core/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/dasum-core/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/dasum-files/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/dasum-files/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/dasum-glfw/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/dasum-glfw/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/dasum-msdf-maven-plugin/src/main/java" charset="UTF-8" />

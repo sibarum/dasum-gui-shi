@@ -1,6 +1,7 @@
 package sibarum.dasum.gui.core.window;
 
 import sibarum.dasum.gui.core.event.Invalidator;
+import sibarum.dasum.gui.core.input.wheel.WheelRouter;
 import sibarum.dasum.gui.natives.glfw.Glfw;
 import sibarum.dasum.gui.natives.glfw.GlfwCallbacks;
 
@@ -69,6 +70,11 @@ public final class Window implements AutoCloseable {
         Glfw.glfwSetWindowFocusCallback(handle, GlfwCallbacks.WINDOW_FOCUS_CALLBACK_STUB);
         Glfw.glfwSetCursorEnterCallback(handle, GlfwCallbacks.CURSOR_ENTER_CALLBACK_STUB);
         Glfw.glfwSetWindowCloseCallback(handle, GlfwCallbacks.WINDOW_CLOSE_CALLBACK_STUB);
+
+        // Framework owns scroll dispatch: the router becomes the sole scroll
+        // listener and routes the wheel to scroll containers / DataTables /
+        // any handlers apps register. Apps no longer wire scroll themselves.
+        WheelRouter.install(handle);
 
         return w;
     }

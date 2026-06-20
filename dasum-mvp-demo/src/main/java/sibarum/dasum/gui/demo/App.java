@@ -104,8 +104,8 @@ import sibarum.dasum.gui.vis.scene.TriangleLayer;
 import sibarum.dasum.gui.vis.scene.VexelRayLayer;
 import sibarum.dasum.gui.vis.plot.Axis;
 import sibarum.dasum.gui.vis.plot.ComplexColorMaps;
-import sibarum.dasum.gui.vis.plot.ComplexField2D;
 import sibarum.dasum.gui.vis.plot.ComplexField3D;
+import sibarum.dasum.gui.vis.plot.ComplexFunction;
 import sibarum.dasum.gui.vis.plot.FieldSlicePlot;
 import sibarum.dasum.gui.vis.plot.LinePlot;
 import sibarum.dasum.gui.vis.plot.PlotFrame;
@@ -145,8 +145,6 @@ public final class App {
     private static final Color SL_TRACK    = new Color(0.18f, 0.20f, 0.25f, 1f);
     private static final Color SL_FILL     = new Color(0.30f, 0.55f, 0.85f, 1f);
     private static final Color SL_THUMB    = new Color(0.90f, 0.92f, 0.97f, 1f);
-
-    private static final float WHEEL_PIXELS_PER_STEP = 40f;
 
     // ---------- node-editor demo: port types + node factories ----------
     // Hoisted to class scope so they're shared between buildNodeEditorPane()
@@ -985,18 +983,19 @@ public final class App {
         // ---- 2. 2D complex domain-colouring map ------------------------
         Component.SceneView mapView = new Component.SceneView(
             Em.of(13f), Em.of(13f), Em.ZERO, plotBg, true, 0);
-        int res = 256;
-        ComplexField2D fz = ComplexField2D.of(res, res, (px, py, out) -> {
-            // z over [-1.6, 1.6]^2 (top row = +imag), f(z) = z^2 - 1
-            double zr = -1.6 + 3.2 * px / (res - 1);
-            double zi =  1.6 - 3.2 * py / (res - 1);
+        // f(z) = z^2 - 1 as a continuous function; the frame's axes map the
+        // world rect onto z ∈ [-1.6, 1.6]^2 (top row = +imag). DISPLAY mode
+        // re-rasterizes the visible region at the viewport's pixel density, so
+        // zooming in resolves real detail instead of magnified texels.
+        ComplexFunction fz = (zr, zi, out) -> {
             double fr = zr * zr - zi * zi - 1.0;
             double fi = 2 * zr * zi;
             out[0] = (float) fr; out[1] = (float) fi;
-        });
+        };
         PlotFrame mapFrame = new PlotFrame(0f, 0f, 6f, 6f, Axis.linear(-1.6, 1.6), Axis.linear(-1.6, 1.6));
         PlotView fieldMap = new PlotView(mapView);
-        fieldMap.showFieldMap(mapFrame, fz, ComplexColorMaps.domainColoring(), style);
+        fieldMap.showFieldMap(mapFrame, fz, ComplexColorMaps.domainColoring(1f, false), style,
+            PlotView.RenderResolution.DISPLAY);
         SceneStates.setInteraction(mapView, InteractionSpec.panZoom2d());
 
         // ---- 3. 3D complex volume + slice slider -----------------------
@@ -1020,7 +1019,7 @@ public final class App {
         Tooltips.set(sliceSlider, "Scrub the Z slice through the 3D complex volume");
         FieldSlicePlot slicePlot = new FieldSlicePlot(
             sliceView, sliceFrame, volume, ComplexField3D.Axis3.Z,
-            ComplexColorMaps.domainColoring(), style, sliceSlider, null);
+            ComplexColorMaps.domainColoring(1f, false), style, sliceSlider, null);
         slicePlot.bind();
 
         Component sliceCard = new Component.Flex(
@@ -1034,8 +1033,8 @@ public final class App {
             null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
             Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.8f),
             List.of(
-                section("2D complex map — domain colouring of f(z) = z² − 1", mapView),
-                section("3D complex volume — Z-slice driven by the slider", sliceCard)),
+                plotCard("2D complex map — domain colouring of f(z) = z² − 1", mapView),
+                plotCard("3D complex volume — Z-slice driven by the slider", sliceCard)),
             false, 0, true);
 
         Component column = new Component.Flex(
@@ -1976,6 +1975,29 @@ public final class App {
         );
     }
 
+    /**
+     * Like {@link #section} but sized to fit its content, for plot cards laid
+     * out side by side in a wrapping ROW. Two differences matter there:
+     * <ul>
+     *   <li>{@code Em.AUTO} width — a {@code null} ("fill parent") width has no
+     *       intrinsic main extent, so in a fit-content row the card collapses
+     *       to zero and its neighbours pile up at the origin. AUTO sizes the
+     *       card to its widest child.</li>
+     *   <li>{@code AlignItems.START} — keeps the viewport at its own size
+     *       rather than STRETCHing it to the (wider) heading, so a square
+     *       complex map stays square.</li>
+     * </ul>
+     */
+    private static Component plotCard(String heading, Component content) {
+        Component header = new Component.Text(heading, Em.of(1.0f), LABEL_FG);
+        return new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.START, Em.of(0.5f),
+            List.of(header, content),
+            false, 0
+        );
+    }
+
     private static void wireInput(Window window, CursorManager cursors) {
         GlfwCallbacks.setKeyListener((win, key, scancode, action, mods) -> {
             // Track modifier state for InputState consumers (e.g. the
@@ -2308,38 +2330,11 @@ public final class App {
             Invalidator.invalidate();
         });
 
-        GlfwCallbacks.setScrollListener((win, xOff, yOff) -> {
-            LayoutResult lr = LatestLayout.result();
-            Component layoutRoot = OverlayStack.activeInputRoot(LatestLayout.root());
-            if (lr == null || layoutRoot == null) return;
-            // A scene viewport eats the wheel (camera zoom) ONLY when it
-            // holds focus — click it first. Otherwise a page-scroll whose
-            // cursor merely passes over a viewport would hijack into a
-            // zoom; requiring focus keeps casual scrolling on the page.
-            Component pcHit = HitTest.test(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
-            if (pcHit instanceof Component.SceneView && FocusState.focused() == pcHit
-                    && SceneViewController.onScroll(pcHit, yOff)) return;
-
-            boolean shift = Glfw.glfwGetKey(window.handle(), Glfw.GLFW_KEY_LEFT_SHIFT)  == Glfw.GLFW_PRESS
-                        || Glfw.glfwGetKey(window.handle(), Glfw.GLFW_KEY_RIGHT_SHIFT) == Glfw.GLFW_PRESS;
-            // DataTable gets second refusal — scroll over a table moves its
-            // virtualized viewport rather than nested-container scroll.
-            if (DataTableSelectionController.onScroll(
-                    InputState.mouseX(), InputState.mouseY(), xOff, yOff, shift)) return;
-
-            double dx, dy;
-            if (shift) { dx = -yOff * WHEEL_PIXELS_PER_STEP; dy = 0; }
-            else        { dx = -xOff * WHEEL_PIXELS_PER_STEP; dy = -yOff * WHEEL_PIXELS_PER_STEP; }
-            // Walk the scroll chain innermost→outermost; the first
-            // container that actually moves consumes the wheel. A nested
-            // scroll bottomed-out at its limit returns false from
-            // scrollByPx, so the event bubbles to its parent.
-            java.util.List<Component.Scroll> chain =
-                HitTest.findScrollChain(layoutRoot, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
-            for (Component.Scroll s : chain) {
-                if (ScrollStates.of(s).scrollByPx((float) dx, (float) dy)) break;
-            }
-        });
+        // Scroll dispatch is owned by the framework WheelRouter (installed
+        // by Window.create): it routes the wheel to DataTables and scroll
+        // containers automatically. We only register the SceneView zoom
+        // handler so a focused 3D viewport zooms on wheel.
+        SceneViewController.installWheelHandler();
     }
 
     private static void registerCommands(Window window) {

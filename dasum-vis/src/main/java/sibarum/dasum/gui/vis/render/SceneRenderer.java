@@ -96,6 +96,11 @@ public final class SceneRenderer implements AutoCloseable {
 
         buffers.drainPendingDeletes();
 
+        // Report the on-screen pixel size before reading the scene: a
+        // display-resolution wrapper re-rasterizes synchronously here, so the
+        // fresh scene lands in the same frame on a resize.
+        SceneStates.reportViewportPx(cmp, Math.round(rect.width()), Math.round(rect.height()));
+
         SceneSnapshot scene = SceneStates.sceneOf(cmp);
         if (scene == null || scene.layers().isEmpty()) return;
 

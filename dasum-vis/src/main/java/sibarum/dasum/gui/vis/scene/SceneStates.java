@@ -36,15 +36,29 @@ import java.util.function.Consumer;
  * fire on the GLFW thread). Listeners must be fast and must not call
  * back into {@code setCamera} for the same component. Wrappers use this
  * to re-derive view-dependent content (fractal recompute, chart ticks).
+ *
+ * <h2>Viewport-size listeners</h2>
+ *
+ * The renderer calls {@link #reportViewportPx} once per frame with each
+ * scene view's on-screen pixel rect; when that integer size changes,
+ * {@link #onViewportResize} listeners fire synchronously on the GLFW
+ * thread. Wrappers use this (with {@link #viewportPxOf}) to rasterize
+ * content at the display's pixel density — a complex field map matching
+ * its render resolution to the viewport.
  */
 public final class SceneStates {
+
+    /** Viewport size in framebuffer pixels. */
+    public record ViewportPx(int width, int height) {}
 
     /** Per-component reactive cell. */
     private static final class State {
         final AtomicReference<SceneSnapshot> scene       = new AtomicReference<>();
         final AtomicReference<CameraSpec> camera         = new AtomicReference<>(CameraSpec.defaultPerspective());
         final AtomicReference<InteractionSpec> interaction = new AtomicReference<>(InteractionSpec.defaults());
+        final AtomicReference<ViewportPx> viewportPx      = new AtomicReference<>();
         final CopyOnWriteArrayList<Consumer<CameraSpec>> cameraListeners = new CopyOnWriteArrayList<>();
+        final CopyOnWriteArrayList<Consumer<ViewportPx>> viewportListeners = new CopyOnWriteArrayList<>();
     }
 
     private static final Object LOCK = new Object();
@@ -125,6 +139,38 @@ public final class SceneStates {
     public static void onCameraChange(Component c, Consumer<CameraSpec> listener) {
         Objects.requireNonNull(listener, "listener");
         stateOf(c).cameraListeners.add(listener);
+    }
+
+    /**
+     * Report {@code c}'s current on-screen size in framebuffer pixels.
+     * Called by the renderer each frame; fires {@link #onViewportResize}
+     * listeners synchronously (on the GLFW thread) only when the integer
+     * size actually changes, so it is cheap to call every frame and never
+     * loops (a listener that republishes does not change the size).
+     */
+    public static void reportViewportPx(Component c, int width, int height) {
+        if (width <= 0 || height <= 0) return;
+        State s = stateOf(c);
+        ViewportPx next = new ViewportPx(width, height);
+        ViewportPx prev = s.viewportPx.getAndSet(next);
+        if (next.equals(prev)) return;
+        for (Consumer<ViewportPx> l : s.viewportListeners) l.accept(next);
+    }
+
+    /** Last reported viewport size, or {@code null} if it hasn't rendered yet. */
+    public static ViewportPx viewportPxOf(Component c) {
+        State s = peek(c);
+        return s == null ? null : s.viewportPx.get();
+    }
+
+    /**
+     * Subscribe to viewport-size changes on {@code c}. Same lifetime and
+     * threading contract as {@link #onCameraChange}: fires on the GLFW
+     * thread, lives until {@link #clear}, must be fast.
+     */
+    public static void onViewportResize(Component c, Consumer<ViewportPx> listener) {
+        Objects.requireNonNull(listener, "listener");
+        stateOf(c).viewportListeners.add(listener);
     }
 
     /**

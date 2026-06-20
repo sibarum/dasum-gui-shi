@@ -1,7 +1,9 @@
 package sibarum.dasum.gui.vis.pointcloud;
 
 import sibarum.dasum.gui.core.component.Component;
+import sibarum.dasum.gui.core.input.FocusState;
 import sibarum.dasum.gui.core.input.InputState;
+import sibarum.dasum.gui.core.input.wheel.WheelRouter;
 import sibarum.dasum.gui.core.layout.LatestLayout;
 import sibarum.dasum.gui.core.layout.LayoutResult;
 import sibarum.dasum.gui.core.layout.PixelRect;
@@ -43,6 +45,10 @@ public final class SceneViewController {
     private static final float YAW_RAD_PER_PIXEL    = 0.008f;
     private static final float PITCH_RAD_PER_PIXEL  = 0.008f;
     private static final float ZOOM_FACTOR_PER_NOTCH = 1.15f;
+
+    /** Priority for the SceneView wheel handler — above the built-in DataTable handler. */
+    private static final int WHEEL_PRIORITY = 100;
+    private static boolean wheelHandlerInstalled = false;
 
     /**
      * Squared cursor-displacement threshold (px²) that distinguishes a
@@ -169,6 +175,28 @@ public final class SceneViewController {
      * deliberately do NOT consume — a chart inside a scroll column
      * shouldn't swallow the page's wheel.
      */
+    /**
+     * Register this controller's wheel handler with the framework
+     * {@link WheelRouter}. Idempotent; call once at app startup if the app
+     * uses {@code SceneView} viewports. A scene viewport eats the wheel
+     * (camera zoom) only when it both sits under the cursor and holds focus
+     * — click it first. Otherwise a page-scroll whose cursor merely passes
+     * over a viewport would hijack into a zoom, so requiring focus keeps
+     * casual scrolling on the page. When the handler declines (no focused
+     * viewport under the cursor, or a LOCKED one), the router falls through
+     * to DataTable / scroll-container routing as usual.
+     */
+    public static synchronized void installWheelHandler() {
+        if (wheelHandlerInstalled) return;
+        wheelHandlerInstalled = true;
+        WheelRouter.addHandler(WHEEL_PRIORITY, e -> {
+            Component hit = e.hit();
+            return hit instanceof Component.SceneView
+                    && FocusState.focused() == hit
+                    && onScroll(hit, e.rawYOff());
+        });
+    }
+
     public static boolean onScroll(Component hit, double yOff) {
         if (!(hit instanceof Component.SceneView pc) || !pc.interactive()) return false;
         InteractionSpec spec = SceneStates.interactionOf(pc);

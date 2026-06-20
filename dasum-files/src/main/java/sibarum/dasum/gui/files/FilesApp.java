@@ -80,7 +80,6 @@ public final class FilesApp {
     private static final Color ERROR_FG   = new Color(0.95f, 0.55f, 0.45f, 1f);
     private static final Color CRUMB_SEP  = new Color(0.45f, 0.50f, 0.62f, 1f);
 
-    private static final float WHEEL_PIXELS_PER_STEP = 40f;
     private static final long  DOUBLE_CLICK_NANOS    = 400_000_000L; // 400 ms
 
     // ---------- state ----------
@@ -447,24 +446,9 @@ public final class FilesApp {
             Invalidator.invalidate();
         });
 
-        GlfwCallbacks.setScrollListener((win, xOff, yOff) -> {
-            boolean shift = Glfw.glfwGetKey(window.handle(), Glfw.GLFW_KEY_LEFT_SHIFT)  == Glfw.GLFW_PRESS
-                         || Glfw.glfwGetKey(window.handle(), Glfw.GLFW_KEY_RIGHT_SHIFT) == Glfw.GLFW_PRESS;
-            if (DataTableSelectionController.onScroll(
-                    InputState.mouseX(), InputState.mouseY(), xOff, yOff, shift)) return;
-
-            LayoutResult lr = LatestLayout.result();
-            Component root = LatestLayout.root();
-            if (lr == null || root == null) return;
-            double dx, dy;
-            if (shift) { dx = -yOff * WHEEL_PIXELS_PER_STEP; dy = 0; }
-            else       { dx = -xOff * WHEEL_PIXELS_PER_STEP; dy = -yOff * WHEEL_PIXELS_PER_STEP; }
-            List<Component.Scroll> chain =
-                HitTest.findScrollChain(root, lr, (float) InputState.mouseX(), (float) InputState.mouseY());
-            for (Component.Scroll s : chain) {
-                if (ScrollStates.of(s).scrollByPx((float) dx, (float) dy)) break;
-            }
-        });
+        // Scroll dispatch is owned by the framework WheelRouter (installed
+        // by Window.create) — DataTables and scroll containers route
+        // automatically, no app wiring needed.
     }
 
     private static CursorManager.CursorShape cursorShapeFor(Component hit) {
