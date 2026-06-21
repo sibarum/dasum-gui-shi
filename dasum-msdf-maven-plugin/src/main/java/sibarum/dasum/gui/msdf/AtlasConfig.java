@@ -1,6 +1,7 @@
 package sibarum.dasum.gui.msdf;
 
 import java.io.File;
+import java.util.List;
 
 /**
  * One entry under the plugin's {@code <atlases>} block. Field names match
@@ -44,4 +45,17 @@ public class AtlasConfig {
      * {@link #charset} field is ignored in this mode.
      */
     public IconConfig icons;
+
+    /**
+     * Optional extra fonts merged into <em>this</em> atlas. Each contributes its
+     * own charset; all glyphs are packed into the same PNG via msdf-atlas-gen's
+     * {@code -and} separator, so the calling app sees one atlas / one font group
+     * spanning every supplied font. Useful for sourcing glyphs the primary font
+     * lacks (arrows, math symbols, …) without splitting into a second atlas.
+     *
+     * <p>Mutually exclusive with {@link #icons} — icon mode builds its own charset
+     * from a manifest and emits a Java constants class, which doesn't compose with
+     * multi-font merging.
+     */
+    public List<FontSource> extraFonts;
 }

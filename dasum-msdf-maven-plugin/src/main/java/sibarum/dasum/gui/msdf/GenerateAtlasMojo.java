@@ -122,6 +122,11 @@ public class GenerateAtlasMojo extends AbstractMojo {
         if (cfg.font == null) {
             throw new MojoExecutionException("Atlas '" + cfg.name + "' missing required <font>.");
         }
+        if (cfg.icons != null && hasExtraFonts(cfg)) {
+            throw new MojoExecutionException(
+                "Atlas '" + cfg.name + "' sets both <icons> and <extraFonts> — they are mutually exclusive. " +
+                "Icon mode builds its own charset from a manifest and cannot be merged with extra fonts.");
+        }
 
         File pngOut  = new File(outputDir, cfg.name + ".png");
         File jsonOut = new File(outputDir, cfg.name + ".json");
@@ -139,6 +144,14 @@ public class GenerateAtlasMojo extends AbstractMojo {
 
         if (!cfg.font.isFile()) {
             throw new MojoExecutionException("Atlas '" + cfg.name + "' font not found: " + cfg.font);
+        }
+        if (hasExtraFonts(cfg)) {
+            for (FontSource src : cfg.extraFonts) {
+                if (src.font == null || !src.font.isFile()) {
+                    throw new MojoExecutionException(
+                        "Atlas '" + cfg.name + "' extra font not found: " + src.font);
+                }
+            }
         }
 
         // Resolve the glyph selection up front. For icon-mode atlases the
@@ -159,8 +172,8 @@ public class GenerateAtlasMojo extends AbstractMojo {
             return;
         }
 
-        File charsetFile = writeCharsetFile(cfg, selectedIcons);
-        runMsdfAtlasGen(binary, cfg, charsetFile, pngOut, jsonOut);
+        List<FontInput> inputs = buildFontInputs(cfg, selectedIcons);
+        runMsdfAtlasGen(binary, cfg, inputs, pngOut, jsonOut);
 
         if (!pngOut.isFile() || !jsonOut.isFile()) {
             throw new MojoExecutionException(
@@ -269,6 +282,12 @@ public class GenerateAtlasMojo extends AbstractMojo {
         if (!pngOut.isFile() || !jsonOut.isFile()) return false;
         long outputMtime = Math.min(pngOut.lastModified(), jsonOut.lastModified());
         if (cfg.font.lastModified() > outputMtime) return false;
+        if (hasExtraFonts(cfg)) {
+            // Each merged font is part of the input — a newer one means stale outputs.
+            for (FontSource src : cfg.extraFonts) {
+                if (src.font != null && src.font.lastModified() > outputMtime) return false;
+            }
+        }
         if (cfg.icons != null) {
             // The icon manifest is part of the input, as is the generated
             // Icons.java (re-emit if it's missing or stale even when the
@@ -290,32 +309,71 @@ public class GenerateAtlasMojo extends AbstractMojo {
         return new File(pkgDir, className + ".java");
     }
 
-    private File writeCharsetFile(AtlasConfig cfg, Map<String, Integer> selectedIcons) throws MojoExecutionException {
+    private static boolean hasExtraFonts(AtlasConfig cfg) {
+        return cfg.extraFonts != null && !cfg.extraFonts.isEmpty();
+    }
+
+    /**
+     * Resolve the (font, charset-file) inputs for one atlas. Icon mode is a single
+     * font with an explicit codepoint list. Text mode is the primary font plus any
+     * {@code <extraFonts>}, each with its own charset file — msdf-atlas-gen merges
+     * them into one atlas image via {@code -and}.
+     */
+    private List<FontInput> buildFontInputs(AtlasConfig cfg, Map<String, Integer> selectedIcons)
+            throws MojoExecutionException {
+        List<FontInput> inputs = new ArrayList<>();
+        if (selectedIcons != null) {
+            inputs.add(new FontInput(cfg.font, writeCharsetFile(cfg.name, 0, iconCharsetContent(selectedIcons))));
+            return inputs;
+        }
+        inputs.add(new FontInput(cfg.font, writeCharsetFile(cfg.name, 0, resolveCharsetContent(cfg.charset))));
+        if (hasExtraFonts(cfg)) {
+            int index = 1;
+            for (FontSource src : cfg.extraFonts) {
+                inputs.add(new FontInput(src.font, writeCharsetFile(cfg.name, index, resolveCharsetContent(src.charset))));
+                index++;
+            }
+        }
+        return inputs;
+    }
+
+    /**
+     * Resolve a charset specifier to msdf-atlas-gen charset-file content. Presets
+     * {@code ascii}/{@code latin-1} expand to ranges; anything else is passed
+     * through verbatim (see msdf-atlas-gen docs for the syntax).
+     */
+    private static String resolveCharsetContent(String charset) {
+        String preset = charset == null ? "ascii" : charset.trim();
+        return switch (preset.toLowerCase()) {
+            case "ascii"   -> "[0x20, 0x7E]\n";
+            case "latin-1", "latin1" -> "[0x20, 0x7E]\n[0xA0, 0xFF]\n";
+            default        -> preset.endsWith("\n") ? preset : preset + "\n";
+        };
+    }
+
+    /**
+     * Icon mode — one explicit codepoint per line. msdf-atlas-gen accepts hex
+     * ({@code 0x...}) or decimal codepoints separated by whitespace/newlines.
+     */
+    private static String iconCharsetContent(Map<String, Integer> selectedIcons) {
+        StringBuilder sb = new StringBuilder(selectedIcons.size() * 8);
+        for (Integer cp : selectedIcons.values()) {
+            sb.append("0x").append(Integer.toHexString(cp).toUpperCase()).append('\n');
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Write a charset file for one font input. Index 0 is the primary font
+     * ({@code <name>.txt}); extra fonts get {@code <name>.<index>.txt}.
+     */
+    private File writeCharsetFile(String atlasName, int index, String content) throws MojoExecutionException {
         File charsetsDir = new File(workDir, "charsets");
         if (!charsetsDir.exists() && !charsetsDir.mkdirs()) {
             throw new MojoExecutionException("Failed to create charsets work dir: " + charsetsDir);
         }
-        File f = new File(charsetsDir, cfg.name + ".txt");
-
-        String content;
-        if (selectedIcons != null) {
-            // Icon mode — emit one explicit codepoint per line.
-            // msdf-atlas-gen accepts hex (0x...) or decimal individual
-            // codepoints separated by whitespace/newlines.
-            StringBuilder sb = new StringBuilder(selectedIcons.size() * 8);
-            for (Integer cp : selectedIcons.values()) {
-                sb.append("0x").append(Integer.toHexString(cp).toUpperCase()).append('\n');
-            }
-            content = sb.toString();
-        } else {
-            String preset = cfg.charset == null ? "ascii" : cfg.charset.trim();
-            content = switch (preset.toLowerCase()) {
-                case "ascii"   -> "[0x20, 0x7E]\n";
-                case "latin-1", "latin1" -> "[0x20, 0x7E]\n[0xA0, 0xFF]\n";
-                default        -> preset.endsWith("\n") ? preset : preset + "\n";
-            };
-        }
-
+        String fileName = (index == 0) ? atlasName + ".txt" : atlasName + "." + index + ".txt";
+        File f = new File(charsetsDir, fileName);
         try {
             Files.writeString(f.toPath(), content, StandardCharsets.UTF_8);
         } catch (IOException e) {
@@ -324,12 +382,18 @@ public class GenerateAtlasMojo extends AbstractMojo {
         return f;
     }
 
-    private void runMsdfAtlasGen(File binary, AtlasConfig cfg, File charsetFile,
+    private void runMsdfAtlasGen(File binary, AtlasConfig cfg, List<FontInput> inputs,
                                   File pngOut, File jsonOut) throws MojoExecutionException {
         List<String> cmd = new ArrayList<>();
         cmd.add(binary.getAbsolutePath());
-        cmd.add("-font");      cmd.add(cfg.font.getAbsolutePath());
-        cmd.add("-charset");   cmd.add(charsetFile.getAbsolutePath());
+        // One font segment per input; -and separates them so msdf-atlas-gen packs
+        // every font's glyphs into the single output atlas (a "variants" JSON).
+        for (int i = 0; i < inputs.size(); i++) {
+            if (i > 0) cmd.add("-and");
+            FontInput in = inputs.get(i);
+            cmd.add("-font");      cmd.add(in.font().getAbsolutePath());
+            cmd.add("-charset");   cmd.add(in.charsetFile().getAbsolutePath());
+        }
         cmd.add("-type");      cmd.add("msdf");
         cmd.add("-format");    cmd.add("png");
         cmd.add("-size");      cmd.add(Integer.toString(cfg.fontSize));
@@ -361,4 +425,7 @@ public class GenerateAtlasMojo extends AbstractMojo {
             throw new MojoExecutionException("Interrupted while waiting for msdf-atlas-gen", e);
         }
     }
+
+    /** One resolved font input: a font file paired with its written charset file. */
+    private record FontInput(File font, File charsetFile) {}
 }

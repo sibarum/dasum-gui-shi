@@ -58,8 +58,37 @@ public record AtlasData(AtlasInfo info, FontMetrics metrics, Map<Integer, GlyphD
             !"top".equalsIgnoreCase(String.valueOf(atlasObj.getOrDefault("yOrigin", "bottom")))
         );
 
-        Map<String, Object> metricsObj = (Map<String, Object>) root.get("metrics");
-        FontMetrics metrics = new FontMetrics(
+        FontMetrics metrics;
+        Map<Integer, GlyphData> glyphs = new HashMap<>();
+
+        List<Object> topGlyphs = (List<Object>) root.get("glyphs");
+        if (topGlyphs != null) {
+            // Single-font atlas: metrics and glyphs live at the top level.
+            metrics = parseMetrics((Map<String, Object>) root.get("metrics"));
+            parseGlyphsInto(topGlyphs, glyphs);
+        } else {
+            // Multi-font atlas (msdf-atlas-gen -and): per-font data is grouped
+            // into "variants", each its own metrics + glyphs over one shared
+            // image. Flatten into a single map — the merged atlas is one font
+            // group at runtime. The first variant is the primary font: its
+            // metrics drive line layout, and it wins any codepoint collision.
+            List<Object> variants = (List<Object>) root.get("variants");
+            if (variants == null || variants.isEmpty()) {
+                throw new IllegalStateException("Atlas JSON has neither 'glyphs' nor 'variants'");
+            }
+            Map<String, Object> primary = (Map<String, Object>) variants.get(0);
+            metrics = parseMetrics((Map<String, Object>) primary.get("metrics"));
+            for (Object v : variants) {
+                List<Object> vGlyphs = (List<Object>) ((Map<String, Object>) v).get("glyphs");
+                if (vGlyphs != null) parseGlyphsInto(vGlyphs, glyphs);
+            }
+        }
+
+        return new AtlasData(info, metrics, glyphs);
+    }
+
+    private static FontMetrics parseMetrics(Map<String, Object> metricsObj) {
+        return new FontMetrics(
             asFloat(metricsObj.get("emSize")),
             asFloat(metricsObj.get("lineHeight")),
             asFloat(metricsObj.get("ascender")),
@@ -67,19 +96,20 @@ public record AtlasData(AtlasInfo info, FontMetrics metrics, Map<Integer, GlyphD
             asFloat(metricsObj.get("underlineY")),
             asFloat(metricsObj.get("underlineThickness"))
         );
+    }
 
-        List<Object> glyphList = (List<Object>) root.get("glyphs");
-        Map<Integer, GlyphData> glyphs = new HashMap<>(glyphList.size() * 2);
+    /** Parse glyph entries into {@code out}, keeping any existing mapping for a
+     *  codepoint (first writer wins — primary font overrides supplementary fonts). */
+    @SuppressWarnings("unchecked")
+    private static void parseGlyphsInto(List<Object> glyphList, Map<Integer, GlyphData> out) {
         for (Object g : glyphList) {
             Map<String, Object> gm = (Map<String, Object>) g;
             int cp = asInt(gm.get("unicode"));
             float advance = asFloat(gm.get("advance"));
             Rect plane = asRect((Map<String, Object>) gm.get("planeBounds"));
             Rect atlas = asRect((Map<String, Object>) gm.get("atlasBounds"));
-            glyphs.put(cp, new GlyphData(cp, advance, plane, atlas));
+            out.putIfAbsent(cp, new GlyphData(cp, advance, plane, atlas));
         }
-
-        return new AtlasData(info, metrics, glyphs);
     }
 
     private static Rect asRect(Map<String, Object> m) {
