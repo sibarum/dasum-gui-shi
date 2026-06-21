@@ -56,7 +56,7 @@ Produces a single executable with no JVM dependency.
 | `dasum-nfd` | Native file-dialog wrapper. Exposes `FileDialog.open` / `save` / `pickFolder` backed by [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended); the platform's native picker, not an in-process imitation. |
 | `dasum-core` | The framework. All packages under `sibarum.dasum.gui.core`. See below. |
 | `dasum-vis` | Optional visualization module — `Component.SceneView`, a layered 3D scene viewport: point / line / triangle / image / text layers with per-layer blend modes, plus **VexelRay**, a raymarched signed-distance-field layer. Orbit/pan/zoom camera, click-pick, thumbnail-or-expanded layout. Uses JOML internally, exposes immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md). |
-| `dasum-msdf-maven-plugin` | Build-time MSDF atlas generation. Text atlases from charset presets, icon atlases from named glyph subsets of icon fonts (Lucide / Material) with generated Java constants. See [`dasum-msdf-maven-plugin/README.md`](dasum-msdf-maven-plugin/README.md). |
+| `dasum-msdf-maven-plugin` | Build-time MSDF atlas generation. Text atlases from charset presets (optionally merging glyphs from several fonts into one atlas), icon atlases from named glyph subsets of icon fonts (Lucide / Material) with generated Java constants. See [`dasum-msdf-maven-plugin/README.md`](dasum-msdf-maven-plugin/README.md). |
 | `dasum-mvp-demo` | The reference / showcase app. The best place to look when learning the API. |
 
 ### `dasum-core` packages

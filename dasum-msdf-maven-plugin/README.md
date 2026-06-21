@@ -5,6 +5,8 @@ Build-time MSDF (multi-channel signed distance field) atlas generation for `dasu
 - **Text atlases** — a charset preset (`ascii`, `latin-1`) or a custom charset spec, baked from a TTF/OTF font.
 - **Icon atlases** — a named subset of glyphs from an icon font (Lucide, Material Symbols, …) with a generated Java `Icons` class exposing one constant per glyph.
 
+A text atlas can additionally **merge glyphs from several fonts into one atlas** via `<extraFonts>` — e.g. Latin text from your primary font plus arrows and math symbols from a supplementary font, all in a single `<name>.png`. See [Merging multiple fonts](#merging-multiple-fonts-extrafonts).
+
 Same Mojo, same output shape (`<name>.png` + `<name>.json` per atlas). The plugin scans the bundled `msdf-atlas-gen.exe` (Windows x64) or expects pre-generated outputs on other platforms via the `msdf-prebuilt` profile.
 
 ## Goals
@@ -15,7 +17,7 @@ Same Mojo, same output shape (`<name>.png` + `<name>.json` per atlas). The plugi
 
 | Mode | Property | Behavior |
 |---|---|---|
-| `primary` | `-Dmsdf.mode=primary` (default) | Invoke `msdf-atlas-gen.exe` to regenerate outputs. Incremental: skips regeneration if every output is newer than every input (font, manifest, glyph list). |
+| `primary` | `-Dmsdf.mode=primary` (default) | Invoke `msdf-atlas-gen.exe` to regenerate outputs. Incremental: skips regeneration if every output is newer than every input (font, every extra font, manifest, glyph list). |
 | `prebuilt` | `-Dmsdf.mode=prebuilt` | Skip the binary entirely. Verify pre-generated PNG + JSON exist at the configured output path. Used on macOS / Linux until the binary is bundled for those platforms. |
 
 The Windows binary lives at `/bin/windows-x64/msdf-atlas-gen.exe` inside the plugin JAR. To support a new OS, drop the matching binary into the resources tree and extend `extractBinary` in `GenerateAtlasMojo`.
@@ -52,6 +54,7 @@ The Windows binary lives at `/bin/windows-x64/msdf-atlas-gen.exe` inside the plu
 | `atlasSize` | no | `1024` | Square atlas dimensions in pixels. |
 | `fontSize` | no | `32` | Glyph em size in pixels within the atlas. |
 | `pxRange` | no | `4` | SDF distance range in output pixels. |
+| `extraFonts` | no | — | Supplementary fonts merged into this atlas. See [Merging multiple fonts](#merging-multiple-fonts-extrafonts). Mutually exclusive with `<icons>`. |
 | `icons` | icon mode | — | See below. Presence switches the atlas into icon mode. |
 
 ### `<icons>` block — icon-atlas configuration
@@ -65,6 +68,63 @@ The Windows binary lives at `/bin/windows-x64/msdf-atlas-gen.exe` inside the plu
 | `generatedSourcesDir` | yes | — | Root directory under which the generated `Icons.java` is written. Auto-added to the project's compile-source roots. |
 | `packageName` | yes | — | Java package for the generated class. |
 | `className` | no | `Icons` | Class name. |
+
+## Merging multiple fonts (`<extraFonts>`)
+
+When the primary font lacks glyphs you need — arrows, math operators, currency, a
+handful of CJK or symbol codepoints — list one or more supplementary fonts under
+`<extraFonts>`. Their glyphs are packed into the **same** PNG/JSON as the primary
+font (msdf-atlas-gen's `-and` merge), so at runtime the result is still a single
+atlas / single font group: one `Texture`, one `AtlasData`, addressed by the same
+`fontGroup` name. No runtime font-fallback chain and no per-glyph atlas swapping
+are involved.
+
+```xml
+<atlas>
+    <name>primary</name>
+    <font>${project.basedir}/fonts/Noto_Sans/NotoSans-Regular.ttf</font>
+    <charset>ascii</charset>
+    <atlasSize>1024</atlasSize>
+    <fontSize>32</fontSize>
+    <pxRange>4</pxRange>
+    <extraFonts>
+        <extraFont>
+            <font>${project.basedir}/fonts/symbols/MySymbols.ttf</font>
+            <!-- arrows (U+2190–21FF) + math operators (U+2200–22FF) -->
+            <charset>[0x2190, 0x21FF]&#10;[0x2200, 0x22FF]</charset>
+        </extraFont>
+        <!-- add more <extraFont> blocks as needed -->
+    </extraFonts>
+</atlas>
+```
+
+### `<extraFont>` block
+
+| Field | Required | Default | Notes |
+|---|---|---|---|
+| `font` | yes | — | TTF / OTF supplementary font. |
+| `charset` | no | `ascii` | Same syntax as the atlas-level `charset` (presets or a literal `msdf-atlas-gen` spec). Typically explicit ranges for the codepoints the primary font lacks. Newlines in inline XML are written as `&#10;`. |
+
+### Behavior and constraints
+
+- **Collisions** — if the primary font and an extra font both define a codepoint,
+  the **primary font wins**. Extra fonts only fill gaps; they never override.
+  (Order among extra fonts is config order, primary always first.)
+- **Scale** — msdf-atlas-gen normalizes every font's metrics to `emSize = 1`, so
+  merged glyphs share the primary's em space automatically. Line metrics
+  (ascender, descender, line height) come from the primary font.
+- **`atlasSize`** — all fonts share one image. The atlas is usually far from full,
+  but if a merge overflows, bump `atlasSize` (e.g. `1024` → `2048`).
+- **Mutually exclusive with `<icons>`** — icon mode builds its own charset from a
+  manifest and emits a Java constants class, which doesn't compose with merging.
+  Setting both on one atlas fails the build.
+- **Missing-glyph box** — the U+FFFD tofu box is still baked into the merged atlas
+  (it's a text atlas), so any codepoint *no* supplied font covers renders as the box.
+
+> **JSON note:** multi-font output uses msdf-atlas-gen's `variants` schema (one entry
+> per font over a shared image) instead of the single-font top-level `glyphs` array.
+> `AtlasData.parse` flattens both schemas into one glyph map, so this is invisible to
+> app code — but it's why a merged atlas can't be hand-edited as if it were single-font.
 
 ## Manifest formats
 
@@ -218,15 +278,16 @@ The framework's MSDF accumulator (`MsdfTextAccumulator`) batches glyph quads per
 
 The older `Batcher.setTextAtlas(atlas, distanceRange)` overload (no projection) throws when it would drop pending geometry — kept around for cases where the caller has already drained the accumulator manually.
 
-The cost of mixing font groups is therefore one extra `flush()` call per atlas swap per frame. For a typical UI with a handful of icons interleaved with text labels, that's a handful of extra draw calls — negligible. If a frame ever did thousands of atlas swaps, the right move would be a merged-atlas build step (icons + text in one PNG) and a single font group covering both — see the `dasum-vis/README.md` discussion of "Approach C".
+The cost of mixing font groups is therefore one extra `flush()` call per atlas swap per frame. For a typical UI with a handful of icons interleaved with text labels, that's a handful of extra draw calls — negligible. If a frame ever did thousands of atlas swaps, the right move is to merge the fonts into one PNG at build time and use a single font group covering both — see [Merging multiple fonts](#merging-multiple-fonts-extrafonts). (That merge handles glyph fonts well; an icon font with its generated `Icons` class stays a separate icon-mode atlas, since `<extraFonts>` and `<icons>` don't compose.)
 
 ## File-of-interest map
 
 ```
 dasum-msdf-maven-plugin/
 ├── src/main/java/sibarum/dasum/gui/msdf/
-│   ├── GenerateAtlasMojo.java     — the Mojo, dispatches text/icon modes
+│   ├── GenerateAtlasMojo.java     — the Mojo, dispatches text/icon modes, merges fonts via -and
 │   ├── AtlasConfig.java           — POJO for <atlas> blocks
+│   ├── FontSource.java            — POJO for <extraFont> blocks (merge)
 │   ├── IconConfig.java            — POJO for <icons> sub-block
 │   ├── IconManifestParser.java    — lucide + material parsers
 │   ├── IconNameNormalizer.java    — source name → Java constant
