@@ -1,6 +1,8 @@
 {
   "resources": [
     { "glob": "dasum/atlas/primary.png" },
-    { "glob": "dasum/atlas/primary.json" }
+    { "glob": "dasum/atlas/primary.json" },
+    { "glob": "dasum/atlas/icons.png" },
+    { "glob": "dasum/atlas/icons.json" }
   ]
 }
