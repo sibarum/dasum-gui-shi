@@ -6,6 +6,17 @@ A small, GPU-accelerated Java GUI framework targeting GraalVM native-image. Pure
 
 Pre-1.0. Demo-driven — the `dasum-mvp-demo` module is the canonical "see what works." Public APIs are stable enough to write apps against but small breaking changes happen as the design settles. Single-window only by design (no plans for multi-window).
 
+## Screenshots
+
+A tour of the `dasum-mvp-demo` showcase app. Every pixel — toolbar, tabs, cards, 3D viewports, tables — is drawn by the framework itself; there are no native widgets.
+
+| | |
+|---|---|
+| [![Home](docs/demo-1.png)](docs/demo-1.png)<br>**Home** — landing page; the feature cards jump straight to each section | [![Nodes](docs/demo-2.png)](docs/demo-2.png)<br>**Nodes** — node editor with typed ports, drag-to-connect, a legend sidebar, and an embedded point-cloud viewport |
+| [![Widgets](docs/demo-3.png)](docs/demo-3.png)<br>**Widgets** — buttons, checkboxes, radios and sliders across all six theme variants | [![Text](docs/demo-4.png)](docs/demo-4.png)<br>**Text** — editable, selectable text with carets, selection and live styling |
+| [![Scenes & Stress](docs/demo-5.png)](docs/demo-5.png)<br>**Graphics › Scenes & Stress** — the layered `SceneView` renderer and edge-case stress layouts | [![VexelRay](docs/demo-6.png)](docs/demo-6.png)<br>**Graphics › VexelRay** — raymarched signed-distance fields (here a CSG monument) with a live inspector |
+| [![Tables](docs/demo-7.png)](docs/demo-7.png)<br>**Tables** — a virtualized 1,000,000-row grid beside a small editable one | |
+
 ## Quick start
 
 ### Prerequisites
@@ -36,7 +47,7 @@ mvn install
 mvn -pl dasum-mvp-demo exec:exec
 ```
 
-A 1280×800 window opens with five top-level tabs: **Node Editor**, **Widgets**, **Text**, **Stress**, **Tables**. The Node Editor tab includes a scene viewport (a point cloud) — click to expand it into a full-screen modal with orbit / zoom / point-pick. The Stress tab showcases the layered `SceneView` renderer: mixed blend modes, streamed images, in-scene MSDF text, and **VexelRay** raymarched signed-distance-field shapes (primitives, boolean CSG, a Mandelbulb, alien flora) — each card expands to full screen.
+A 1280×800 window opens on a **Home** landing page. The top-level tabs are **Home**, **Nodes**, **Widgets**, **Text**, **Graphics**, and **Tables**. The Nodes tab includes a scene viewport (a point cloud) — click to expand it into a full-screen modal with orbit / zoom / point-pick. **Graphics** groups three sub-tabs: **Scenes & Stress** (the layered `SceneView` renderer — mixed blend modes, streamed images, in-scene MSDF text), **VexelRay** (raymarched signed-distance-field shapes — primitives, boolean CSG, a Mandelbulb, alien flora), and **Plots** (line/curve charts, complex domain colouring, a sliced 3D volume). Each card expands to full screen.
 
 ### Run the demo (native-image)
 

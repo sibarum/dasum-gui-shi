@@ -146,9 +146,35 @@ public final class App {
     private static final Color SL_FILL     = new Color(0.30f, 0.55f, 0.85f, 1f);
     private static final Color SL_THUMB    = new Color(0.90f, 0.92f, 0.97f, 1f);
 
+    // ---------- design system ----------
+    // A small, consistent palette + spacing scale so every pane reads as
+    // part of one product instead of a pile of ad-hoc rectangles. Surfaces
+    // step up in lightness with elevation (pane -> card -> header); text steps
+    // down in emphasis (heading -> body -> subtitle -> muted).
+    private static final Color TRANSPARENT  = new Color(0f, 0f, 0f, 0f);
+    private static final Color CARD_BG      = new Color(0.115f, 0.135f, 0.175f, 1f);
+    private static final Color CARD_BG_ALT  = new Color(0.085f, 0.105f, 0.140f, 1f);
+    private static final Color CARD_HEADER  = new Color(0.155f, 0.180f, 0.230f, 1f);
+    private static final Color HERO_BG      = new Color(0.105f, 0.130f, 0.215f, 1f);
+    private static final Color LINE         = new Color(1f, 1f, 1f, 0.07f);
+    private static final Color HEADING_FG   = new Color(0.97f, 0.98f, 1.00f, 1f);
+    private static final Color SUBTITLE_FG  = new Color(0.62f, 0.68f, 0.82f, 1f);
+    private static final Color MUTED_FG     = new Color(0.52f, 0.57f, 0.70f, 1f);
+    private static final Color ACCENT       = new Color(0.40f, 0.62f, 0.95f, 1f);
+    private static final Color ACCENT_SOFT  = new Color(0.40f, 0.62f, 0.95f, 0.16f);
+
+    // Spacing scale (em). Use these instead of one-off Em.of(...) so gaps
+    // and padding stay on a rhythm.
+    private static final Em GAP_XS  = Em.of(0.35f);
+    private static final Em GAP_SM  = Em.of(0.7f);
+    private static final Em GAP_MD  = Em.of(1.2f);
+    private static final Em GAP_LG  = Em.of(1.8f);
+    private static final Em PAD_CARD = Em.of(1.1f);
+    private static final Em PAD_PANE = Em.of(1.5f);
+
     // ---------- node-editor demo: port types + node factories ----------
     // Hoisted to class scope so they're shared between buildNodeEditorPane()
-    // (initial setup) and the CommandRegistry / right-click "Add … Here"
+    // (initial setup) and the CommandRegistry / right-click "Add ... Here"
     // actions that spawn nodes at runtime.
     private static final PortType NUMBER = PortType.of("number", "Number", new Color(0.85f, 0.55f, 0.25f, 1f));
     private static final PortType STRING = PortType.of("string", "String", new Color(0.30f, 0.55f, 0.85f, 1f));
@@ -168,7 +194,7 @@ public final class App {
         .bidirectional(PortType.ANY, "ref")
         .background(new Color(0.32f, 0.22f, 0.32f, 1f))
         .build();
-    // Subgraph (group) node — runtime-creatable type whose contents are an
+    // Subgraph (group) node - runtime-creatable type whose contents are an
     // inner GraphSurface. Click the outer node to expand into a modal
     // overlay that hosts the inner surface; close to collapse. Inner
     // sub-graphs are queryable via NodeInstances + SubgraphNodes for
@@ -196,7 +222,7 @@ public final class App {
 
     public static void main(String[] args) {
         try (GlfwContext ctx = GlfwContext.init();
-             Window window = Window.create(1280, 800, "DasumGUIshi — Demo");
+             Window window = Window.create(1280, 800, "DasumGUIshi - Demo");
              Batcher batcher = new Batcher();
              CursorManager cursors = new CursorManager(window.handle().address())) {
 
@@ -219,7 +245,7 @@ public final class App {
                 registerCommands(window);
 
                 RenderStats stats = new RenderStats();
-                System.out.println("Demo: top-level tabs — Node Editor / Widgets / Text / Stress / Tables. Ctrl+Space opens the command palette; Ctrl+=/- zoom.");
+                System.out.println("Demo: top-level tabs - Home / Nodes / Widgets / Text / Graphics / Tables. Ctrl+Space opens the command palette; Ctrl+=/- zoom.");
 
                 EventLoop loop = new EventLoop(window, () -> {
                     int fbW = window.framebufferWidth();
@@ -273,7 +299,7 @@ public final class App {
                         Component ttRoot = OverlayStack.activeInputRoot(root);
                         TooltipController.resolveBeforeRender(
                             layout, ttRoot, InputState.mouseX(), InputState.mouseY());
-                        // Hard flush before drawing — the batcher's two-pass
+                        // Hard flush before drawing - the batcher's two-pass
                         // solids/text flush would otherwise sandwich the
                         // tooltip's text underneath any later z-layer's
                         // solid quads.
@@ -312,58 +338,209 @@ public final class App {
     }
 
     private static Component buildToolbar() {
-        Component file    = Themed.iconButton(Icons.FOLDER,      "File", Em.of(5.5f), Variant.ERROR,   0);
-        Component edit    = Themed.iconButton(Icons.EDIT,        "Edit", Em.of(5.5f), Variant.WARNING, 0);
-        Component view    = Themed.iconButton(Icons.EYE,         "View", Em.of(5.5f), Variant.SUCCESS, 0);
-        Component help    = Themed.iconButton(Icons.HELP_CIRCLE, "Help", Em.of(5.5f), Variant.PRIMARY, 0);
-        Component account = button("Account", Em.of(0f),   BTN_PURPLE, 1);
+        // ---- brand block ----
+        Component brand = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_XS,
+            List.of(
+                Icon.of(Icons.BOX, Em.of(1.4f), ACCENT),
+                new Component.Text("DasumGUIshi", Em.of(1.15f), HEADING_FG),
+                badge("v0.9", ACCENT, ACCENT_SOFT)),
+            false, 0);
+        Component sepLeft = new Component.Box(Em.of(0.08f), Em.of(1.6f), Em.ZERO, LINE);
 
-        Handlers.onClick(file,    () -> CommandRegistry.invoke("file.open"));
-        Handlers.onClick(edit,    () -> System.out.println("Edit clicked"));
-        Handlers.onClick(view,    () -> System.out.println("View clicked"));
-        Handlers.onClick(help,    () -> openHelpDialog());
+        // ---- menu (unified, subtle) ----
+        Component file = Themed.iconButton(Icons.FOLDER,      "File", Em.of(5.2f), Variant.DEFAULT, 0);
+        Component edit = Themed.iconButton(Icons.EDIT,        "Edit", Em.of(5.2f), Variant.DEFAULT, 0);
+        Component view = Themed.iconButton(Icons.EYE,         "View", Em.of(5.2f), Variant.DEFAULT, 0);
+        Component help = Themed.iconButton(Icons.HELP_CIRCLE, "Help", Em.of(5.2f), Variant.DEFAULT, 0);
+
+        Handlers.onClick(file, () -> CommandRegistry.invoke("file.open"));
+        Handlers.onClick(edit, () -> System.out.println("Edit clicked"));
+        Handlers.onClick(view, () -> System.out.println("View clicked"));
+        Handlers.onClick(help, () -> openHelpDialog());
+
+        Tooltips.set(file, "Open / save / create files (Ctrl+O / Ctrl+S)");
+        Tooltips.set(edit, "Undo, redo, cut, copy, paste - Ctrl+Z to undo");
+        Tooltips.set(view, "Toggle view options");
+        Tooltips.set(help, "Open the Help dialog");
+
+        Component menu = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_XS,
+            List.of(file, edit, view, help), false, 0);
+
+        // ---- flexible spacer pushes the right-hand cluster to the edge ----
+        Component spacer = new Component.Box(Em.of(0f), Em.of(0f), Em.ZERO, TRANSPARENT).withFlexGrow(1);
+
+        // ---- command-palette hint + account ----
+        Component paletteHint = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.35f), CARD_BG_ALT,
+            Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, GAP_XS,
+            List.of(
+                Icon.of(Icons.SEARCH, Em.of(0.9f), MUTED_FG),
+                new Component.Text("Ctrl+Space", Em.of(0.8f), SUBTITLE_FG)),
+            true, 0);
+        Tooltips.set(paletteHint, "Open the command palette");
+        Handlers.onClick(paletteHint, EverythingMenu::open);
+
+        Component account = Themed.iconButton(Icons.SETTINGS, "Account", Em.of(7f), Variant.PRIMARY, 0);
         Handlers.onClick(account, () -> System.out.println("Account clicked"));
-
-        Tooltips.set(file,    "Open / save / create files (Ctrl+O / Ctrl+S)");
-        Tooltips.set(edit,    "Undo, redo, cut, copy, paste — Ctrl+Z to undo");
-        Tooltips.set(view,    "Toggle view options");
-        Tooltips.set(help,    "Open the Help dialog");
         Tooltips.set(account, "Account & profile");
 
+        Component rightCluster = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.END, AlignItems.CENTER, GAP_SM,
+            List.of(paletteHint, account), false, 0);
+
         return new Component.Flex(
-            null, Em.of(3f), Em.of(0.5f), TOOLBAR_BG,
-            Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
-            List.of(file, edit, view, help, account),
+            null, Em.of(3.2f), Em.of(0.5f), TOOLBAR_BG,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_SM,
+            List.of(brand, sepLeft, menu, spacer, rightCluster),
             false, 0
         );
     }
 
-    /** Top-level Tabs widget — primary navigation. Fills the space below the toolbar. */
+    /** Top-level Tabs widget - primary navigation. Fills the space below the toolbar. */
     private static Component buildMainTabs() {
         Property<Integer> activeTab = new Property<>(0);
         activeTab.subscribe(i -> System.out.println("Active tab: " + i));
 
+        // Index map (kept in sync with the panel order below) so the Home
+        // pane's feature tiles can jump straight to a section.
         return Themed.tabs(
             null, null,
-            Em.of(2.6f), Em.of(1.0f), Em.of(0.5f),
-            Em.of(1.1f),
+            Em.of(2.9f), Em.of(1.2f), Em.ZERO,
+            Em.of(1.05f),
             List.of(
-                new Component.Tabs.TabPanel("Node Editor", buildNodeEditorPane()),
-                new Component.Tabs.TabPanel("Widgets",     buildWidgetsPane()),
-                new Component.Tabs.TabPanel("Text",        buildTextPane()),
-                new Component.Tabs.TabPanel("Stress",      buildStressPane()),
-                new Component.Tabs.TabPanel("VexelRay",    buildVexelRayPane()),
-                new Component.Tabs.TabPanel("Plots",       buildPlotsPane()),
-                new Component.Tabs.TabPanel("Tables",      buildTablesPane())
+                new Component.Tabs.TabPanel("Home",     buildHomePane(activeTab)),
+                new Component.Tabs.TabPanel("Nodes",    buildNodeEditorPane()),
+                new Component.Tabs.TabPanel("Widgets",  buildWidgetsPane()),
+                new Component.Tabs.TabPanel("Text",     buildTextPane()),
+                new Component.Tabs.TabPanel("Graphics", buildGraphicsPane()),
+                new Component.Tabs.TabPanel("Tables",   buildTablesPane())
             ),
             activeTab,
             Variant.PRIMARY
         ).withFlexGrow(1);
     }
 
-    /** Node-editor pane — full-pane GraphSurface with typed-port demo nodes. */
+    // Tab indices - keep aligned with the panel order in buildMainTabs.
+    private static final int TAB_HOME = 0, TAB_NODES = 1, TAB_WIDGETS = 2,
+                             TAB_TEXT = 3, TAB_GRAPHICS = 4, TAB_TABLES = 5;
+
+    /**
+     * Home pane - a landing interstitial. A tinted hero with the product
+     * name, tagline, tech badges, and a row of stat tiles, then a wrapping
+     * grid of clickable feature cards that jump to each section. The first
+     * thing the demo opens on, so it sets the tone.
+     */
+    private static Component buildHomePane(Property<Integer> activeTab) {
+        // ---- hero ----
+        Component wordmark = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_SM,
+            List.of(
+                Icon.of(Icons.BOX, Em.of(2.6f), ACCENT),
+                new Component.Text("DasumGUIshi", Em.of(2.6f), HEADING_FG)),
+            false, 0);
+        Component tagline = new Component.Text(
+            "A retained-mode GUI toolkit for Java - em-first layout, batched OpenGL, "
+            + "and a node editor, 3D field renderer, plots and data tables in one window.",
+            Em.of(1.05f), SUBTITLE_FG).withWrapWidth(Em.of(42f));
+
+        Component badges = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_SM,
+            List.of(
+                badge("GraalVM native-image", HEADING_FG, ACCENT_SOFT),
+                badge("OpenGL + Panama FFM", HEADING_FG, ACCENT_SOFT),
+                badge("0% idle CPU", HEADING_FG, ACCENT_SOFT),
+                badge("MSDF text", HEADING_FG, ACCENT_SOFT)),
+            false, 0, true);
+
+        Component stats = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.STRETCH, GAP_SM,
+            List.of(
+                statTile("6", "demo areas"),
+                statTile("1M", "table rows, virtualized"),
+                statTile("7", "VexelRay field models"),
+                statTile("em", "everywhere - pixels stay at the edge")),
+            false, 0, true);
+
+        Component hero = new Component.Flex(
+            null, Em.AUTO, Em.of(1.8f), HERO_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
+            List.of(wordmark, tagline, badges, stats),
+            false, 0);
+
+        // ---- feature grid ----
+        Component grid = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.START, GAP_MD,
+            List.of(
+                featureCard(Icons.NETWORK, "Node Editor",
+                    "Typed ports, drag-to-connect, subgraphs, right-click spawn.",
+                    new Color(0.55f, 0.65f, 0.95f, 1f), () -> activeTab.set(TAB_NODES)),
+                featureCard(Icons.SLIDERS, "Widgets",
+                    "Buttons, checkboxes, radios, sliders and tooltips in every variant.",
+                    new Color(0.30f, 0.80f, 0.55f, 1f), () -> activeTab.set(TAB_WIDGETS)),
+                featureCard(Icons.EDIT, "Text",
+                    "Editable, selectable text with live styling, carets and gutters.",
+                    new Color(0.95f, 0.70f, 0.35f, 1f), () -> activeTab.set(TAB_TEXT)),
+                featureCard(Icons.LAYERS, "Graphics",
+                    "Layered scenes, the VexelRay field renderer, and live plots.",
+                    new Color(0.80f, 0.55f, 0.95f, 1f), () -> activeTab.set(TAB_GRAPHICS)),
+                featureCard(Icons.LAYOUT_GRID, "Tables",
+                    "A million-row virtualized grid beside a tiny editable one.",
+                    new Color(0.35f, 0.80f, 0.90f, 1f), () -> activeTab.set(TAB_TABLES))),
+            false, 0, true);
+
+        Component tip = new Component.Flex(
+            null, Em.AUTO, Em.of(0.8f), CARD_BG_ALT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_SM,
+            List.of(
+                Icon.of(Icons.INFO, Em.of(1.1f), ACCENT),
+                new Component.Text(
+                    "Tip - press Ctrl+Space anywhere for the command palette / Ctrl+= / Ctrl+- to zoom",
+                    Em.of(0.9f), SUBTITLE_FG)),
+            false, 0);
+
+        Component column = new Component.Flex(
+            null, Em.AUTO, PAD_PANE, CONTENT_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_LG,
+            List.of(hero, section("Explore", "Jump into any corner of the toolkit", grid), tip),
+            false, 0);
+
+        return new Component.Scroll(null, null, Em.ZERO, CONTENT_BG, column, false, 1);
+    }
+
+    /**
+     * Graphics pane - groups the three heavier visual demos (layered scenes /
+     * stress, the VexelRay field renderer, and the plotting toolkit) under
+     * INFO-tinted sub-tabs so the top bar stays short and related demos sit
+     * together.
+     */
+    private static Component buildGraphicsPane() {
+        Property<Integer> active = new Property<>(0);
+        return Themed.tabs(
+            null, null,
+            Em.of(2.4f), Em.of(1.0f), Em.ZERO,
+            Em.of(0.95f),
+            List.of(
+                new Component.Tabs.TabPanel("Scenes & Stress", buildStressPane()),
+                new Component.Tabs.TabPanel("VexelRay",        buildVexelRayPane()),
+                new Component.Tabs.TabPanel("Plots",           buildPlotsPane())
+            ),
+            active,
+            Variant.INFO
+        ).withFlexGrow(1);
+    }
+
+    /** Node-editor pane - full-pane GraphSurface with typed-port demo nodes. */
     private static Component buildNodeEditorPane() {
-        // Block same-node connections — typical node-editor UX. The hook
+        // Block same-node connections - typical node-editor UX. The hook
         // sees the full Ports.Port records so apps can encode any algorithmic
         // rule (cycle prevention, fan-in limits, mode-gated ports, etc.).
         ConnectionRule.override((out, in) -> out.node() != in.node());
@@ -380,7 +557,7 @@ public final class App {
         // so right-clicks on empty surface area land on the surface itself.
         Component.GraphSurface surface = new Component.GraphSurface(
             null, null, surfaceBg,
-            List.of(constantNode, multiplyNode, tagNode, pointCloudNode), true, 0
+            List.of(constantNode, multiplyNode, tagNode, pointCloudNode), true, 1
         );
         DEMO_SURFACE = surface;
         GraphSurfacePositions.set(surface, constantNode,  2f, 2f);
@@ -388,7 +565,7 @@ public final class App {
         GraphSurfacePositions.set(surface, tagNode,      36f, 2f);
         GraphSurfacePositions.set(surface, pointCloudNode, 2f, 12f);
 
-        // Hardcoded data-only connection: Constant.value → Multiply.a.
+        // Hardcoded data-only connection: Constant.value -> Multiply.a.
         Connections.add(surface,
             Ports.byName(constantNode, "value").component(),
             Ports.byName(multiplyNode, "a").component());
@@ -400,7 +577,7 @@ public final class App {
         PortContextMenu.registerDefaults(multiplyNode);
         PortContextMenu.registerDefaults(tagNode);
 
-        // Surface menu — empty-area right-click. "Add … Here" items spawn
+        // Surface menu - empty-area right-click. "Add ... Here" items spawn
         // at the cursor's surface-local em coords.
         Handlers.onContextMenu(surface, event -> {
             float emX = event.localEmX(surface);
@@ -420,7 +597,73 @@ public final class App {
             );
         });
 
-        return surface;
+        // Legend / help sidebar so the canvas isn't a bare surface - explains
+        // the interactions and decodes the port-type colours.
+        Component legend = buildNodeLegend();
+
+        Component row = new Component.Flex(
+            null, null, PAD_PANE, CONTENT_BG,
+            Direction.ROW, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
+            List.of(legend, surface),
+            false, 1);
+        return row;
+    }
+
+    /** Side panel for the node editor: how-to bullets + a port-type colour key. */
+    private static Component buildNodeLegend() {
+        Component howto = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.START, Em.of(0.5f),
+            List.of(
+                legendLine("Drag a node body to move it"),
+                legendLine("Drag from a port to wire a connection"),
+                legendLine("Right-click empty space to add nodes"),
+                legendLine("Right-click a node for its menu"),
+                legendLine("Click Point Cloud / Group to expand"),
+                legendLine("Select a wire and press Delete to cut it")),
+            false, 0);
+
+        Component portKey = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.START, Em.of(0.5f),
+            List.of(
+                portKeyRow(new Color(0.85f, 0.55f, 0.25f, 1f), "Number"),
+                portKeyRow(new Color(0.30f, 0.55f, 0.85f, 1f), "String"),
+                portKeyRow(new Color(0.60f, 0.62f, 0.68f, 1f), "Any")),
+            false, 0);
+
+        Component col = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
+            List.of(
+                card("How to drive it", null, howto),
+                card("Port types", null, portKey),
+                badge("Ctrl+Space adds nodes too", ACCENT, ACCENT_SOFT)),
+            false, 0);
+
+        return new Component.Scroll(Em.of(17f), null, Em.ZERO, TRANSPARENT, col, false, 0);
+    }
+
+    /** One bulleted help line: an accent dot + label. */
+    private static Component legendLine(String text) {
+        return new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_SM,
+            List.of(
+                new Component.Box(Em.of(0.35f), Em.of(0.35f), Em.ZERO, ACCENT),
+                new Component.Text(text, Em.of(0.9f), BODY_TEXT).withWrapWidth(Em.of(13f))),
+            false, 0);
+    }
+
+    /** Port-type key row: a colour swatch + the type name. */
+    private static Component portKeyRow(Color swatch, String name) {
+        return new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_SM,
+            List.of(
+                new Component.Box(Em.of(0.9f), Em.of(0.9f), Em.ZERO, swatch),
+                new Component.Text(name, Em.of(0.95f), BODY_TEXT)),
+            false, 0);
     }
 
     /**
@@ -448,7 +691,7 @@ public final class App {
 
     /**
      * Remove {@code node} from the demo surface. Detach cascades through every
-     * sidecar — including {@link SubgraphNodes}, which recursively detaches a
+     * sidecar - including {@link SubgraphNodes}, which recursively detaches a
      * subgraph node's inner surface so it doesn't linger as zombie state.
      */
     private static void deleteNode(Component node) {
@@ -458,7 +701,7 @@ public final class App {
         Components.detach(node);
     }
 
-    /** Widgets pane — scrollable column with the basic interactive widgets. */
+    /** Widgets pane - scrollable column with the basic interactive widgets. */
     private static Component buildWidgetsPane() {
         // ---- Variant buttons ----
         Component dfltBtn = Themed.button("Default", Em.of(6f), Variant.DEFAULT, 0);
@@ -546,7 +789,7 @@ public final class App {
         Tooltips.set(rbLight, "Use light theme");
         Tooltips.set(rbDark,  "Use dark theme");
         Tooltips.set(rbAuto,  "Follow system theme preference");
-        Tooltips.set(volumeSlider, "Drag to set volume (0 — 100)");
+        Tooltips.set(volumeSlider, "Drag to set volume (0 - 100)");
 
         // Navigation destination: reachable via the Everything Menu ("Go to:
         // Volume slider") or Navigator.navigate("widgets.volume").
@@ -558,15 +801,20 @@ public final class App {
 
         // ---- Assemble sectioned column ----
         Component.Flex column = new Component.Flex(
-            null, Em.AUTO, Em.of(1.2f), new Color(0f, 0f, 0f, 0f),
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(1.4f),
+            null, Em.AUTO, PAD_PANE, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
             List.of(
-                section("Variant buttons",    variantButtonRow),
-                section("Variant checkboxes", variantCheckboxRow),
-                section("Checkboxes",         checkboxRow),
-                section("Radio group",        radioRow),
-                section("Slider",             sliderRow),
-                section("Tooltips",           tooltipSection)
+                paneHeader(Icons.SLIDERS, "Widgets",
+                    "Interactive controls in every theme variant"),
+                section("Buttons", "One per semantic variant - click for a console log",
+                    variantButtonRow),
+                section("Checkboxes (variants)", "The accent shifts; the surface stays shared",
+                    variantCheckboxRow),
+                section("Checkboxes", checkboxRow),
+                section("Radio group", radioRow),
+                section("Slider", sliderRow),
+                section("Tooltips", "Triggers, edge-flip, long text, live mutation",
+                    tooltipSection)
             ),
             false, 0
         );
@@ -584,7 +832,7 @@ public final class App {
      * any other node.
      *
      * <p>The thumbnail and the expanded view share the same
-     * {@link Component.SceneView} instance — snapshot, camera, click
+     * {@link Component.SceneView} instance - snapshot, camera, click
      * handler, and GPU buffer all follow the component because every
      * piece of state is identity-keyed off it. The node's body is a
      * {@code DynamicChildren}-backed slot so we can swap the viewport
@@ -622,7 +870,7 @@ public final class App {
             colors[i*3 + 2] = 0.5f + 0.5f * z;
         }
         // Line-segment layer alongside the points:
-        //   3 axes through the origin (X red↔white, Y green↔white, Z blue↔white)
+        //   3 axes through the origin (X red<->white, Y green<->white, Z blue<->white)
         //   + a wireframe unit cube outline (12 edges) for context.
         // Demonstrates per-endpoint gradient: each axis fades from its dim's
         // saturated colour at one end to white at the other; cube edges use
@@ -630,26 +878,26 @@ public final class App {
         float[] segEndpoints = new float[(3 + 12) * 2 * 3];
         float[] segColors    = new float[(3 + 12) * 2 * 3];
         int si = 0;
-        // X axis: red → white
+        // X axis: red -> white
         segEndpoints[si*6    ] = -1.4f; segEndpoints[si*6 + 1] =  0f;   segEndpoints[si*6 + 2] = 0f;
         segEndpoints[si*6 + 3] =  1.4f; segEndpoints[si*6 + 4] =  0f;   segEndpoints[si*6 + 5] = 0f;
         segColors   [si*6    ] = 1f;    segColors   [si*6 + 1] = 0.2f;  segColors   [si*6 + 2] = 0.2f;
         segColors   [si*6 + 3] = 1f;    segColors   [si*6 + 4] = 1f;    segColors   [si*6 + 5] = 1f;
         si++;
-        // Y axis: green → white
+        // Y axis: green -> white
         segEndpoints[si*6    ] =  0f;   segEndpoints[si*6 + 1] = -1.4f; segEndpoints[si*6 + 2] = 0f;
         segEndpoints[si*6 + 3] =  0f;   segEndpoints[si*6 + 4] =  1.4f; segEndpoints[si*6 + 5] = 0f;
         segColors   [si*6    ] = 0.2f;  segColors   [si*6 + 1] = 1f;    segColors   [si*6 + 2] = 0.2f;
         segColors   [si*6 + 3] = 1f;    segColors   [si*6 + 4] = 1f;    segColors   [si*6 + 5] = 1f;
         si++;
-        // Z axis: blue → white
+        // Z axis: blue -> white
         segEndpoints[si*6    ] =  0f;   segEndpoints[si*6 + 1] =  0f;   segEndpoints[si*6 + 2] = -1.4f;
         segEndpoints[si*6 + 3] =  0f;   segEndpoints[si*6 + 4] =  0f;   segEndpoints[si*6 + 5] =  1.4f;
         segColors   [si*6    ] = 0.3f;  segColors   [si*6 + 1] = 0.5f;  segColors   [si*6 + 2] = 1f;
         segColors   [si*6 + 3] = 1f;    segColors   [si*6 + 4] = 1f;    segColors   [si*6 + 5] = 1f;
         si++;
-        // Unit-cube edges — 12 edges, all the same dim colour at both endpoints
-        // (cyan-grey). Vertices at ±1 in each axis.
+        // Unit-cube edges - 12 edges, all the same dim colour at both endpoints
+        // (cyan-grey). Vertices at +/-1 in each axis.
         float[][] verts = {
             {-1,-1,-1}, { 1,-1,-1}, { 1, 1,-1}, {-1, 1,-1},
             {-1,-1, 1}, { 1,-1, 1}, { 1, 1, 1}, {-1, 1, 1}
@@ -694,7 +942,7 @@ public final class App {
             Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.of(0.4f),
             List.of(titleIcon, titleText), false, 0
         );
-        Component subtitle = new Component.Text("click to expand · drag to move",
+        Component subtitle = new Component.Text("click to expand / drag to move",
             Em.of(0.75f), new Color(0.65f, 0.70f, 0.85f, 0.75f));
 
         Component.Flex node = new Component.Flex(
@@ -736,7 +984,7 @@ public final class App {
                       sibarum.dasum.gui.vis.math.CameraMode.ORTHOGRAPHIC)));
 
         Component closeBtn = Themed.button("Close", Em.of(6f), Variant.PRIMARY, 0);
-        Component title    = new Component.Text("Point Cloud — Expanded", Em.of(1.1f), LABEL_FG);
+        Component title    = new Component.Text("Point Cloud - Expanded", Em.of(1.1f), LABEL_FG);
         Component spacer   = new Component.Box(Em.of(1f), Em.of(0f), Em.ZERO, new Color(0f, 0f, 0f, 0f))
                                   .withFlexGrow(1);
 
@@ -776,7 +1024,7 @@ public final class App {
      * inside the modal "just works."
      *
      * <p>Mirrors {@link #openPointCloudOverlay} structurally but skips the
-     * placeholder swap — the outer node visually stays put behind the
+     * placeholder swap - the outer node visually stays put behind the
      * modal backdrop because we don't move it into the overlay.
      */
     private static void openSubgraphOverlay(Component outerNode) {
@@ -787,7 +1035,7 @@ public final class App {
         String title = (ni != null && ni.params().get("title") instanceof String t) ? t : "Subgraph";
 
         Component closeBtn = Themed.button("Close", Em.of(6f), Variant.PRIMARY, 0);
-        Component titleText = new Component.Text(title + " — Subgraph", Em.of(1.1f), LABEL_FG);
+        Component titleText = new Component.Text(title + " - Subgraph", Em.of(1.1f), LABEL_FG);
         Component spacer = new Component.Box(Em.of(1f), Em.of(0f), Em.ZERO, new Color(0f, 0f, 0f, 0f))
             .withFlexGrow(1);
 
@@ -798,12 +1046,12 @@ public final class App {
             false, 0
         );
 
-        // 1000em w/h → OverlayStack clamps to viewport → full-screen modal.
+        // 1000em w/h -> OverlayStack clamps to viewport -> full-screen modal.
         // The inner surface fills the area below the header via a wrapper
         // Flex with flexGrow=1. We can't call innerSurface.withFlexGrow(1)
         // directly because that would create a NEW Component identity and
         // every inner sidecar (positions, children, ports) is keyed by the
-        // original identity — the layout walk of a clone'd identity would
+        // original identity - the layout walk of a clone'd identity would
         // see an empty surface.
         Component.Flex innerFrame = new Component.Flex(
             null, null, Em.ZERO, CONTENT_BG,
@@ -820,7 +1068,7 @@ public final class App {
         // text). Do NOT detach overlayRoot or innerFrame because
         // Components.detach walks the subtree pre-order and would clear
         // innerSurface's sidecars (port declarations, GraphSurfaceChildren,
-        // Connections, etc.) — exactly the state we need to survive until
+        // Connections, etc.) - exactly the state we need to survive until
         // outerNode itself is deleted. overlayRoot and innerFrame are
         // plain Flexes with no sidecar entries; letting them GC silently
         // is fine.
@@ -830,7 +1078,7 @@ public final class App {
     }
 
     /**
-     * Stress pane — deliberately exercises configurations that have
+     * Stress pane - deliberately exercises configurations that have
      * caught bugs in the past. Every feature in the framework that
      * could plausibly fail when used in an "unexpected" layout shows
      * up here in at least one such layout. Catch what the showcase
@@ -839,13 +1087,13 @@ public final class App {
      * <p>Today's coverage:
      * <ul>
      *   <li>Three small point-cloud viewports side-by-side in a flex
-     *       row, none of them centred on the framebuffer — catches
+     *       row, none of them centred on the framebuffer - catches
      *       NDC-mapping bugs that only surface for off-centre rects.</li>
-     *   <li>A point-cloud viewport inside a {@link Component.Scroll} —
+     *   <li>A point-cloud viewport inside a {@link Component.Scroll} -
      *       catches scissor-stack interactions with the renderer's own
      *       scissor push.</li>
      *   <li>An inline mix of icons and text inside a single flex row,
-     *       at varying sizes — catches MSDF atlas-swap bugs that only
+     *       at varying sizes - catches MSDF atlas-swap bugs that only
      *       manifest when two font groups interleave within a frame.</li>
      * </ul>
      *
@@ -856,7 +1104,7 @@ public final class App {
      */
     private static Component buildStressPane() {
         // Three small viewports side by side. Each gets its own data so
-        // they look visually distinct — if any of them renders empty
+        // they look visually distinct - if any of them renders empty
         // or the wrong content, the bug is layout-position-dependent.
         Component triple = new Component.Flex(
             null, Em.AUTO, Em.of(0.5f), CONTENT_BG,
@@ -908,10 +1156,10 @@ public final class App {
             null, Em.AUTO, Em.of(1f), new Color(0f,0f,0f,0f),
             Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.8f),
             List.of(
-                new Component.Text("Pre-cloud text — fills space above the embedded viewport so its rect isn't framebuffer-aligned.",
+                new Component.Text("Pre-cloud text - fills space above the embedded viewport so its rect isn't framebuffer-aligned.",
                     Em.of(0.95f), LABEL_FG).withWrapWidth(Em.of(40f)),
                 buildSmallPointCloud(99, CameraSpec.defaultPerspective(), "In a Scroll"),
-                new Component.Text("Post-cloud text — if the viewport leaked scissor or viewport state, this paragraph would render wrong (clipped, in the wrong place, or invisible).",
+                new Component.Text("Post-cloud text - if the viewport leaked scissor or viewport state, this paragraph would render wrong (clipped, in the wrong place, or invisible).",
                     Em.of(0.95f), LABEL_FG).withWrapWidth(Em.of(40f)),
                 new Component.Text("Extra line A.", Em.of(0.95f), LABEL_FG),
                 new Component.Text("Extra line B.", Em.of(0.95f), LABEL_FG),
@@ -926,15 +1174,17 @@ public final class App {
         );
 
         Component column = new Component.Flex(
-            null, Em.AUTO, Em.of(1.2f), CONTENT_BG,
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(1.2f),
+            null, Em.AUTO, PAD_PANE, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
             List.of(
+                paneHeader(Icons.LAYERS, "Scenes & Stress",
+                    "Edge-case layouts that have caught rendering bugs before"),
                 section("Three viewports, off-centre rects", triple),
-                section("Layered scene — direct SceneSnapshot, mixed blend modes", buildBlendScene()),
-                section("Surface probes — uniform vs iteration-weighted (Mandelbulb, same budget)", buildBulbProbeScene()),
+                section("Layered scene", "Direct SceneSnapshot - mixed blend modes", buildBlendScene()),
+                section("Surface probes", "Uniform vs iteration-weighted (Mandelbulb, same budget)", buildBulbProbeScene()),
                 section("Image + text layers", new Component.Flex(
                     null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
-                    Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
+                    Direction.ROW, JustifyContent.START, AlignItems.START, GAP_MD,
                     List.of(buildImageTextScene(), buildBillboardScene()),
                     false, 0, true  // wrap: reflow cards to the viewport width
                 )),
@@ -984,7 +1234,7 @@ public final class App {
         Component.SceneView mapView = new Component.SceneView(
             Em.of(13f), Em.of(13f), Em.ZERO, plotBg, true, 0);
         // f(z) = z^2 - 1 as a continuous function; the frame's axes map the
-        // world rect onto z ∈ [-1.6, 1.6]^2 (top row = +imag). DISPLAY mode
+        // world rect onto z  in  [-1.6, 1.6]^2 (top row = +imag). DISPLAY mode
         // re-rasterizes the visible region at the viewport's pixel density, so
         // zooming in resolves real detail instead of magnified texels.
         ComplexFunction fz = (zr, zi, out) -> {
@@ -1033,15 +1283,17 @@ public final class App {
             null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
             Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.8f),
             List.of(
-                plotCard("2D complex map — domain colouring of f(z) = z² − 1", mapView),
-                plotCard("3D complex volume — Z-slice driven by the slider", sliceCard)),
+                plotCard("2D complex map - domain colouring of f(z) = z^2 - 1", mapView),
+                plotCard("3D complex volume - Z-slice driven by the slider", sliceCard)),
             false, 0, true);
 
         Component column = new Component.Flex(
-            null, Em.AUTO, Em.of(1.2f), CONTENT_BG,
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(1.2f),
+            null, Em.AUTO, PAD_PANE, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
             List.of(
-                section("Line + curve chart — auto-ranged axes, nice-number ticks, smooth curve", chartView),
+                paneHeader(Icons.ZOOM_IN, "Plots",
+                    "Drag to pan, scroll to zoom - axes re-tick live"),
+                section("Line + curve chart", "Auto-ranged axes, nice-number ticks, smooth curve", chartView),
                 maps),
             false, 0);
 
@@ -1087,11 +1339,11 @@ public final class App {
     }
 
     /**
-     * Direct {@link SceneSnapshot} demo — exercises the layered scene API
+     * Direct {@link SceneSnapshot} demo - exercises the layered scene API
      * without the {@code PointCloudStates} compat path: two translucent
      * ALPHA quads (overlap blends), a ring of ADDITIVE points over them
      * (overlaps brighten), and a line frame on top. The stack is
-     * order-sensitive — swapping the triangle and point layers visibly
+     * order-sensitive - swapping the triangle and point layers visibly
      * changes the overlap colors. 2D ortho camera with PAN_ZOOM_2D
      * interaction, so scroll-zoom anchors at the cursor.
      */
@@ -1139,7 +1391,7 @@ public final class App {
         SceneStates.setInteraction(viewport, InteractionSpec.panZoom2d());
 
         Component label = new Component.Text(
-            "ALPHA quads under ADDITIVE points under lines — drag pans, scroll zooms at cursor",
+            "ALPHA quads under ADDITIVE points under lines - drag pans, scroll zooms at cursor",
             Em.of(0.85f), LABEL_FG);
         return new Component.Flex(
             Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
@@ -1150,10 +1402,10 @@ public final class App {
 
     /**
      * Image + text layer demo (2D): a CPU-iterated Mandelbrot as a smooth
-     * ImageLayer (asymmetric content — an upside-down or mirrored render
+     * ImageLayer (asymmetric content - an upside-down or mirrored render
      * is immediately obvious), a small NEAREST-filtered heatmap whose
      * texel edges must stay crisp, and non-billboard TextLayer captions.
-     * PAN_ZOOM_2D, so scroll-zoom anchors at the cursor — a preview of
+     * PAN_ZOOM_2D, so scroll-zoom anchors at the cursor - a preview of
      * the FractalView interaction.
      */
     private static Component buildImageTextScene() {
@@ -1220,7 +1472,7 @@ public final class App {
         SceneStates.setInteraction(viewport, InteractionSpec.panZoom2d());
 
         Component label = new Component.Text(
-            "ImageLayer + TextLayer (2D) — scroll zooms at cursor", Em.of(0.85f), LABEL_FG);
+            "ImageLayer + TextLayer (2D) - scroll zooms at cursor", Em.of(0.85f), LABEL_FG);
         return new Component.Flex(
             Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
             Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
@@ -1231,7 +1483,7 @@ public final class App {
     /**
      * Billboard text demo (3D): a line-frame cube with TextLayer labels
      * on three corners. The labels are uploaded once and oriented in the
-     * vertex shader — orbiting must keep them facing the camera without
+     * vertex shader - orbiting must keep them facing the camera without
      * any re-upload.
      */
     private static Component buildBillboardScene() {
@@ -1270,7 +1522,7 @@ public final class App {
         SceneStates.setCamera(viewport, CameraSpec.defaultPerspective());
 
         Component label = new Component.Text(
-            "Billboard TextLayer (3D) — labels face the camera while orbiting", Em.of(0.85f), LABEL_FG);
+            "Billboard TextLayer (3D) - labels face the camera while orbiting", Em.of(0.85f), LABEL_FG);
         return new Component.Flex(
             Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
             Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
@@ -1281,7 +1533,7 @@ public final class App {
     /**
      * VexelRay inspector tab ("Houdini-lite"): one orbit viewport plus a
      * control panel that swaps the model, the inspection view mode, and the
-     * march step budget — so any render-pipeline experiment applies to any
+     * march step budget - so any render-pipeline experiment applies to any
      * model. Geometry/quality is per-layer (republished on change); the view
      * mode is the global {@link VexelRayView} read live by the renderer.
      */
@@ -1365,9 +1617,9 @@ public final class App {
                 new Component.Text("VexelRay Inspector", Em.of(1.1f), LABEL_FG),
                 vexelGroup("Model", modelRows),
                 vexelGroup("View", viewRows),
-                vexelGroup("Max steps (16–256)", List.of(stepsSlider)),
-                vexelGroup("Mandelbulb iters (2–20)", List.of(itersSlider)),
-                vexelGroup("Mandelbulb escape R (1.2–12)", List.of(escapeSlider)),
+                vexelGroup("Max steps (16-256)", List.of(stepsSlider)),
+                vexelGroup("Mandelbulb iters (2-20)", List.of(itersSlider)),
+                vexelGroup("Mandelbulb escape R (1.2-12)", List.of(escapeSlider)),
                 vexelGroup("Mandelbulb iter-LOD (0=off)", List.of(lodSlider))
             ), false, 0);
 
@@ -1396,14 +1648,14 @@ public final class App {
             kids, false, 0);
     }
 
-    /** Arch-monument CSG parameters — the inspector's CSG_MONUMENT model. */
+    /** Arch-monument CSG parameters - the inspector's CSG_MONUMENT model. */
     private static final float MONUMENT_ROUNDING = 0.10f;
     private static final Color MONUMENT_COLOR = new Color(0.88f, 0.80f, 0.66f, 1f);
 
-    /** The arch-monument op list — shared by the raymarched and splat cards. */
+    /** The arch-monument op list - shared by the raymarched and splat cards. */
     private static List<CsgBox> monumentOps() {
         return List.of(
-            // Base slab; pillars join it with small-k smooth unions —
+            // Base slab; pillars join it with small-k smooth unions -
             // hard min() keeps concave junction creases SHARP (outward
             // rounding only rounds convex edges), and sharp concave
             // creases produce AO piping. A small fillet is the
@@ -1423,12 +1675,12 @@ public final class App {
     }
 
     /**
-     * Experiment A — iteration-weighted probe placement. Sample the
+     * Experiment A - iteration-weighted probe placement. Sample the
      * Mandelbulb surface once (CPU MandelbulbField), then draw the SAME
      * probe budget two ways: uniform random placement vs. placement
      * weighted by the field's intrinsic escape-iteration count. The
      * weighted cloud concentrates probes on the high-iteration filigree
-     * and thins them on the smooth lobes — and because the iteration count
+     * and thins them on the smooth lobes - and because the iteration count
      * is view-INDEPENDENT, the placement stays optimal as you orbit (unlike
      * a step-count/cost basis, which would thrash on camera motion). Splats
      * are coloured by complexity so the allocation is visible. Both clouds
@@ -1479,7 +1731,7 @@ public final class App {
             heat(comp[i], kcol, w * 3);
             w++;
         }
-        System.out.println("Bulb probes — " + caption + ": " + kept + " / " + n);
+        System.out.println("Bulb probes - " + caption + ": " + kept + " / " + n);
 
         Component.SceneView viewport = new Component.SceneView(
             Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 0);
@@ -1493,7 +1745,7 @@ public final class App {
             List.of(new Component.Text(caption, Em.of(0.85f), LABEL_FG), viewport), false, 0);
     }
 
-    /** Blue→red complexity ramp (matches the shader's heat()). */
+    /** Blue->red complexity ramp (matches the shader's heat()). */
     private static void heat(float t, float[] out, int o) {
         t = Math.max(0f, Math.min(1f, t));
         out[o]     = Math.max(0f, Math.min(1f, t * 2f));
@@ -1524,7 +1776,7 @@ public final class App {
         }
     }
 
-    /** Text pane — the editable paragraph and its caret/selection/clipboard demo. */
+    /** Text pane - the editable paragraph and its caret/selection/clipboard demo. */
     private static Component buildTextPane() {
         String paragraph =
             "Editable text component.\n" +
@@ -1545,15 +1797,21 @@ public final class App {
             true, true, true, false, 0
         );
 
-        // Navigation destination in a different tab — exercises cross-tab
+        // Navigation destination in a different tab - exercises cross-tab
         // switching plus scroll-into-view on arrival.
         NavId.tag(paragraphText, "text.editor");
         NavRegistry.register("text.editor", "Editable text");
 
-        return new Component.Scroll(
-            null, null, Em.of(1f), CONTENT_BG,
-            buildStyledColumn(paragraphText), false, 1
-        );
+        Component column = new Component.Flex(
+            null, Em.AUTO, PAD_PANE, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
+            List.of(
+                paneHeader(Icons.EDIT, "Text",
+                    "Editable, selectable text with carets, selection and live styling"),
+                buildStyledColumn(paragraphText)),
+            false, 0);
+
+        return new Component.Scroll(null, null, Em.ZERO, CONTENT_BG, column, false, 1);
     }
 
     /**
@@ -1567,7 +1825,7 @@ public final class App {
      * visible on the editable input when the user types past the wrap point.
      */
     private static Component buildStyledColumn(Component.Text paragraphText) {
-        // Static-styled label — one Text, both fg + bg ranges set once.
+        // Static-styled label - one Text, both fg + bg ranges set once.
         String diag = "error: undefined symbol 'foo' in main.c:42";
         Color red    = new Color(1.00f, 0.45f, 0.45f, 1f);
         Color yellow = new Color(1.00f, 0.85f, 0.35f, 1f);
@@ -1597,7 +1855,7 @@ public final class App {
             new TextStyle(fooStart, fooEnd, fooBg)
         ));
 
-        // Glyph effects — outline (dilated underlay) and weight (SDF edge
+        // Glyph effects - outline (dilated underlay) and weight (SDF edge
         // shift) ride on foreground ranges. A null range color keeps the
         // Text's default tint, so weight-only spans don't recolor.
         String fx = "Outlined words and bold words and lighter words coexist.";
@@ -1620,12 +1878,12 @@ public final class App {
             new TextStyle(lightStart, lightEnd, null).withWeight(Em.of(-0.03f))
         ));
 
-        // Wrapped-ending spans — a multi-line bg range with wrapLineEndings
+        // Wrapped-ending spans - a multi-line bg range with wrapLineEndings
         // fills each continued line to the text-area right edge (diff-view
         // look), including the empty middle line; the default range on the
         // last line stops at the glyph for contrast.
         String block =
-            "Removed block — wrapLineEndings=true fills to the edge:\n" +
+            "Removed block - wrapLineEndings=true fills to the edge:\n" +
             "    int unused = compute();\n" +
             "\n" +
             "    cleanup(unused);\n" +
@@ -1646,13 +1904,13 @@ public final class App {
             new TextStyle(defStart, defEnd, fooBg)
         ));
 
-        // Live-highlight editable Text — content-change listener re-publishes
+        // Live-highlight editable Text - content-change listener re-publishes
         // ranges as the user types. Demonstrates the canonical
         // "recompute-from-scratch-per-content-change" pattern; no RMW races
         // possible because there's exactly one publisher (this listener).
         String initial =
             "Type here. Highlights update as you type.\n" +
-            "Try inserting TODO or FIXME — they get tagged.\n" +
+            "Try inserting TODO or FIXME - they get tagged.\n" +
             "Long lines wrap, and background fills follow the wrap correctly.";
         Component.Text liveStyled = new Component.Text(
             initial, FontGroups.DEFAULT, Em.of(1.1f), BODY_TEXT,
@@ -1688,24 +1946,26 @@ public final class App {
             TextStyleStates.setForeground(liveStyled, fg);
         }
 
-        Component header = new Component.Text(
-            "Styled text — programmatic foreground + background ranges",
-            Em.of(1.0f), LABEL_FG);
-
-        Component liveHint = new Component.Text(
-            "Editable — TODO gets a background, FIXME gets a foreground:",
-            Em.of(0.95f), LABEL_FG);
-
         return new Component.Flex(
-            null, null, Em.of(1f), new Color(0f, 0f, 0f, 0f),
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(1.0f),
-            List.of(paragraphText, header, staticStyled, fxStyled, blockStyled, liveHint, liveStyled),
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
+            List.of(
+                section("Editable paragraph",
+                    "Click to place the caret / drag to select / type to edit", paragraphText),
+                section("Static styling",
+                    "Foreground + background ranges set once", staticStyled),
+                section("Glyph effects",
+                    "Outline and SDF weight ride on foreground ranges", fxStyled),
+                section("Wrapped-ending spans",
+                    "Background fills extend to the text-area edge", blockStyled),
+                section("Live highlighting",
+                    "Type TODO or FIXME - they get tagged as you go", liveStyled)),
             false, 0
         );
     }
 
     /**
-     * Tables pane — two DataTables side by side. Left is a 1,000,000-row
+     * Tables pane - two DataTables side by side. Left is a 1,000,000-row
      * synthetic read-only source (proves virtualized rendering); right is a
      * tiny in-memory editable source (proves selection / edit / copy-paste
      * / row+col insert+delete and the "multiple tables at once" requirement).
@@ -1738,30 +1998,40 @@ public final class App {
         NavId.tag(rightTable, "tables.editable");
         NavRegistry.register("tables.editable", "Editable table");
 
-        Component leftLabel  = new Component.Text("Synthetic 1M × 20 (read-only)", Em.of(0.95f), LABEL_FG);
-        Component rightLabel = new Component.Text("Editable 5 × 3 — try F2, Enter, Tab", Em.of(0.95f), LABEL_FG);
+        Component leftLabel  = new Component.Text("Synthetic 1M x 20 (read-only)", Em.of(0.95f), HEADING_FG);
+        Component rightLabel = new Component.Text("Editable 5 x 3 - try F2, Enter, Tab", Em.of(0.95f), HEADING_FG);
 
         Component leftCol = new Component.Flex(
             null, null, Em.ZERO, new Color(0f, 0f, 0f, 0f),
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.4f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_SM,
             List.of(leftLabel, leftTable), false, 1
         );
         Component rightCol = new Component.Flex(
             null, null, Em.ZERO, new Color(0f, 0f, 0f, 0f),
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.4f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_SM,
             List.of(rightLabel, rightTable), false, 1
         );
 
-        return new Component.Flex(
-            null, null, Em.of(0.8f), CONTENT_BG,
-            Direction.ROW, JustifyContent.START, AlignItems.STRETCH, Em.of(0.8f),
+        Component tablesRow = new Component.Flex(
+            null, null, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
             List.of(leftCol, rightCol),
+            false, 1
+        );
+
+        return new Component.Flex(
+            null, null, PAD_PANE, CONTENT_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
+            List.of(
+                paneHeader(Icons.LAYOUT_GRID, "Tables",
+                    "Virtualized millions of rows beside a tiny editable grid"),
+                tablesRow),
             false, 1
         );
     }
 
     /**
-     * Simple synthetic source — formula-generated cell values, no storage.
+     * Simple synthetic source - formula-generated cell values, no storage.
      * Cheap {@code get} returns {@code "R<row>C<col>"} so 1M rows costs
      * O(visible window) per frame.
      */
@@ -1839,7 +2109,7 @@ public final class App {
      * is supposed to handle:
      * <ul>
      *   <li>Trigger toggle (Always / Alt / Ctrl / Shift) via a radio
-     *       group — also covers "no key held" → tooltips never show under
+     *       group - also covers "no key held" -> tooltips never show under
      *       the mod variants.</li>
      *   <li>Edge-overflow flip: four buttons positioned at the corners of
      *       a wide row so the cursor lands near each viewport edge and
@@ -1854,12 +2124,12 @@ public final class App {
      *       {@code Tooltips.clear} hook that calls into
      *       {@link TooltipController#onComponentDetached}.</li>
      *   <li>Mutate-tooltip button: clicking it changes the tooltip's
-     *       registered text so the controller's "text changed → restart
+     *       registered text so the controller's "text changed -> restart
      *       dwell" path runs even though the cursor is stationary.</li>
      * </ul>
      */
     private static Component buildTooltipShowcase() {
-        // Trigger toggle — Property<TooltipTrigger> driving radios.
+        // Trigger toggle - Property<TooltipTrigger> driving radios.
         Property<TooltipTrigger> triggerProp = new Property<>(TooltipController.getTrigger());
         triggerProp.subscribe(t -> {
             TooltipController.setTrigger(t);
@@ -1887,14 +2157,14 @@ public final class App {
         ));
 
         // Four buttons on a wide row to provoke viewport-edge flips.
-        Component edgeTL = Themed.button("Edge ↖",  Em.of(7f), Variant.PRIMARY, 0);
-        Component edgeTR = Themed.button("Edge ↗",  Em.of(7f), Variant.PRIMARY, 0);
-        Component edgeBL = Themed.button("Edge ↙",  Em.of(7f), Variant.PRIMARY, 0);
-        Component edgeBR = Themed.button("Edge ↘",  Em.of(7f), Variant.PRIMARY, 0);
-        Tooltips.set(edgeTL, "Top-left corner button — pointer placement should flip to the bottom-right of the cursor automatically.");
-        Tooltips.set(edgeTR, "Top-right corner button — popup should flip to the LEFT of the cursor when there's no room on the right.");
-        Tooltips.set(edgeBL, "Bottom-left button — popup should flip ABOVE when there's no room below.");
-        Tooltips.set(edgeBR, "Bottom-right button — popup should flip up-and-left when both edges are tight.");
+        Component edgeTL = Themed.button("Edge NW",  Em.of(7f), Variant.PRIMARY, 0);
+        Component edgeTR = Themed.button("Edge NE",  Em.of(7f), Variant.PRIMARY, 0);
+        Component edgeBL = Themed.button("Edge SW",  Em.of(7f), Variant.PRIMARY, 0);
+        Component edgeBR = Themed.button("Edge SE",  Em.of(7f), Variant.PRIMARY, 0);
+        Tooltips.set(edgeTL, "Top-left corner button - pointer placement should flip to the bottom-right of the cursor automatically.");
+        Tooltips.set(edgeTR, "Top-right corner button - popup should flip to the LEFT of the cursor when there's no room on the right.");
+        Tooltips.set(edgeBL, "Bottom-left button - popup should flip ABOVE when there's no room below.");
+        Tooltips.set(edgeBR, "Bottom-right button - popup should flip up-and-left when both edges are tight.");
 
         Component edgeRow = new Component.Flex(
             null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
@@ -1902,7 +2172,7 @@ public final class App {
             List.of(edgeTL, edgeTR, edgeBL, edgeBR), false, 0
         );
 
-        // Long / multi-line tooltip — exercise wrap + multi-line rendering.
+        // Long / multi-line tooltip - exercise wrap + multi-line rendering.
         Component longBtn = Themed.button("Long tooltip", Em.of(9f), Variant.INFO, 0);
         Tooltips.set(longBtn,
             "This tooltip text is intentionally long to make sure the wrap-width " +
@@ -1910,18 +2180,18 @@ public final class App {
             "It also has a hard newline in the middle to verify '\\n' is honoured " +
             "(not collapsed to a space) by the renderer.");
 
-        // Tooltip on a non-interactive Text label — verifies HitTest.testAny
+        // Tooltip on a non-interactive Text label - verifies HitTest.testAny
         // surfaces it even though Text.interactive() defaults to false.
         Component.Text label = new Component.Text("Hover this non-interactive label",
             Em.of(0.95f), BODY_TEXT);
-        Tooltips.set(label, "Static labels can carry tooltips too — interactive() is irrelevant.");
+        Tooltips.set(label, "Static labels can carry tooltips too - interactive() is irrelevant.");
 
-        // Self-detaching button — exercises Tooltips.clear → TooltipController.onComponentDetached.
+        // Self-detaching button - exercises Tooltips.clear -> TooltipController.onComponentDetached.
         // Wraps in a one-child Box that we DynamicChildren.add into, so a click can detach
         // the inner component without rebuilding the parent.
         Property<Boolean> showSelfDetach = new Property<>(true);
         Component selfDetachBtn = Themed.button("Detach me (clears tooltip)", Em.of(14f), Variant.WARNING, 0);
-        Tooltips.set(selfDetachBtn, "Clicking removes this button via Components.detach — the tooltip should disappear instantly.");
+        Tooltips.set(selfDetachBtn, "Clicking removes this button via Components.detach - the tooltip should disappear instantly.");
         Component.Flex selfDetachSlot = new Component.Flex(
             null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
             Direction.ROW, JustifyContent.START, AlignItems.CENTER, Em.of(0.5f),
@@ -1936,15 +2206,15 @@ public final class App {
             }
         });
 
-        // Mutate-tooltip button — text changes on each click. Verifies the
-        // controller's "text changed under stationary cursor → restart dwell"
+        // Mutate-tooltip button - text changes on each click. Verifies the
+        // controller's "text changed under stationary cursor -> restart dwell"
         // path.
         Component mutateBtn = Themed.button("Click to mutate my tooltip", Em.of(14f), Variant.SUCCESS, 0);
         int[] mutateCounter = { 0 };
-        Tooltips.set(mutateBtn, "Initial tooltip text — click to mutate (count=0)");
+        Tooltips.set(mutateBtn, "Initial tooltip text - click to mutate (count=0)");
         Handlers.onClick(mutateBtn, () -> {
             mutateCounter[0]++;
-            Tooltips.set(mutateBtn, "Tooltip mutated " + mutateCounter[0] + " times — keep hovering to see dwell restart");
+            Tooltips.set(mutateBtn, "Tooltip mutated " + mutateCounter[0] + " times - keep hovering to see dwell restart");
         });
 
         return new Component.Flex(
@@ -1964,35 +2234,158 @@ public final class App {
         );
     }
 
-    /** Section: heading text above its content, stacked vertically. */
+    /** Section: a card with an accent-barred heading over its content. */
     private static Component section(String heading, Component content) {
-        Component header = new Component.Text(heading, Em.of(1.0f), LABEL_FG);
+        return card(heading, null, content);
+    }
+
+    /** Section with a one-line subtitle under the heading. */
+    private static Component section(String heading, String subtitle, Component content) {
+        return card(heading, subtitle, content);
+    }
+
+    /**
+     * Elevated content card: a vertical accent bar + title (and optional
+     * subtitle) over a hairline divider, then the body - all on a raised
+     * surface with consistent padding. The single building block every pane
+     * leans on so sections read as tidy, aligned panels instead of loose
+     * stacks of widgets.
+     */
+    private static Component card(String title, String subtitle, Component body) {
+        Component accentBar = new Component.Box(Em.of(0.45f), Em.of(1.15f), Em.ZERO, ACCENT);
+        Component titleBlock;
+        if (subtitle != null) {
+            titleBlock = new Component.Flex(
+                Em.AUTO, Em.AUTO, Em.ZERO, TRANSPARENT,
+                Direction.COLUMN, JustifyContent.CENTER, AlignItems.START, Em.of(0.15f),
+                List.of(
+                    new Component.Text(title, Em.of(1.1f), HEADING_FG),
+                    new Component.Text(subtitle, Em.of(0.82f), SUBTITLE_FG)),
+                false, 0);
+        } else {
+            titleBlock = new Component.Text(title, Em.of(1.1f), HEADING_FG);
+        }
+        Component header = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_SM,
+            List.of(accentBar, titleBlock), false, 0);
+        Component divider = hairline(Em.of(0.08f), LINE);
         return new Component.Flex(
-            null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.5f),
-            List.of(header, content),
-            false, 0
-        );
+            null, Em.AUTO, PAD_CARD, CARD_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_SM,
+            List.of(header, divider, body),
+            false, 0);
+    }
+
+    /**
+     * Pane masthead: an icon + large title + subtitle, with a hairline rule
+     * beneath. Sits at the top of each scrollable pane so every tab opens on
+     * a clear "you are here" header instead of dropping you straight into
+     * controls.
+     */
+    private static Component paneHeader(int iconCp, String title, String subtitle) {
+        Component glyph = Icon.of(iconCp, Em.of(2.0f), ACCENT);
+        Component titleCol = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.CENTER, AlignItems.START, Em.of(0.2f),
+            List.of(
+                new Component.Text(title, Em.of(1.65f), HEADING_FG),
+                new Component.Text(subtitle, Em.of(0.95f), SUBTITLE_FG)),
+            false, 0);
+        Component row = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_SM,
+            List.of(glyph, titleCol), false, 0);
+        Component rule = hairline(Em.of(0.12f), ACCENT_SOFT);
+        return new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_SM,
+            List.of(row, rule), false, 0);
+    }
+
+    /**
+     * Full-width hairline rule. A childless {@link Component.Flex} (not a
+     * {@link Component.Box}) because Box requires an explicit width - Flex
+     * takes {@code null} width as "fill the parent's cross axis," which is
+     * exactly what a divider in a STRETCH column needs.
+     */
+    private static Component hairline(Em thickness, Color color) {
+        return new Component.Flex(
+            null, thickness, Em.ZERO, color,
+            Direction.ROW, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            List.of(), false, 0);
+    }
+
+    /** Small chip - a tinted, padded label. Used for version/feature tags. */
+    private static Component badge(String text, Color fg, Color bg) {
+        return new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.3f), bg,
+            Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
+            List.of(new Component.Text(text, Em.of(0.72f), fg)), false, 0);
+    }
+
+    /**
+     * Clickable feature tile for the Home pane: a big tinted glyph, a title,
+     * and a wrapped one-line blurb on a raised card. The whole card is
+     * interactive - clicking jumps to the matching tab via {@code onClick}.
+     */
+    private static Component featureCard(int iconCp, String title, String blurb,
+                                         Color accent, Runnable onClick) {
+        Component iconChip = new Component.Flex(
+            Em.of(3f), Em.of(3f), Em.ZERO, withAlpha(accent, 0.16f),
+            Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
+            List.of(Icon.of(iconCp, Em.of(1.6f), accent)), false, 0);
+        Component titleText = new Component.Text(title, Em.of(1.2f), HEADING_FG);
+        Component blurbText = new Component.Text(blurb, Em.of(0.85f), SUBTITLE_FG)
+            .withWrapWidth(Em.of(15f));
+        Component go = new Component.Text("Open  ->", Em.of(0.8f), accent);
+        Component cardBody = new Component.Flex(
+            Em.of(17.5f), Em.AUTO, PAD_CARD, CARD_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.START, GAP_SM,
+            List.of(iconChip, titleText, blurbText, go),
+            true, 0);
+        Handlers.onClick(cardBody, onClick);
+        return cardBody;
+    }
+
+    /** Stat tile for the Home hero - a big value over a small caption. */
+    private static Component statTile(String value, String caption) {
+        return new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.8f), CARD_BG_ALT,
+            Direction.COLUMN, JustifyContent.CENTER, AlignItems.START, Em.of(0.1f),
+            List.of(
+                new Component.Text(value, Em.of(1.5f), ACCENT),
+                new Component.Text(caption, Em.of(0.78f), MUTED_FG)),
+            false, 0);
+    }
+
+    /** Return {@code c} with its alpha replaced - for tinted icon chips. */
+    private static Color withAlpha(Color c, float a) {
+        return new Color(c.r(), c.g(), c.b(), a);
     }
 
     /**
      * Like {@link #section} but sized to fit its content, for plot cards laid
      * out side by side in a wrapping ROW. Two differences matter there:
      * <ul>
-     *   <li>{@code Em.AUTO} width — a {@code null} ("fill parent") width has no
+     *   <li>{@code Em.AUTO} width - a {@code null} ("fill parent") width has no
      *       intrinsic main extent, so in a fit-content row the card collapses
      *       to zero and its neighbours pile up at the origin. AUTO sizes the
      *       card to its widest child.</li>
-     *   <li>{@code AlignItems.START} — keeps the viewport at its own size
+     *   <li>{@code AlignItems.START} - keeps the viewport at its own size
      *       rather than STRETCHing it to the (wider) heading, so a square
      *       complex map stays square.</li>
      * </ul>
      */
     private static Component plotCard(String heading, Component content) {
-        Component header = new Component.Text(heading, Em.of(1.0f), LABEL_FG);
+        Component accentBar = new Component.Box(Em.of(0.45f), Em.of(1.0f), Em.ZERO, ACCENT);
+        Component header = new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_SM,
+            List.of(accentBar, new Component.Text(heading, Em.of(1.0f), HEADING_FG)), false, 0);
         return new Component.Flex(
-            Em.AUTO, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
-            Direction.COLUMN, JustifyContent.START, AlignItems.START, Em.of(0.5f),
+            Em.AUTO, Em.AUTO, PAD_CARD, CARD_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.START, GAP_SM,
             List.of(header, content),
             false, 0
         );
@@ -2003,7 +2396,7 @@ public final class App {
             // Track modifier state for InputState consumers (e.g. the
             // TextInputController's char-input filter uses ctrlHeld()
             // to drop spurious space chars from Ctrl+Space chords).
-            // Set on every callback — including key release — so the
+            // Set on every callback - including key release - so the
             // state is accurate for char events firing right after.
             InputState.setMods(mods);
             // Notify the tooltip controller so a mod-key transition that
@@ -2015,7 +2408,7 @@ public final class App {
             boolean shift = (mods & Glfw.GLFW_MOD_SHIFT)   != 0;
 
             // Open palette. Reachable both when the menu is closed and when
-            // some other modal is open — current overlay is preserved beneath.
+            // some other modal is open - current overlay is preserved beneath.
             if (ctrl && key == Glfw.GLFW_KEY_SPACE && !EverythingMenu.isOpen()) {
                 EverythingMenu.open();
                 return;
@@ -2060,7 +2453,7 @@ public final class App {
             // Editing keys.
             if (key == Glfw.GLFW_KEY_BACKSPACE && TextInputController.onBackspace(ctrl)) return;
             if (key == Glfw.GLFW_KEY_DELETE    && TextInputController.onDelete(ctrl))    return;
-            // After the text handlers — if no editable text consumed the key,
+            // After the text handlers - if no editable text consumed the key,
             // fall through to removing a selected connection. Both Delete and
             // Backspace work; standard desktop convention varies, support both.
             if ((key == Glfw.GLFW_KEY_DELETE || key == Glfw.GLFW_KEY_BACKSPACE)
@@ -2181,18 +2574,18 @@ public final class App {
             boolean shift = (mods & Glfw.GLFW_MOD_SHIFT) != 0;
 
             if (pressed) {
-                // Scrollbar thumbs aren't components — give them first refusal
+                // Scrollbar thumbs aren't components - give them first refusal
                 // so a press on a thumb doesn't focus / select content below.
                 if (ScrollbarController.onMouseDown(InputState.mouseX(), InputState.mouseY())) {
                     pressTarget = null;
                     return;
                 }
-                // Tab cells aren't components either — same treatment.
+                // Tab cells aren't components either - same treatment.
                 if (TabsController.onMouseDown(InputState.mouseX(), InputState.mouseY())) {
                     pressTarget = null;
                     return;
                 }
-                // Port press starts a connection drag — must come before
+                // Port press starts a connection drag - must come before
                 // GraphSurfaceController so it wins on the inner-most hit
                 // (port) rather than GraphSurfaceController claiming the
                 // outer node body.
@@ -2219,7 +2612,7 @@ public final class App {
                     pressTarget = null;
                     return;
                 }
-                // Connection selection — only fires when the click's deepest
+                // Connection selection - only fires when the click's deepest
                 // hit IS the GraphSurface (i.e., on empty surface area), so
                 // it can't steal a curve hit from a node-body drag.
                 if (ConnectionSelectionController.onMouseDown(InputState.mouseX(), InputState.mouseY())) {
@@ -2268,11 +2661,11 @@ public final class App {
                 DataTableSelectionController.onMouseUp();
 
                 // Release-on-same-target fires the click. Re-hit-test rather
-                // than reading HoverState — HoverState only updates on cursor-
+                // than reading HoverState - HoverState only updates on cursor-
                 // move events, so it's stale right after an overlay opens
-                // (e.g. right-click → menu) when no cursor-move has fired yet.
+                // (e.g. right-click -> menu) when no cursor-move has fired yet.
                 // The fresh hit-test also makes the check correct after any
-                // mid-click layout change. Skip when the press began a drag —
+                // mid-click layout change. Skip when the press began a drag -
                 // the value has already been committed.
                 LayoutResult lr2 = LatestLayout.result();
                 Component dispatchRoot = OverlayStack.activeInputRoot(LatestLayout.root());
@@ -2298,7 +2691,7 @@ public final class App {
             if (!entered) {
                 // Mouse left the window. Clear hover + phantom; cursor visual is
                 // the OS's responsibility while outside our window. Drag selection
-                // continues — TextInputController uses FocusState (preserved),
+                // continues - TextInputController uses FocusState (preserved),
                 // not HoverState, and GLFW keeps firing cursor-pos events while
                 // a button is held even with the cursor outside the window.
                 HoverState.clear();
@@ -2318,7 +2711,7 @@ public final class App {
                 GraphSurfaceController.cancelDrag();
                 ConnectionDragController.cancelDrag();
                 SceneViewController.cancelDrag();
-                // Window lost OS focus. Clear hover and pending drag — the
+                // Window lost OS focus. Clear hover and pending drag - the
                 // mouseup likely happened in another window and we'll never
                 // see it. Selection PERSISTS so users can alt-tab away to
                 // a reference window and back without losing their selection.
@@ -2355,7 +2748,7 @@ public final class App {
             FileDialog.save(window, demoFilters, null, "untitled.txt")
                 .ifPresentOrElse(p -> System.out.println("Save to: " + p),
                                  () -> System.out.println("Save cancelled")));
-        CommandRegistry.register("file.saveas", "File: Save As…",         () ->
+        CommandRegistry.register("file.saveas", "File: Save As...",         () ->
             FileDialog.save(window, demoFilters, null, "untitled.txt")
                 .ifPresentOrElse(p -> System.out.println("Save As: " + p),
                                  () -> System.out.println("Save As cancelled")));
@@ -2365,9 +2758,9 @@ public final class App {
                                  () -> System.out.println("Pick folder cancelled")));
         CommandRegistry.register("edit.find",   "Edit: Find",             () -> System.out.println("Edit: Find"));
         CommandRegistry.register("edit.replace","Edit: Replace",          () -> System.out.println("Edit: Replace"));
-        // Node-spawn commands — discoverable via Ctrl+Space. Default to (3, 3)
+        // Node-spawn commands - discoverable via Ctrl+Space. Default to (3, 3)
         // em on the demo surface; the user can drag from there. (The surface
-        // right-click "Add … Here" items spawn at cursor position instead.)
+        // right-click "Add ... Here" items spawn at cursor position instead.)
         CommandRegistry.register("node.add.constant", "Add Constant Node", () -> spawnNode(CONSTANT_FACTORY, 3f, 3f));
         CommandRegistry.register("node.add.multiply", "Add Multiply Node", () -> spawnNode(MULTIPLY_FACTORY, 3f, 3f));
         CommandRegistry.register("node.add.tag",      "Add Tag Node",      () -> spawnNode(TAG_FACTORY,      3f, 3f));
@@ -2413,7 +2806,7 @@ public final class App {
     private static CursorManager.CursorShape cursorShapeFor(Component hit) {
         if (hit instanceof Component.Text t && t.selectable()) return CursorManager.CursorShape.IBEAM;
         // GraphSurface is interactive (so empty-area right-clicks land on it)
-        // but it shouldn't read as "clickable" — keep the arrow cursor over
+        // but it shouldn't read as "clickable" - keep the arrow cursor over
         // empty surface area. Nodes and ports inside the surface are still
         // interactive components and still show HAND on hover.
         if (hit instanceof Component.GraphSurface) return CursorManager.CursorShape.ARROW;
