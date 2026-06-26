@@ -412,7 +412,32 @@ void main() {
         if (d < EPS * epsScale * max(t, 1.0)) { hit = true; break; }
         t += d * relax;
     }
-    if (!hit) discard;
+    if (!hit) {
+        // COST_MINUS_ESCAPE (mode 5) paints the cost burned by rays that
+        // grazed the surface but never converged — the expensive silhouette
+        // halo that a plain discard throws away, and the whole point of a
+        // "cost beyond structural justification" map. rgba-masked: cheap
+        // background rays stay transparent, expensive near-miss rays
+        // composite over the viewport background (needs an ALPHA-blended
+        // layer). Never writes depth, so it can't occlude other layers.
+        if (u_viewMode == 5) {
+            float c = float(stepsTaken) / float(u_maxSteps);
+            float d = clamp(c - g_bulbIters, -1.0, 1.0);
+            vec3 hcol = d >= 0.0 ? mix(vec3(0.08), vec3(1.0, 0.25, 0.12), d)
+                                 : mix(vec3(0.08), vec3(0.12, 0.35, 1.0), -d);
+            // Over the dark background the alpha-masked map reads as a muddy
+            // haze; boost its value so the cost halo glows. (Surface pixels,
+            // composited opaque, keep the calmer tone above.)
+            hcol *= 2.4;
+            fragColor = vec4(hcol, abs(d) * u_color.a);
+            // Keep the rasterized geometry depth (< 1.0) so the fragment
+            // passes the default GL_LESS test against the cleared buffer;
+            // ALPHA blend has depth-writes off, so it still can't occlude.
+            gl_FragDepth = gl_FragCoord.z;
+            return;
+        }
+        discard;
+    }
 
     // Restore full detail for refinement + every shading tap (normal, AO,
     // shadow re-call sdf and must read the true surface, not the hull).

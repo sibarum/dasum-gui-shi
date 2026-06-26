@@ -1612,9 +1612,15 @@ public final class App {
 
         Runnable republish = () -> {
             VexelModel m = model.get();
-            SceneStates.publish(viewport, SceneSnapshot.of(
-                vexelModel(m, Math.round(maxSteps.get()), Math.round(bulbIters.get()),
-                           escapeR.get(), iterLod.get())));
+            VexelRayLayer layer = vexelModel(m, Math.round(maxSteps.get()), Math.round(bulbIters.get()),
+                                             escapeR.get(), iterLod.get());
+            // COST_MINUS_ESCAPE paints a near-miss cost halo over the
+            // background, which only composites if the layer is alpha-blended.
+            // Every other view is an opaque, depth-writing surface.
+            if (view.get() == VexelRayView.COST_MINUS_ESCAPE) {
+                layer = layer.withBlend(BlendMode.ALPHA);
+            }
+            SceneStates.publish(viewport, SceneSnapshot.of(layer));
             SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(m.camDist));
         };
         model.subscribe(v -> republish.run());
@@ -1622,7 +1628,9 @@ public final class App {
         bulbIters.subscribe(v -> republish.run());
         escapeR.subscribe(v -> republish.run());
         iterLod.subscribe(v -> republish.run());
-        view.subscribe(VexelRayView::set);
+        // Set the global view mode AND republish so the layer's blend mode
+        // tracks the view (alpha for the cost-halo view, opaque otherwise).
+        view.subscribe(v -> { VexelRayView.set(v); republish.run(); });
         republish.run(); // initial publish
 
         List<Component> modelRows = new java.util.ArrayList<>();
