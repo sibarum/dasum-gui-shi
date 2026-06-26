@@ -417,12 +417,48 @@ public final class App {
                 new Component.Tabs.TabPanel("Nodes",    buildNodeEditorPane()),
                 new Component.Tabs.TabPanel("Widgets",  buildWidgetsPane()),
                 new Component.Tabs.TabPanel("Text",     buildTextPane()),
-                new Component.Tabs.TabPanel("Graphics", buildGraphicsPane()),
+                // Graphics is the one expensive pane to construct (its scenes
+                // precompute fields / fractals); defer it until first opened so
+                // startup stays instant. It registers no nav destinations, so
+                // nothing else depends on it existing up front.
+                new Component.Tabs.TabPanel("Graphics", lazyPane(activeTab, TAB_GRAPHICS, App::buildGraphicsPane)),
                 new Component.Tabs.TabPanel("Tables",   buildTablesPane())
             ),
             activeTab,
             Variant.PRIMARY
         ).withFlexGrow(1);
+    }
+
+    /**
+     * Defer building a tab's content until the tab is first activated. The
+     * pane shows a lightweight placeholder until then, so an expensive builder
+     * doesn't run during startup (or at all, if the tab is never opened).
+     */
+    private static Component lazyPane(Property<Integer> activeTab, int index,
+                                     java.util.function.Supplier<Component> builder) {
+        Component placeholder = new Component.Flex(
+            null, null, Em.ZERO, CONTENT_BG,
+            Direction.COLUMN, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
+            List.of(new Component.Text("Preparing...", Em.of(1.0f), MUTED_FG)),
+            false, 1);
+        Component.Flex slot = new Component.Flex(
+            null, null, Em.ZERO, CONTENT_BG,
+            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.ZERO,
+            List.of(), false, 1);
+        DynamicChildren.add(slot, placeholder);
+        boolean[] built = { false };
+        Runnable build = () -> {
+            if (built[0]) return;
+            built[0] = true;
+            Component content = builder.get();
+            DynamicChildren.remove(slot, placeholder);
+            DynamicChildren.add(slot, content);
+            Components.detach(placeholder);
+            Invalidator.invalidate();
+        };
+        activeTab.subscribe(i -> { if (i == index) build.run(); });
+        if (activeTab.get() == index) build.run();  // already-active at construction
+        return slot;
     }
 
     // Tab indices - keep aligned with the panel order in buildMainTabs.
@@ -1687,6 +1723,49 @@ public final class App {
      * are baked once at startup.
      */
     private static Component buildBulbProbeScene() {
+        // The Mandelbulb surface sampling below is ~110^3 field evaluations
+        // (millions of transcendental ops) — far too heavy to run on the boot
+        // / UI thread. Build the two cards with empty viewports now and bake
+        // the probe clouds on a daemon thread, publishing into the viewports
+        // when ready. SceneStates.publish is safe off the render thread, and
+        // Invalidator.invalidate() wakes the event loop to repaint.
+        Component.SceneView uniView = bulbProbeViewport();
+        Component.SceneView wgtView = bulbProbeViewport();
+        Component uni = bulbProbeCard("Uniform placement", uniView);
+        Component wgt = bulbProbeCard("Iteration-weighted (same budget)", wgtView);
+
+        Thread baker = new Thread(() -> bakeBulbProbes(uniView, wgtView), "bulb-probe-bake");
+        baker.setDaemon(true);
+        baker.start();
+
+        return new Component.Flex(
+            null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
+            Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
+            List.of(uni, wgt), false, 0, true);
+    }
+
+    /** An empty probe viewport with the orbit camera preset; filled by {@link #bakeBulbProbes}. */
+    private static Component.SceneView bulbProbeViewport() {
+        Component.SceneView v = new Component.SceneView(
+            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 0);
+        SceneStates.setCamera(v, CameraSpec.defaultPerspective().withDistance(3.6f));
+        return v;
+    }
+
+    /** Card shell: caption above a probe viewport (empty until the bake publishes into it). */
+    private static Component bulbProbeCard(String caption, Component.SceneView viewport) {
+        return new Component.Flex(
+            Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
+            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
+            List.of(new Component.Text(caption, Em.of(0.85f), LABEL_FG), viewport), false, 0);
+    }
+
+    /**
+     * Heavy bake, off the render thread: sample the Mandelbulb surface once,
+     * then publish uniform vs iteration-weighted probe clouds (same budget)
+     * into the two viewports.
+     */
+    private static void bakeBulbProbes(Component.SceneView uniView, Component.SceneView wgtView) {
         MandelbulbField bulb = new MandelbulbField(8f, 14);
         float s = 1.3f;
         SurfaceSampler.Result surf = SurfaceSampler.sample(
@@ -1710,16 +1789,14 @@ public final class App {
             wgtProb[i] = Math.min(1f, (float) Math.pow(comp[i], EXP) * scale);
         }
 
-        Component uni = bulbProbeCard("Uniform placement", pos, comp, n, uniProb);
-        Component wgt = bulbProbeCard("Iteration-weighted (same budget)", pos, comp, n, wgtProb);
-        return new Component.Flex(
-            null, Em.AUTO, Em.ZERO, new Color(0f, 0f, 0f, 0f),
-            Direction.ROW, JustifyContent.START, AlignItems.START, Em.of(0.5f),
-            List.of(uni, wgt), false, 0, true);
+        publishProbes(uniView, "Uniform placement", pos, comp, n, uniProb);
+        publishProbes(wgtView, "Iteration-weighted (same budget)", pos, comp, n, wgtProb);
+        Invalidator.invalidate();
     }
 
-    /** Keep points by per-point probability, colour by complexity, splat them in a labelled card. */
-    private static Component bulbProbeCard(String caption, float[] pos, float[] comp, int n, float[] prob) {
+    /** Keep points by per-point probability, colour by complexity, publish into the viewport. */
+    private static void publishProbes(Component.SceneView viewport, String caption,
+                                      float[] pos, float[] comp, int n, float[] prob) {
         int kept = 0;
         for (int i = 0; i < n; i++) if (hash01(i) < prob[i]) kept++;
         float[] kpos = new float[kept * 3];
@@ -1732,17 +1809,8 @@ public final class App {
             w++;
         }
         System.out.println("Bulb probes - " + caption + ": " + kept + " / " + n);
-
-        Component.SceneView viewport = new Component.SceneView(
-            Em.of(13f), Em.of(9f), Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 0);
         SceneStates.publish(viewport, SceneSnapshot.of(
             new PointLayer(kpos, kcol, null, 5f, BlendMode.OPAQUE, 1f)));
-        SceneStates.setCamera(viewport, CameraSpec.defaultPerspective().withDistance(3.6f));
-
-        return new Component.Flex(
-            Em.AUTO, Em.AUTO, Em.of(0.3f), new Color(0.12f, 0.14f, 0.18f, 1f),
-            Direction.COLUMN, JustifyContent.START, AlignItems.CENTER, Em.of(0.3f),
-            List.of(new Component.Text(caption, Em.of(0.85f), LABEL_FG), viewport), false, 0);
     }
 
     /** Blue->red complexity ramp (matches the shader's heat()). */
