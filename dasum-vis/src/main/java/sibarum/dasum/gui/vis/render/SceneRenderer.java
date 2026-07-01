@@ -23,6 +23,7 @@ import sibarum.dasum.gui.vis.scene.VexelRayLayer;
 import sibarum.dasum.gui.vis.scene.VexelRayView;
 
 import static sibarum.dasum.gui.natives.gl.Gl.GL_BLEND;
+import static sibarum.dasum.gui.natives.gl.Gl.GL_DEPTH_TEST;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_DST_COLOR;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_FUNC_ADD;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_LINES;
@@ -173,7 +174,12 @@ public final class SceneRenderer implements AutoCloseable {
                         sceneTextMaterial.bind(scratchMvp,
                             txt.anchor().x(), txt.anchor().y(), txt.anchor().z(),
                             basis, txt.color(), txt.opacity(), fgrp.distanceRange());
+                        // Labels read ON TOP of geometry — a depth-occluded label is unreadable,
+                        // and billboard text already faces the viewer. Disable the depth test for
+                        // just this draw (perspective only; ortho never enabled it).
+                        if (perspective) Gl.glDisable(GL_DEPTH_TEST);
                         draw(slot, GL_TRIANGLES);
+                        if (perspective) Gl.glEnable(GL_DEPTH_TEST);
                     }
                 }
             }
