@@ -2,6 +2,7 @@ package sibarum.dasum.gui.vis.render;
 
 import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.render.Texture;
+import sibarum.dasum.gui.core.render.Texture3D;
 import sibarum.dasum.gui.core.text.FontGroup;
 import sibarum.dasum.gui.core.text.FontGroups;
 import sibarum.dasum.gui.core.text.GlyphData;
@@ -15,6 +16,7 @@ import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
 import sibarum.dasum.gui.vis.scene.VexelRayLayer;
+import sibarum.dasum.gui.vis.scene.VolumeLayer;
 
 import java.util.ArrayDeque;
 import java.util.EnumMap;
@@ -54,7 +56,7 @@ final class SceneGlBuffers {
     private static final float DEF_R = 0.85f, DEF_G = 0.90f, DEF_B = 1.00f;
 
     enum Kind {
-        POINT(7), FLAT(6), IMAGE(5), TEXT(4), VEXEL(3);
+        POINT(7), FLAT(6), IMAGE(5), TEXT(4), VEXEL(3), VOLUME(3);
 
         final int floatsPerVertex;
         Kind(int f) { this.floatsPerVertex = f; }
@@ -67,6 +69,7 @@ final class SceneGlBuffers {
                 case ImageLayer i    -> IMAGE;
                 case TextLayer t     -> TEXT;
                 case VexelRayLayer v -> VEXEL;
+                case VolumeLayer v   -> VOLUME;
             };
         }
     }
@@ -113,6 +116,8 @@ final class SceneGlBuffers {
         // IMAGE slots only.
         Texture texture = null;
         boolean smooth = true;
+        // VOLUME slots only.
+        Texture3D volumeTexture = null;
 
         Slot(Kind kind) { this.kind = kind; }
     }
@@ -192,6 +197,7 @@ final class SceneGlBuffers {
             case ImageLayer img  -> { syncImageTexture(s, img); yield buildImageVertices(img); }
             case TextLayer txt   -> buildTextVertices(txt);
             case VexelRayLayer v -> UNIT_CUBE; // geometry is uniform-driven; cube is constant
+            case VolumeLayer v   -> { syncVolumeTexture(s, v); yield UNIT_CUBE; }
         };
         int floatsPerVertex = s.kind.floatsPerVertex;
         int vertexCount = verts.length / floatsPerVertex;
@@ -223,6 +229,13 @@ final class SceneGlBuffers {
             s.texture.setFilter(img.smooth());
             s.smooth = img.smooth();
         }
+    }
+
+    /** Upload the volume slot's RGBA32F 3D texture. Runs only on a layer identity change (the
+     *  scene's upload skip), so a fresh texture per (re)published volume — replace any prior one. */
+    private static void syncVolumeTexture(Slot s, VolumeLayer v) {
+        if (s.volumeTexture != null) s.volumeTexture.close();
+        s.volumeTexture = Texture3D.fromRgbaFloats(v.rgba(), v.nx(), v.ny(), v.nz());
     }
 
     private static float[] buildPointVertices(PointLayer p) {
@@ -402,7 +415,7 @@ final class SceneGlBuffers {
                 Gl.glEnableVertexAttribArray(0);
                 Gl.glEnableVertexAttribArray(1);
             }
-            case VEXEL -> {
+            case VEXEL, VOLUME -> {
                 Gl.glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0L);
                 Gl.glEnableVertexAttribArray(0);
             }
@@ -416,6 +429,7 @@ final class SceneGlBuffers {
         if (s.vbo != 0) { Gl.glDeleteBuffer(s.vbo); s.vbo = 0; }
         if (s.vao != 0) { Gl.glDeleteVertexArray(s.vao); s.vao = 0; }
         if (s.texture != null) { s.texture.close(); s.texture = null; }
+        if (s.volumeTexture != null) { s.volumeTexture.close(); s.volumeTexture = null; }
     }
 
     private static void deleteEntry(Entry e) {

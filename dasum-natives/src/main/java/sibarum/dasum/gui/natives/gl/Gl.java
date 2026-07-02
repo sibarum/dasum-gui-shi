@@ -67,6 +67,9 @@ public final class Gl {
     public static final int GL_TEXTURE_MAG_FILTER   = 0x2801;
     public static final int GL_TEXTURE_WRAP_S       = 0x2802;
     public static final int GL_TEXTURE_WRAP_T       = 0x2803;
+    public static final int GL_TEXTURE_3D           = 0x806F;
+    public static final int GL_TEXTURE_WRAP_R       = 0x8072;
+    public static final int GL_RGBA32F              = 0x8814;
 
     public static final int GL_COLOR_BUFFER_BIT     = 0x4000;
     public static final int GL_DEPTH_BUFFER_BIT     = 0x0100;
@@ -139,6 +142,7 @@ public final class Gl {
     private static MethodHandle GL_GEN_TEXTURES;
     private static MethodHandle GL_BIND_TEXTURE;
     private static MethodHandle GL_TEX_IMAGE_2D;
+    private static MethodHandle GL_TEX_IMAGE_3D;
     private static MethodHandle GL_TEX_PARAMETERI;
     private static MethodHandle GL_ACTIVE_TEXTURE;
     private static MethodHandle GL_DELETE_TEXTURES;
@@ -203,6 +207,7 @@ public final class Gl {
         GL_GEN_TEXTURES       = h("glGenTextures",      FunctionDescriptor.ofVoid(JAVA_INT, ADDRESS));
         GL_BIND_TEXTURE       = h("glBindTexture",      FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT));
         GL_TEX_IMAGE_2D       = h("glTexImage2D",       FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, ADDRESS));
+        GL_TEX_IMAGE_3D       = h("glTexImage3D",       FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, ADDRESS));
         GL_TEX_SUB_IMAGE_2D   = h("glTexSubImage2D",    FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, ADDRESS));
         GL_TEX_PARAMETERI     = h("glTexParameteri",    FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT));
         GL_ACTIVE_TEXTURE     = h("glActiveTexture",    FunctionDescriptor.ofVoid(JAVA_INT));
@@ -526,6 +531,13 @@ public final class Gl {
         MemorySegment data = (pixels == null) ? MemorySegment.NULL : pixels;
         try {
             GL_TEX_IMAGE_2D.invokeExact(target, level, internalFormat, width, height, border, format, type, data);
+        } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border, int format, int type, MemorySegment pixels) {
+        MemorySegment data = (pixels == null) ? MemorySegment.NULL : pixels;
+        try {
+            GL_TEX_IMAGE_3D.invokeExact(target, level, internalFormat, width, height, depth, border, format, type, data);
         } catch (Throwable t) { throw rt(t); }
     }
 

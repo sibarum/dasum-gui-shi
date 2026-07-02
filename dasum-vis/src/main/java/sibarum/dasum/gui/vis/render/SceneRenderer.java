@@ -20,6 +20,7 @@ import sibarum.dasum.gui.vis.scene.SceneStates;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
 import sibarum.dasum.gui.vis.scene.VexelRayLayer;
+import sibarum.dasum.gui.vis.scene.VolumeLayer;
 import sibarum.dasum.gui.vis.scene.VexelRayView;
 
 import static sibarum.dasum.gui.natives.gl.Gl.GL_BLEND;
@@ -66,6 +67,7 @@ public final class SceneRenderer implements AutoCloseable {
     private final ImageMaterial imageMaterial         = new ImageMaterial();
     private final SceneTextMaterial sceneTextMaterial = new SceneTextMaterial();
     private final VexelRayMaterial vexelRayMaterial   = new VexelRayMaterial();
+    private final VolumeMaterial volumeMaterial       = new VolumeMaterial();
     private final SceneGlBuffers buffers              = new SceneGlBuffers();
 
     /** Scratch MVP — reused across frames; main-thread only. */
@@ -80,6 +82,7 @@ public final class SceneRenderer implements AutoCloseable {
         imageMaterial.init();
         sceneTextMaterial.init();
         vexelRayMaterial.init();
+        volumeMaterial.init();
         initialized = true;
     }
 
@@ -172,6 +175,16 @@ public final class SceneRenderer implements AutoCloseable {
                             VexelRayView.current().ordinal());
                         draw(slot, GL_TRIANGLES);
                     }
+                    case VolumeLayer vol -> {
+                        // Raymarch the 3D-texture volume: bind it to unit 0, march camera rays
+                        // through the box accumulating emission (additive; depth write already
+                        // off for a non-OPAQUE layer). Same camera-ray setup as VexelRay.
+                        slot.volumeTexture.bind(0);
+                        volumeMaterial.bind(scratchMvp, vol,
+                            CameraMath.eye(cam), CameraMath.forward(cam),
+                            cam.mode() == CameraMode.ORTHOGRAPHIC);
+                        draw(slot, GL_TRIANGLES);
+                    }
                     case TextLayer txt -> {
                         // Leaving unit 0 bound to the atlas afterwards is
                         // safe — the 2D batcher's materials re-bind their
@@ -247,5 +260,6 @@ public final class SceneRenderer implements AutoCloseable {
         imageMaterial.close();
         sceneTextMaterial.close();
         vexelRayMaterial.close();
+        volumeMaterial.close();
     }
 }
