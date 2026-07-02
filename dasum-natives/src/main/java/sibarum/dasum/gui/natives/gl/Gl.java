@@ -70,6 +70,16 @@ public final class Gl {
     public static final int GL_TEXTURE_3D           = 0x806F;
     public static final int GL_TEXTURE_WRAP_R       = 0x8072;
     public static final int GL_RGBA32F              = 0x8814;
+    public static final int GL_RGBA16F              = 0x881A;
+    public static final int GL_HALF_FLOAT           = 0x140B;
+
+    // Framebuffer objects (offscreen / HDR render targets).
+    public static final int GL_FRAMEBUFFER          = 0x8D40;
+    public static final int GL_RENDERBUFFER         = 0x8D41;
+    public static final int GL_COLOR_ATTACHMENT0    = 0x8CE0;
+    public static final int GL_DEPTH_ATTACHMENT     = 0x8D00;
+    public static final int GL_DEPTH_COMPONENT24    = 0x81A6;
+    public static final int GL_FRAMEBUFFER_COMPLETE = 0x8CD5;
 
     public static final int GL_COLOR_BUFFER_BIT     = 0x4000;
     public static final int GL_DEPTH_BUFFER_BIT     = 0x0100;
@@ -118,6 +128,7 @@ public final class Gl {
     private static MethodHandle GL_GET_UNIFORM_LOCATION;
     private static MethodHandle GL_UNIFORM_1I;
     private static MethodHandle GL_UNIFORM_1F;
+    private static MethodHandle GL_UNIFORM_2F;
     private static MethodHandle GL_UNIFORM_3F;
     private static MethodHandle GL_UNIFORM_4F;
     private static MethodHandle GL_UNIFORM_4FV;
@@ -146,6 +157,17 @@ public final class Gl {
     private static MethodHandle GL_TEX_PARAMETERI;
     private static MethodHandle GL_ACTIVE_TEXTURE;
     private static MethodHandle GL_DELETE_TEXTURES;
+
+    private static MethodHandle GL_GEN_FRAMEBUFFERS;
+    private static MethodHandle GL_BIND_FRAMEBUFFER;
+    private static MethodHandle GL_FRAMEBUFFER_TEXTURE_2D;
+    private static MethodHandle GL_CHECK_FRAMEBUFFER_STATUS;
+    private static MethodHandle GL_DELETE_FRAMEBUFFERS;
+    private static MethodHandle GL_GEN_RENDERBUFFERS;
+    private static MethodHandle GL_BIND_RENDERBUFFER;
+    private static MethodHandle GL_RENDERBUFFER_STORAGE;
+    private static MethodHandle GL_FRAMEBUFFER_RENDERBUFFER;
+    private static MethodHandle GL_DELETE_RENDERBUFFERS;
 
     private static volatile boolean loaded = false;
 
@@ -183,6 +205,7 @@ public final class Gl {
         GL_GET_UNIFORM_LOCATION = h("glGetUniformLocation", FunctionDescriptor.of(JAVA_INT, JAVA_INT, ADDRESS));
         GL_UNIFORM_1I         = h("glUniform1i",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT));
         GL_UNIFORM_1F         = h("glUniform1f",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT));
+        GL_UNIFORM_2F         = h("glUniform2f",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT, JAVA_FLOAT));
         GL_UNIFORM_3F         = h("glUniform3f",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT));
         GL_UNIFORM_4F         = h("glUniform4f",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT));
         GL_UNIFORM_4FV        = h("glUniform4fv",       FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, ADDRESS));
@@ -212,6 +235,17 @@ public final class Gl {
         GL_TEX_PARAMETERI     = h("glTexParameteri",    FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT));
         GL_ACTIVE_TEXTURE     = h("glActiveTexture",    FunctionDescriptor.ofVoid(JAVA_INT));
         GL_DELETE_TEXTURES    = h("glDeleteTextures",   FunctionDescriptor.ofVoid(JAVA_INT, ADDRESS));
+
+        GL_GEN_FRAMEBUFFERS         = h("glGenFramebuffers",         FunctionDescriptor.ofVoid(JAVA_INT, ADDRESS));
+        GL_BIND_FRAMEBUFFER         = h("glBindFramebuffer",         FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT));
+        GL_FRAMEBUFFER_TEXTURE_2D   = h("glFramebufferTexture2D",    FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT));
+        GL_CHECK_FRAMEBUFFER_STATUS = h("glCheckFramebufferStatus",  FunctionDescriptor.of(JAVA_INT, JAVA_INT));
+        GL_DELETE_FRAMEBUFFERS      = h("glDeleteFramebuffers",      FunctionDescriptor.ofVoid(JAVA_INT, ADDRESS));
+        GL_GEN_RENDERBUFFERS        = h("glGenRenderbuffers",        FunctionDescriptor.ofVoid(JAVA_INT, ADDRESS));
+        GL_BIND_RENDERBUFFER        = h("glBindRenderbuffer",        FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT));
+        GL_RENDERBUFFER_STORAGE     = h("glRenderbufferStorage",     FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT));
+        GL_FRAMEBUFFER_RENDERBUFFER = h("glFramebufferRenderbuffer", FunctionDescriptor.ofVoid(JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT));
+        GL_DELETE_RENDERBUFFERS     = h("glDeleteRenderbuffers",     FunctionDescriptor.ofVoid(JAVA_INT, ADDRESS));
 
         loaded = true;
     }
@@ -387,6 +421,10 @@ public final class Gl {
         try { GL_UNIFORM_1I.invokeExact(location, value); } catch (Throwable t) { throw rt(t); }
     }
 
+    public static void glUniform2f(int location, float x, float y) {
+        try { GL_UNIFORM_2F.invokeExact(location, x, y); } catch (Throwable t) { throw rt(t); }
+    }
+
     public static void glUniform1f(int location, float value) {
         try { GL_UNIFORM_1F.invokeExact(location, value); } catch (Throwable t) { throw rt(t); }
     }
@@ -554,6 +592,64 @@ public final class Gl {
             MemorySegment seg = arena.allocate(JAVA_INT);
             seg.set(JAVA_INT, 0, texture);
             GL_DELETE_TEXTURES.invokeExact(1, seg);
+        } catch (Throwable t) { throw rt(t); }
+    }
+
+    // ---- framebuffer objects (offscreen / HDR render targets) ----
+
+    public static int glGenFramebuffer() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(JAVA_INT);
+            GL_GEN_FRAMEBUFFERS.invokeExact(1, out);
+            return out.get(JAVA_INT, 0);
+        } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glBindFramebuffer(int target, int framebuffer) {
+        try { GL_BIND_FRAMEBUFFER.invokeExact(target, framebuffer); } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glFramebufferTexture2D(int target, int attachment, int texTarget, int texture, int level) {
+        try { GL_FRAMEBUFFER_TEXTURE_2D.invokeExact(target, attachment, texTarget, texture, level); } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static int glCheckFramebufferStatus(int target) {
+        try { return (int) GL_CHECK_FRAMEBUFFER_STATUS.invokeExact(target); } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glDeleteFramebuffer(int framebuffer) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment seg = arena.allocate(JAVA_INT);
+            seg.set(JAVA_INT, 0, framebuffer);
+            GL_DELETE_FRAMEBUFFERS.invokeExact(1, seg);
+        } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static int glGenRenderbuffer() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(JAVA_INT);
+            GL_GEN_RENDERBUFFERS.invokeExact(1, out);
+            return out.get(JAVA_INT, 0);
+        } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glBindRenderbuffer(int target, int renderbuffer) {
+        try { GL_BIND_RENDERBUFFER.invokeExact(target, renderbuffer); } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glRenderbufferStorage(int target, int internalFormat, int width, int height) {
+        try { GL_RENDERBUFFER_STORAGE.invokeExact(target, internalFormat, width, height); } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glFramebufferRenderbuffer(int target, int attachment, int rbTarget, int renderbuffer) {
+        try { GL_FRAMEBUFFER_RENDERBUFFER.invokeExact(target, attachment, rbTarget, renderbuffer); } catch (Throwable t) { throw rt(t); }
+    }
+
+    public static void glDeleteRenderbuffer(int renderbuffer) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment seg = arena.allocate(JAVA_INT);
+            seg.set(JAVA_INT, 0, renderbuffer);
+            GL_DELETE_RENDERBUFFERS.invokeExact(1, seg);
         } catch (Throwable t) { throw rt(t); }
     }
 
