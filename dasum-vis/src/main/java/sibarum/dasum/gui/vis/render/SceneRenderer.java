@@ -127,7 +127,17 @@ public final class SceneRenderer implements AutoCloseable {
                 switch (layer) {
                     case PointLayer p -> {
                         Gl.glEnable(GL_PROGRAM_POINT_SIZE);
-                        pointMaterial.bind(scratchMvp, p.opacity());
+                        // World-sized points (volumetrics) shrink with distance: scale by
+                        // proj[1][1] * viewportHeightPx / 2, divided by clip-w in the shader.
+                        float pointScale = 0f;
+                        if (p.perspectiveSize() && perspective) {
+                            float proj11 = (float) (1.0 / Math.tan(cam.fovYRad() / 2.0));
+                            pointScale = proj11 * rect.height() * 0.5f;
+                        }
+                        // World-sized (volumetric) points render as soft Gaussian blobs so they
+                        // sum into a continuous glow; screen-pixel scatter dots stay crisp.
+                        float softness = p.perspectiveSize() ? 1f : 0f;
+                        pointMaterial.bind(scratchMvp, p.opacity(), pointScale, softness);
                         draw(slot, GL_POINTS);
                         Gl.glDisable(GL_PROGRAM_POINT_SIZE);
                     }

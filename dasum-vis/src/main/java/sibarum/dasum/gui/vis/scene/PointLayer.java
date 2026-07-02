@@ -6,18 +6,22 @@ package sibarum.dasum.gui.vis.scene;
  * @param positions     xyz triples, row-major; {@code positions.length % 3 == 0}
  * @param colors        optional per-point RGB (linear, 0..1), length
  *                      {@code == positions.length}; {@code null} = default colour
- * @param sizes         optional per-point diameter in pixels, length
- *                      {@code == pointCount}; {@code null} = {@code defaultSizePx}
- *                      for every point
- * @param defaultSizePx point diameter used where {@code sizes} is null
- * @param blend         fixed-function blend mode for this layer
- * @param opacity       uniform layer opacity in [0, 1]
+ * @param sizes           optional per-point diameter, length {@code == pointCount};
+ *                        {@code null} = {@code defaultSizePx} for every point
+ * @param defaultSizePx   point diameter used where {@code sizes} is null — in screen
+ *                        pixels normally, or in WORLD units when {@code perspectiveSize}
+ * @param perspectiveSize when true, {@code sizes}/{@code defaultSizePx} are world-space
+ *                        diameters and the point shrinks with distance (perspective);
+ *                        when false, they are fixed screen pixels (scatter/UI dots)
+ * @param blend           fixed-function blend mode for this layer
+ * @param opacity         uniform layer opacity in [0, 1]
  */
 public record PointLayer(
     float[] positions,
     float[] colors,
     float[] sizes,
     float defaultSizePx,
+    boolean perspectiveSize,
     BlendMode blend,
     float opacity
 ) implements Layer {
@@ -39,14 +43,22 @@ public record PointLayer(
         if (opacity < 0f || opacity > 1f) throw new IllegalArgumentException("opacity in [0, 1]");
     }
 
+    /** Compatibility constructor — screen-pixel points ({@code perspectiveSize = false}). */
+    public PointLayer(float[] positions, float[] colors, float[] sizes, float defaultSizePx,
+                      BlendMode blend, float opacity) {
+        this(positions, colors, sizes, defaultSizePx, false, blend, opacity);
+    }
+
     /** Convenience: default size, ALPHA blend, full opacity. */
     public PointLayer(float[] positions, float[] colors) {
-        this(positions, colors, null, DEFAULT_SIZE_PX, BlendMode.ALPHA, 1f);
+        this(positions, colors, null, DEFAULT_SIZE_PX, false, BlendMode.ALPHA, 1f);
     }
 
     public int pointCount() { return positions.length / 3; }
 
-    public PointLayer withBlend(BlendMode b)   { return new PointLayer(positions, colors, sizes, defaultSizePx, b, opacity); }
-    public PointLayer withOpacity(float o)     { return new PointLayer(positions, colors, sizes, defaultSizePx, blend, o); }
-    public PointLayer withDefaultSize(float s) { return new PointLayer(positions, colors, sizes, s, blend, opacity); }
+    public PointLayer withBlend(BlendMode b)   { return new PointLayer(positions, colors, sizes, defaultSizePx, perspectiveSize, b, opacity); }
+    public PointLayer withOpacity(float o)     { return new PointLayer(positions, colors, sizes, defaultSizePx, perspectiveSize, blend, o); }
+    public PointLayer withDefaultSize(float s) { return new PointLayer(positions, colors, sizes, s, perspectiveSize, blend, opacity); }
+    /** World-space point size that shrinks with distance (volumetrics), vs fixed screen pixels. */
+    public PointLayer withPerspectiveSize(boolean p) { return new PointLayer(positions, colors, sizes, defaultSizePx, p, blend, opacity); }
 }
