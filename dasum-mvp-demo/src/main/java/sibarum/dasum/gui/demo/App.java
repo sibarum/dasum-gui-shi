@@ -26,9 +26,7 @@ import sibarum.dasum.gui.core.graph.ConnectionSelection;
 import sibarum.dasum.gui.core.graph.GraphSurfaceChildren;
 import sibarum.dasum.gui.core.graph.SubgraphNodeBuilder;
 import sibarum.dasum.gui.core.graph.SubgraphNodes;
-import sibarum.dasum.gui.core.data.DataTableClipboard;
 import sibarum.dasum.gui.core.data.DataTableSource;
-import sibarum.dasum.gui.core.data.DataTableStates;
 import sibarum.dasum.gui.core.data.DataTables;
 import sibarum.dasum.gui.core.data.TableContextMenu;
 import sibarum.dasum.gui.core.data.TableSelection;
@@ -44,14 +42,13 @@ import sibarum.dasum.gui.core.input.FocusState;
 import sibarum.dasum.gui.core.input.Handlers;
 import sibarum.dasum.gui.core.input.HoverState;
 import sibarum.dasum.gui.core.input.InputState;
-import sibarum.dasum.gui.core.input.ScrollStates;
 import sibarum.dasum.gui.core.input.ScrollbarController;
 import sibarum.dasum.gui.core.input.SliderController;
 import sibarum.dasum.gui.core.nav.NavId;
 import sibarum.dasum.gui.core.nav.NavRegistry;
+import sibarum.dasum.gui.core.process.AppProcess;
 import sibarum.dasum.gui.core.input.TabsController;
 import sibarum.dasum.gui.core.input.TextInputController;
-import sibarum.dasum.gui.core.input.TextState;
 import sibarum.dasum.gui.core.input.TextStates;
 import sibarum.dasum.gui.core.input.TextStyle;
 import sibarum.dasum.gui.core.input.TextStyleStates;
@@ -2812,6 +2809,10 @@ public final class App {
         CommandRegistry.register("zoom.out",    "Zoom Out",               () -> EmContext.multiplyZoom(1f / 1.1f));
         CommandRegistry.register("zoom.reset",  "Reset Zoom",             () -> EmContext.setZoom(1f));
         CommandRegistry.register("focus.clear", "Clear Focus",            FocusState::clear);
+        CommandRegistry.register("window.new",  "New Window",             () -> {
+            Process child = AppProcess.spawnSelf();
+            System.out.println("Spawned new window, pid=" + child.pid());
+        });
         List<FileDialog.Filter> demoFilters = List.of(
             FileDialog.Filter.of("Text", "txt", "md"),
             FileDialog.Filter.of("Images", "png", "jpg")
