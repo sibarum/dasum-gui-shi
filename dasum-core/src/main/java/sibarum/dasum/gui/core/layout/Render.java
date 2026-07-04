@@ -176,20 +176,37 @@ public final class Render {
         float ascender = fg.atlas().metrics().ascender() * fontPx;
         int active = tabs.activeIndex().get();
 
+        // Fit the cells; trailing tabs that don't fit spill behind a marker.
+        TabsController.StripLayout sl = TabsController.stripLayout(tabs, rect);
+        boolean activeHidden = sl.markerRect() != null && active >= sl.visible().size();
+
         // Cells (active fill / hover tint) — emit before glyphs so labels sit on top.
-        for (int i = 0; i < tabs.tabs().size(); i++) {
-            PixelRect cell = TabsController.tabCellRect(tabs, i, rect);
+        for (int vi = 0; vi < sl.visible().size(); vi++) {
+            int i = sl.visible().get(vi);
+            PixelRect cell = sl.cells().get(vi);
             if (i == active) {
                 batcher.submit(new DrawCommand.ColoredQuad(cell.x(), cell.y(), cell.width(), cell.height(), tabs.activeTabBg()));
             } else if (TabsController.isTabHovered(tabs, i)) {
                 batcher.submit(new DrawCommand.ColoredQuad(cell.x(), cell.y(), cell.width(), cell.height(), HOVER_TINT));
             }
         }
+        // Marker cell fill: active color when the current tab is hidden inside
+        // the overflow menu, so the selection is still signalled on the strip.
+        if (sl.markerRect() != null) {
+            PixelRect mc = sl.markerRect();
+            if (activeHidden) {
+                batcher.submit(new DrawCommand.ColoredQuad(mc.x(), mc.y(), mc.width(), mc.height(), tabs.activeTabBg()));
+            }
+            if (TabsController.isMarkerHovered(tabs)) {
+                batcher.submit(new DrawCommand.ColoredQuad(mc.x(), mc.y(), mc.width(), mc.height(), HOVER_TINT));
+            }
+        }
 
         // Labels.
         batcher.setTextAtlas(fg.texture(), fg.distanceRange(), projection);
-        for (int i = 0; i < tabs.tabs().size(); i++) {
-            PixelRect cell = TabsController.tabCellRect(tabs, i, rect);
+        for (int vi = 0; vi < sl.visible().size(); vi++) {
+            int i = sl.visible().get(vi);
+            PixelRect cell = sl.cells().get(vi);
             String label = tabs.tabs().get(i).label();
             float labelW = TabsController.labelWidth(fg, label, fontPx);
             float baseX = cell.x() + (cell.width() - labelW) * 0.5f;
@@ -204,10 +221,62 @@ public final class Render {
             }
         }
 
+        // Overflow marker glyph (app-supplied icon, else a font-independent
+        // three-dot mark so it never renders blank).
+        if (sl.markerRect() != null) {
+            renderOverflowMarker(tabs, sl.markerRect(), fontPx, batcher, projection);
+        }
+
         // Active content (recurse).
         Component activeContent = tabs.activeContent();
         if (activeContent != null) {
             renderInOrder(activeContent, layout, batcher, projection, hovered, focused);
+        }
+    }
+
+    /**
+     * Draw the overflow marker's glyph centered in {@code cell}. Prefers the
+     * app-supplied {@link Component.Tabs.OverflowGlyph} (e.g. a chevron from an
+     * icons font group); falls back to three small quads (a horizontal
+     * ellipsis) when no glyph is configured, its font group is missing, or the
+     * glyph is absent from the atlas — so the marker is never blank.
+     */
+    private static void renderOverflowMarker(Component.Tabs tabs, PixelRect cell,
+                                             float fontPx, Batcher batcher, float[] projection) {
+        Component.Tabs.OverflowGlyph glyph = tabs.overflowGlyph();
+        if (glyph != null) {
+            FontGroup mfg = FontGroups.getOrDefault(glyph.fontGroup());
+            DrawCommand.GlyphQuad q = buildMarkerGlyph(mfg, glyph.codepoint(), cell, fontPx, tabs.tabFg());
+            if (q != null) {
+                batcher.setTextAtlas(mfg.texture(), mfg.distanceRange(), projection);
+                batcher.submit(q);
+                return;
+            }
+            // else: glyph/group unavailable — fall through to the dots.
+        }
+        renderOverflowDots(cell, fontPx, tabs.tabFg(), batcher);
+    }
+
+    /** Build a single centered glyph quad, or {@code null} if the atlas lacks it. */
+    private static DrawCommand.GlyphQuad buildMarkerGlyph(FontGroup fg, int cp, PixelRect cell,
+                                                          float fontPx, Color color) {
+        float advance  = fg.layout().advance(cp, fontPx);
+        float ascender = fg.atlas().metrics().ascender() * fontPx;
+        float baseX = cell.x() + (cell.width() - advance) * 0.5f;
+        float baseY = cell.y() + (cell.height() - fontPx) * 0.5f + ascender;
+        return fg.layout().build(cp, baseX, baseY, fontPx, color);
+    }
+
+    /** Font-independent "⋯" — three small squares centered in {@code cell}. */
+    private static void renderOverflowDots(PixelRect cell, float fontPx, Color color, Batcher batcher) {
+        float d   = fontPx * 0.13f;      // dot side
+        float gap = d * 1.6f;            // spacing between dots
+        float totalW = 3f * d + 2f * gap;
+        float x = cell.x() + (cell.width() - totalW) * 0.5f;
+        float y = cell.y() + (cell.height() - d) * 0.5f;
+        for (int i = 0; i < 3; i++) {
+            batcher.submit(new DrawCommand.ColoredQuad(x, y, d, d, color));
+            x += d + gap;
         }
     }
 

@@ -357,10 +357,39 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
         List<TabPanel> tabs,
         Property<Integer> activeIndex,
         Consumer<Integer> onTabPressed,
-        boolean interactive, int flexGrow
+        boolean interactive, int flexGrow,
+        OverflowGlyph overflowGlyph
     ) implements Component {
 
         public record TabPanel(String label, Component content) {}
+
+        /**
+         * Optional glyph for the header's overflow marker — the cell that
+         * appears at the right edge of the strip when the tabs don't all
+         * fit and opens a dropdown of the hidden tabs (see
+         * {@link sibarum.dasum.gui.core.input.TabsController}). The glyph is
+         * drawn from {@code fontGroup} at the tab label size/color; a
+         * typical value is {@code (Icon.DEFAULT_FONT_GROUP, Icons.CHEVRON_DOWN)}.
+         * When {@code null} (or when the glyph is absent from the group),
+         * the marker falls back to a font-independent three-dot mark.
+         */
+        public record OverflowGlyph(String fontGroup, int codepoint) {}
+
+        /** Backwards-compatible constructor — no overflow glyph (dots fallback). */
+        public Tabs(
+            Em width, Em height,
+            Em headerHeight, Em tabPadding, Em contentPadding,
+            Color headerBg, Color activeTabBg, Color tabFg, Color contentBg,
+            Em tabFontSize, String fontGroup,
+            List<TabPanel> tabs,
+            Property<Integer> activeIndex,
+            Consumer<Integer> onTabPressed,
+            boolean interactive, int flexGrow
+        ) {
+            this(width, height, headerHeight, tabPadding, contentPadding,
+                headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup,
+                tabs, activeIndex, onTabPressed, interactive, flexGrow, null);
+        }
 
         public Component activeContent() {
             int idx = activeIndex.get();
@@ -368,9 +397,10 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
             return tabs.get(idx).content();
         }
 
-        public Tabs withFlexGrow(int g)        { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, interactive, g); }
-        public Tabs withInteractive(boolean v) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, v, flexGrow); }
-        public Tabs withOnTabPressed(Consumer<Integer> cb) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, cb, interactive, flexGrow); }
+        public Tabs withFlexGrow(int g)        { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, interactive, g, overflowGlyph); }
+        public Tabs withInteractive(boolean v) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, v, flexGrow, overflowGlyph); }
+        public Tabs withOnTabPressed(Consumer<Integer> cb) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, cb, interactive, flexGrow, overflowGlyph); }
+        public Tabs withOverflowGlyph(OverflowGlyph g) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, interactive, flexGrow, g); }
     }
 
     /**

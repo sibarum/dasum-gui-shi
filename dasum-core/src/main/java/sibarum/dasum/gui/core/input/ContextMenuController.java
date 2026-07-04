@@ -136,6 +136,25 @@ public final class ContextMenuController {
         List<ContextMenuItem> items = provider.itemsFor(event);
         if (items == null || items.isEmpty()) return false;
 
+        return open(items, emX, emY);
+    }
+
+    /**
+     * Open a menu with a pre-built item list at the given em position
+     * (top-left of the popup, viewport-relative). Unlike {@link #onMouseDown}
+     * this bypasses right-click hit-testing and provider resolution — used by
+     * synthesized chrome that has no component identity of its own, e.g. the
+     * {@link TabsController} overflow marker. Returns {@code true} when a menu
+     * was opened ({@code false} for a {@code null}/empty item list).
+     */
+    public static boolean openAt(List<ContextMenuItem> items, float emX, float emY) {
+        if (items == null || items.isEmpty()) return false;
+        return open(items, emX, emY);
+    }
+
+    /** Shared popup-open tail for {@link #onMouseDown} and {@link #openAt}. */
+    private static boolean open(List<ContextMenuItem> items, float emX, float emY) {
+        if (menuOpen) close();
         currentItems = items;
         menuOpen = true;
         // Long-menu mode: create the filter input lazily so its identity

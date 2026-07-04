@@ -423,7 +423,8 @@ public final class App {
             ),
             activeTab,
             Variant.PRIMARY
-        ).withFlexGrow(1);
+        ).withOverflowGlyph(new Component.Tabs.OverflowGlyph(Icon.DEFAULT_FONT_GROUP, Icons.CHEVRON_DOWN))
+         .withFlexGrow(1);
     }
 
     /**
@@ -568,7 +569,8 @@ public final class App {
             ),
             active,
             Variant.INFO
-        ).withFlexGrow(1);
+        ).withOverflowGlyph(new Component.Tabs.OverflowGlyph(Icon.DEFAULT_FONT_GROUP, Icons.CHEVRON_DOWN))
+         .withFlexGrow(1);
     }
 
     /** Node-editor pane - full-pane GraphSurface with typed-port demo nodes. */
