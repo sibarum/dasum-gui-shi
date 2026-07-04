@@ -33,6 +33,15 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
 
     record Box(Em width, Em height, Em padding, Color color, List<Component> children, boolean interactive, int flexGrow) implements Component {
 
+        public Box {
+            Validate.fixed(width, "Box", "width");
+            Validate.fixed(height, "Box", "height");
+            Validate.color(color, "Box", "color");
+            Validate.em(padding, "Box", "padding");
+            Validate.children(children, "Box", "children");
+            Validate.flexGrow(flexGrow, "Box");
+        }
+
         public Box(Em width, Em height, Em padding, Color color) {
             this(width, height, padding, color, List.of(), false, 0);
         }
@@ -60,6 +69,17 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
         Direction direction, JustifyContent justify, AlignItems align, Em gap,
         List<Component> children, boolean interactive, int flexGrow, boolean wrap
     ) implements Component {
+
+        public Flex {
+            Validate.color(color, "Flex", "color");
+            Validate.em(padding, "Flex", "padding");
+            Validate.em(gap, "Flex", "gap");
+            Validate.required(direction, "Flex", "direction");
+            Validate.required(justify, "Flex", "justify");
+            Validate.required(align, "Flex", "align");
+            Validate.children(children, "Flex", "children");
+            Validate.flexGrow(flexGrow, "Flex");
+        }
 
         /**
          * Compatibility constructor — {@code wrap} defaults to {@code false}.
@@ -108,6 +128,13 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
      */
     record Scroll(Em width, Em height, Em padding, Color color, Component child, boolean interactive, int flexGrow) implements Component {
 
+        public Scroll {
+            Validate.color(color, "Scroll", "color");
+            Validate.em(padding, "Scroll", "padding");
+            Validate.flexGrow(flexGrow, "Scroll");
+            // child == null is a legitimate "empty viewport" sentinel.
+        }
+
         public Scroll(Em width, Em height, Em padding, Color color, Component child) {
             this(width, height, padding, color, child, false, 0);
         }
@@ -134,6 +161,16 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
         Em wrapWidth, boolean clip, boolean ellipsize, boolean lineNumbers,
         boolean interactive, boolean selectable, boolean editable, boolean acceptsTab, int flexGrow
     ) implements Component {
+
+        public Text {
+            Validate.required(content, "Text", "content");
+            Validate.color(color, "Text", "color");
+            Validate.em(fontSize, "Text", "fontSize");
+            Validate.em(padding, "Text", "padding");
+            Validate.flexGrow(flexGrow, "Text");
+            // fontGroup falls back via FontGroups.getOrDefault; wrapWidth/width/height
+            // are legitimate null sentinels.
+        }
 
         public Text(String content, Em fontSize, Color color) {
             this(content, sibarum.dasum.gui.core.text.FontGroups.DEFAULT, fontSize, color,
@@ -222,6 +259,14 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
      */
     record Checkbox(Em size, Color boxColor, Color checkColor, Property<Boolean> value, boolean interactive, int flexGrow) implements Component {
 
+        public Checkbox {
+            Validate.em(size, "Checkbox", "size");
+            Validate.color(boxColor, "Checkbox", "boxColor");
+            Validate.color(checkColor, "Checkbox", "checkColor");
+            Validate.required(value, "Checkbox", "value");
+            Validate.flexGrow(flexGrow, "Checkbox");
+        }
+
         public Checkbox(Em size, Color boxColor, Color checkColor, Property<Boolean> value) {
             this(size, boxColor, checkColor, value, true, 0);
         }
@@ -248,6 +293,15 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
      *                  uses {@link java.util.Objects#equals}
      */
     record Radio<T>(Em size, Color boxColor, Color dotColor, Property<T> group, T value, boolean interactive, int flexGrow) implements Component {
+
+        public Radio {
+            Validate.em(size, "Radio", "size");
+            Validate.color(boxColor, "Radio", "boxColor");
+            Validate.color(dotColor, "Radio", "dotColor");
+            Validate.required(group, "Radio", "group");
+            Validate.flexGrow(flexGrow, "Radio");
+            // value may be null — it's equals-compared against the group cell.
+        }
 
         public Radio(Em size, Color boxColor, Color dotColor, Property<T> group, T value) {
             this(size, boxColor, dotColor, group, value, true, 0);
@@ -287,6 +341,19 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
         Property<Float> value, float min, float max,
         boolean interactive, int flexGrow
     ) implements Component {
+
+        public Slider {
+            Validate.required(orientation, "Slider", "orientation");
+            Validate.em(length, "Slider", "length");
+            Validate.em(thickness, "Slider", "thickness");
+            Validate.em(thumbThickness, "Slider", "thumbThickness");
+            Validate.color(trackColor, "Slider", "trackColor");
+            Validate.color(fillColor, "Slider", "fillColor");
+            Validate.color(thumbColor, "Slider", "thumbColor");
+            Validate.required(value, "Slider", "value");
+            Validate.range(min, max, "Slider");
+            Validate.flexGrow(flexGrow, "Slider");
+        }
 
         public Slider(Direction orientation, Em length, Em thickness, Em thumbThickness,
                       Color trackColor, Color fillColor, Color thumbColor,
@@ -361,7 +428,27 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
         OverflowGlyph overflowGlyph
     ) implements Component {
 
-        public record TabPanel(String label, Component content) {}
+        public Tabs {
+            Validate.em(headerHeight, "Tabs", "headerHeight");
+            Validate.em(tabPadding, "Tabs", "tabPadding");
+            Validate.em(contentPadding, "Tabs", "contentPadding");
+            Validate.em(tabFontSize, "Tabs", "tabFontSize");
+            Validate.color(headerBg, "Tabs", "headerBg");
+            Validate.color(activeTabBg, "Tabs", "activeTabBg");
+            Validate.color(tabFg, "Tabs", "tabFg");
+            Validate.color(contentBg, "Tabs", "contentBg");
+            Validate.children(tabs, "Tabs", "tabs");
+            Validate.required(activeIndex, "Tabs", "activeIndex");
+            Validate.flexGrow(flexGrow, "Tabs");
+            // onTabPressed and overflowGlyph are optional; fontGroup falls back.
+        }
+
+        public record TabPanel(String label, Component content) {
+            public TabPanel {
+                Validate.required(label, "TabPanel", "label");
+                // content == null is guarded downstream (empty panel).
+            }
+        }
 
         /**
          * Optional glyph for the header's overflow marker — the cell that
@@ -426,6 +513,12 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
      */
     record GraphSurface(Em width, Em height, Color color, List<Component> children, boolean interactive, int flexGrow) implements Component {
 
+        public GraphSurface {
+            Validate.color(color, "GraphSurface", "color");
+            Validate.children(children, "GraphSurface", "children");
+            Validate.flexGrow(flexGrow, "GraphSurface");
+        }
+
         /** Convenience constructor — GraphSurface defaults to non-interactive
          *  so it stays out of the Tab cycle; only its children participate in focus. */
         public GraphSurface(Em width, Em height, Color color, List<Component> children) {
@@ -459,6 +552,12 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
         Em width, Em height, Em padding, Color color,
         boolean interactive, int flexGrow
     ) implements Component {
+
+        public SceneView {
+            Validate.em(padding, "SceneView", "padding");
+            Validate.color(color, "SceneView", "color");
+            Validate.flexGrow(flexGrow, "SceneView");
+        }
 
         public SceneView(Em width, Em height, Em padding, Color color) {
             this(width, height, padding, color, true, 0);
@@ -501,6 +600,22 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
         Property<sibarum.dasum.gui.core.data.TableSelection> selection,
         boolean interactive, int flexGrow
     ) implements Component {
+
+        public DataTable {
+            Validate.em(headerHeight, "DataTable", "headerHeight");
+            Validate.em(rowHeight, "DataTable", "rowHeight");
+            Validate.em(rowNumberColumnWidth, "DataTable", "rowNumberColumnWidth");
+            Validate.em(fontSize, "DataTable", "fontSize");
+            Validate.required(source, "DataTable", "source");
+            Validate.color(headerBg, "DataTable", "headerBg");
+            Validate.color(cellBgEven, "DataTable", "cellBgEven");
+            Validate.color(cellBgOdd, "DataTable", "cellBgOdd");
+            Validate.color(gridLine, "DataTable", "gridLine");
+            Validate.color(selectionFill, "DataTable", "selectionFill");
+            Validate.color(textColor, "DataTable", "textColor");
+            Validate.required(selection, "DataTable", "selection");
+            Validate.flexGrow(flexGrow, "DataTable");
+        }
 
         /** Convenience constructor with sensible defaults. */
         public DataTable(Em width, Em height,

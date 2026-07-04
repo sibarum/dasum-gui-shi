@@ -7,6 +7,7 @@ import sibarum.dasum.gui.core.dialog.FileDialog;
 import sibarum.dasum.gui.core.component.AlignItems;
 import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.component.Components;
+import sibarum.dasum.gui.core.ui.Ui;
 import sibarum.dasum.gui.core.component.Direction;
 import sibarum.dasum.gui.core.component.DynamicChildren;
 import sibarum.dasum.gui.core.component.JustifyContent;
@@ -238,6 +239,14 @@ public final class App {
                 FontGroups.register(FontGroup.of(Icon.DEFAULT_FONT_GROUP, iconsAtlas, iconsTexture));
 
                 Component root = buildUi();
+                // Dev-mode structural lint: surface collapse/overlap/overflow
+                // mistakes at startup instead of as broken pixels. Non-fatal here
+                // so the demo still opens; a real app can let it throw in strict mode.
+                try {
+                    Ui.lint(root);
+                } catch (RuntimeException lintError) {
+                    System.err.println(lintError.getMessage());
+                }
                 wireInput(window, cursors);
                 registerCommands(window);
 
@@ -326,25 +335,24 @@ public final class App {
     }
 
     private static Component buildUi() {
-        return new Component.Flex(
-            null, null, Em.of(0.5f), FRAME_BG,
-            Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.5f),
-            List.of(buildToolbar(), buildMainTabs()),
-            false, 0
-        );
+        // Built with the defensive Ui.* builder: .fill() marks the root as
+        // filling the viewport on both axes; the tab content grows to fill the
+        // space below the fixed toolbar.
+        return Ui.column().named("root").fill()
+            .padding(Em.of(0.5f)).gap(Em.of(0.5f)).background(FRAME_BG)
+            .add(buildToolbar())
+            .add(buildMainTabs())
+            .build();
     }
 
     private static Component buildToolbar() {
         // ---- brand block ----
-        Component brand = new Component.Flex(
-            Em.AUTO, Em.AUTO, Em.ZERO, TRANSPARENT,
-            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_XS,
-            List.of(
-                Icon.of(Icons.BOX, Em.of(1.4f), ACCENT),
-                new Component.Text("DasumGUIshi", Em.of(1.15f), HEADING_FG),
-                badge("v0.9", ACCENT, ACCENT_SOFT)),
-            false, 0);
-        Component sepLeft = new Component.Box(Em.of(0.08f), Em.of(1.6f), Em.ZERO, LINE);
+        Component brand = Ui.row().named("brand").gap(GAP_XS)
+            .add(Icon.of(Icons.BOX, Em.of(1.4f), ACCENT))
+            .add(new Component.Text("DasumGUIshi", Em.of(1.15f), HEADING_FG))
+            .add(badge("v0.9", ACCENT, ACCENT_SOFT))
+            .build();
+        Component sepLeft = Ui.box().size(Em.of(0.08f), Em.of(1.6f)).background(LINE).build();
 
         // ---- menu (unified, subtle) ----
         Component file = Themed.iconButton(Icons.FOLDER,      "File", Em.of(5.2f), Variant.DEFAULT, 0);
@@ -362,22 +370,19 @@ public final class App {
         Tooltips.set(view, "Toggle view options");
         Tooltips.set(help, "Open the Help dialog");
 
-        Component menu = new Component.Flex(
-            Em.AUTO, Em.AUTO, Em.ZERO, TRANSPARENT,
-            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_XS,
-            List.of(file, edit, view, help), false, 0);
+        Component menu = Ui.row().named("menu").gap(GAP_XS)
+            .add(file).add(edit).add(view).add(help)
+            .build();
 
         // ---- flexible spacer pushes the right-hand cluster to the edge ----
-        Component spacer = new Component.Box(Em.of(0f), Em.of(0f), Em.ZERO, TRANSPARENT).withFlexGrow(1);
+        Component spacer = Ui.spacer();
 
         // ---- command-palette hint + account ----
-        Component paletteHint = new Component.Flex(
-            Em.AUTO, Em.AUTO, Em.of(0.35f), CARD_BG_ALT,
-            Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, GAP_XS,
-            List.of(
-                Icon.of(Icons.SEARCH, Em.of(0.9f), MUTED_FG),
-                new Component.Text("Ctrl+Space", Em.of(0.8f), SUBTITLE_FG)),
-            true, 0);
+        Component paletteHint = Ui.row().named("palette-hint").interactive(true)
+            .padding(Em.of(0.35f)).gap(GAP_XS).background(CARD_BG_ALT).justify(JustifyContent.CENTER)
+            .add(Icon.of(Icons.SEARCH, Em.of(0.9f), MUTED_FG))
+            .add(new Component.Text("Ctrl+Space", Em.of(0.8f), SUBTITLE_FG))
+            .build();
         Tooltips.set(paletteHint, "Open the command palette");
         Handlers.onClick(paletteHint, EverythingMenu::open);
 
@@ -385,17 +390,14 @@ public final class App {
         Handlers.onClick(account, () -> System.out.println("Account clicked"));
         Tooltips.set(account, "Account & profile");
 
-        Component rightCluster = new Component.Flex(
-            Em.AUTO, Em.AUTO, Em.ZERO, TRANSPARENT,
-            Direction.ROW, JustifyContent.END, AlignItems.CENTER, GAP_SM,
-            List.of(paletteHint, account), false, 0);
+        Component rightCluster = Ui.row().named("right-cluster").justify(JustifyContent.END).gap(GAP_SM)
+            .add(paletteHint).add(account)
+            .build();
 
-        return new Component.Flex(
-            null, Em.of(3.2f), Em.of(0.5f), TOOLBAR_BG,
-            Direction.ROW, JustifyContent.START, AlignItems.CENTER, GAP_SM,
-            List.of(brand, sepLeft, menu, spacer, rightCluster),
-            false, 0
-        );
+        return Ui.row().named("toolbar").height(Em.of(3.2f))
+            .padding(Em.of(0.5f)).gap(GAP_SM).background(TOOLBAR_BG)
+            .add(brand).add(sepLeft).add(menu).add(spacer).add(rightCluster)
+            .build();
     }
 
     /** Top-level Tabs widget - primary navigation. Fills the space below the toolbar. */
