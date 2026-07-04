@@ -82,7 +82,11 @@ public final class GlyphLayout {
     private GlyphData resolve(int codepoint) {
         GlyphData g = atlas.glyph(codepoint);
         if (g != null) return g;
-        return isRenderableMiss(codepoint) ? atlas.notdef() : null;
+        if (!isRenderableMiss(codepoint)) return null;
+        // A printable character the atlas doesn't have — surface it (deduped)
+        // with a stack trace, then fall back to the baked missing-glyph box.
+        MissingGlyphLog.report(atlas, codepoint);
+        return atlas.notdef();
     }
 
     /**
