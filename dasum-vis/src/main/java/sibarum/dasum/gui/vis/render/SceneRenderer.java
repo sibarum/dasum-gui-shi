@@ -15,6 +15,7 @@ import sibarum.dasum.gui.vis.scene.ImageLayer;
 import sibarum.dasum.gui.vis.scene.Layer;
 import sibarum.dasum.gui.vis.scene.LineLayer;
 import sibarum.dasum.gui.vis.scene.PointLayer;
+import sibarum.dasum.gui.vis.scene.RaymarchLayer;
 import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.SceneStates;
 import sibarum.dasum.gui.vis.scene.TextLayer;
@@ -67,6 +68,7 @@ public final class SceneRenderer implements AutoCloseable {
     private final ImageMaterial imageMaterial         = new ImageMaterial();
     private final SceneTextMaterial sceneTextMaterial = new SceneTextMaterial();
     private final VexelRayMaterial vexelRayMaterial   = new VexelRayMaterial();
+    private final RaymarchMaterial raymarchMaterial   = new RaymarchMaterial();
     private final VolumeMaterial volumeMaterial       = new VolumeMaterial();
     private final SceneGlBuffers buffers              = new SceneGlBuffers();
 
@@ -82,6 +84,7 @@ public final class SceneRenderer implements AutoCloseable {
         imageMaterial.init();
         sceneTextMaterial.init();
         vexelRayMaterial.init();
+        raymarchMaterial.init();
         volumeMaterial.init();
         initialized = true;
     }
@@ -158,19 +161,18 @@ public final class SceneRenderer implements AutoCloseable {
                         draw(slot, GL_TRIANGLES);
                     }
                     case VexelRayLayer v -> {
-                        // Camera-anchored key light: over the viewer's right
-                        // shoulder, recomputed per frame from the view basis —
-                        // whatever the user orbits to is always lit (inspection-
-                        // viewer convention; shadows sweep with the view).
-                        float[] basis = CameraMath.viewBasis(cam);
-                        float[] fwd = CameraMath.forward(cam);
-                        float lx = 0.45f * basis[0] + 0.55f * basis[3] - fwd[0];
-                        float ly = 0.45f * basis[1] + 0.55f * basis[4] - fwd[1];
-                        float lz = 0.45f * basis[2] + 0.55f * basis[5] - fwd[2];
-                        float len = (float) Math.sqrt(lx*lx + ly*ly + lz*lz);
-                        float[] lightDir = {lx / len, ly / len, lz / len};
                         vexelRayMaterial.bind(scratchMvp, v,
-                            CameraMath.eye(cam), fwd, lightDir,
+                            CameraMath.eye(cam), CameraMath.forward(cam), keyLight(cam),
+                            cam.mode() == CameraMode.ORTHOGRAPHIC,
+                            VexelRayView.current().ordinal());
+                        draw(slot, GL_TRIANGLES);
+                    }
+                    case RaymarchLayer r -> {
+                        // Same camera-anchored key light and inspector view mode
+                        // as the built-in fields, so custom shaders shade
+                        // consistently with VexelRay.
+                        raymarchMaterial.bind(scratchMvp, r,
+                            CameraMath.eye(cam), CameraMath.forward(cam), keyLight(cam),
                             cam.mode() == CameraMode.ORTHOGRAPHIC,
                             VexelRayView.current().ordinal());
                         draw(slot, GL_TRIANGLES);
@@ -208,6 +210,22 @@ public final class SceneRenderer implements AutoCloseable {
             }
         }
         // ViewportScope.close() restored blend/depth/viewport/program state.
+    }
+
+    /**
+     * Camera-anchored key light over the viewer's right shoulder,
+     * recomputed per frame from the view basis — whatever the user orbits
+     * to is always lit (inspection-viewer convention; shadows sweep with
+     * the view). Shared by every raymarched layer.
+     */
+    private static float[] keyLight(CameraSpec cam) {
+        float[] basis = CameraMath.viewBasis(cam);
+        float[] fwd = CameraMath.forward(cam);
+        float lx = 0.45f * basis[0] + 0.55f * basis[3] - fwd[0];
+        float ly = 0.45f * basis[1] + 0.55f * basis[4] - fwd[1];
+        float lz = 0.45f * basis[2] + 0.55f * basis[5] - fwd[2];
+        float len = (float) Math.sqrt(lx * lx + ly * ly + lz * lz);
+        return new float[]{lx / len, ly / len, lz / len};
     }
 
     private static void draw(SceneGlBuffers.Slot slot, int mode) {
@@ -260,6 +278,7 @@ public final class SceneRenderer implements AutoCloseable {
         imageMaterial.close();
         sceneTextMaterial.close();
         vexelRayMaterial.close();
+        raymarchMaterial.close();
         volumeMaterial.close();
     }
 }

@@ -9,6 +9,8 @@
     { "glob": "shaders/scene-text.vert" },
     { "glob": "shaders/scene-text.frag" },
     { "glob": "shaders/vexelray.vert" },
-    { "glob": "shaders/vexelray.frag" }
+    { "glob": "shaders/vexelray.frag" },
+    { "glob": "shaders/raymarch.vert" },
+    { "glob": "shaders/raymarch_std.frag" }
   ]
 }

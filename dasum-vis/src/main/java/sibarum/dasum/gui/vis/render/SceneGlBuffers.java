@@ -12,6 +12,7 @@ import sibarum.dasum.gui.vis.scene.ImageLayer;
 import sibarum.dasum.gui.vis.scene.Layer;
 import sibarum.dasum.gui.vis.scene.LineLayer;
 import sibarum.dasum.gui.vis.scene.PointLayer;
+import sibarum.dasum.gui.vis.scene.RaymarchLayer;
 import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
@@ -69,6 +70,7 @@ final class SceneGlBuffers {
                 case ImageLayer i    -> IMAGE;
                 case TextLayer t     -> TEXT;
                 case VexelRayLayer v -> VEXEL;
+                case RaymarchLayer r -> VEXEL;
                 case VolumeLayer v   -> VOLUME;
             };
         }
@@ -197,6 +199,7 @@ final class SceneGlBuffers {
             case ImageLayer img  -> { syncImageTexture(s, img); yield buildImageVertices(img); }
             case TextLayer txt   -> buildTextVertices(txt);
             case VexelRayLayer v -> UNIT_CUBE; // geometry is uniform-driven; cube is constant
+            case RaymarchLayer r -> UNIT_CUBE; // same bounding-cube geometry; shape lives in the shader
             case VolumeLayer v   -> { syncVolumeTexture(s, v); yield UNIT_CUBE; }
         };
         int floatsPerVertex = s.kind.floatsPerVertex;
