@@ -71,7 +71,29 @@
                         <atlas>
                             <name>primary</name>
                             <font>${project.basedir}/fonts/Noto_Sans/NotoSans-Regular.ttf</font>
-                            <charset>ascii</charset>
+                            <!-- Trimmed to what NotoSans-Regular actually provides (arrived at
+                                 by requesting every symbol block, then keeping only the ones that
+                                 baked). ~562 glyphs: ASCII, Latin-1, Latin Extended-A (European
+                                 names: Š Ž Œ Ł Ő Ū đ ...), typographic punctuation (em/en-dash,
+                                 curly quotes, ellipsis, bullet, daggers, primes, per-mille),
+                                 super/subscripts (x^2, H_2O), the full Currency block (EUR/GBP/
+                                 JPY/KRW/INR/RUB/ILS/...), the full Letterlike block (No, TM, (P),
+                                 ohm, angstrom, degC/degF, script/double-struck letters), vulgar
+                                 fractions + Roman numerals, and Greek. Noto core carries NO
+                                 arrows, box-drawing, block elements, geometric shapes, dingbats
+                                 (check/cross), technical (keyboard) or comparison-math operators,
+                                 so those were dropped — use lucide icons (Icons.ARROW_*, CHECK, X)
+                                 or an <extraFonts> merge (Noto Sans Math / Symbols) for them. -->
+                            <charset>
+                                [0x20, 0x7E], [0xA0, 0xFF], [0x0100, 0x017F],
+                                0x2013, 0x2014, 0x2018, 0x2019, 0x201A, 0x201C, 0x201D, 0x201E,
+                                0x2026, 0x2022, 0x2020, 0x2021, 0x2030, 0x2032, 0x2033, 0x2039, 0x203A,
+                                0x2044, 0x203E, 0x2212,
+                                [0x2070, 0x209F],
+                                [0x20A0, 0x20BF],
+                                [0x2100, 0x214F], [0x2150, 0x218F],
+                                [0x0391, 0x03A9], [0x03B1, 0x03C9]
+                            </charset>
                             <atlasSize>1024</atlasSize>
                             <fontSize>32</fontSize>
                             <pxRange>4</pxRange>
