@@ -1,5 +1,5 @@
 #version 330 core
-// VexelRay R1 -- fixed-function sphere tracer. One built-in SDF menu
+// SDF layer -- fixed-function sphere tracer. One built-in SDF menu
 // selected by uniform; all parameters are uniforms, so the program never
 // recompiles. R2 replaces sdf() with generated code from a Field tree.
 in vec3 v_world;
@@ -15,7 +15,7 @@ uniform int u_fieldType;    // 0 SPHERE, 1 BOX, 2 TORUS, 3 BLOBS, 4 MANDELBULB, 
 uniform vec4 u_params;
 uniform vec4 u_color;       // base colour, alpha = color.a * layer opacity
 uniform int u_maxSteps;
-uniform int u_viewMode;     // 0 LIT, 1 NORMALS, 2 AO, 3 STEPS (heatmap) — VexelRayView
+uniform int u_viewMode;     // 0 LIT, 1 NORMALS, 2 AO, 3 STEPS (heatmap) — SdfView
 // CSG_BOXES program: 2 vec4s per op — (center.xyz, opcode), (halfExtents.xyz, smoothK).
 uniform vec4 u_csg[96];
 uniform int u_csgCount;     // ops (not vec4s)
@@ -492,7 +492,7 @@ void main() {
         col += albedo * (pow(plantTrap, 3.0) * 0.85);
     }
 
-    // Inspection view modes (VexelRayView): swap the final colour for a
+    // Inspection view modes (SdfView): swap the final colour for a
     // diagnostic channel. Geometry/depth are unchanged so vector layers
     // still compose correctly in every mode.
     if (u_viewMode == 1) {

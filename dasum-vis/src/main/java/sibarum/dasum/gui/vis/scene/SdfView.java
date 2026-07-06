@@ -3,7 +3,7 @@ package sibarum.dasum.gui.vis.scene;
 import sibarum.dasum.gui.core.event.Invalidator;
 
 /**
- * Inspection view mode for {@link VexelRayLayer} rendering — a global
+ * Inspection view mode for {@link SdfLayer} rendering — a global
  * debug switch read by the renderer each frame, NOT layer geometry.
  * Lets a tool/inspector flip how the raymarched surface is displayed
  * (final shading vs. diagnostic channels) without touching the scene.
@@ -12,9 +12,9 @@ import sibarum.dasum.gui.core.event.Invalidator;
  * viewport; if multiple independent view modes are ever needed, promote
  * it to per-component state. The ordinal is passed straight to the
  * shader's {@code u_viewMode} uniform, so the enum order is the shader
- * contract — keep it in sync with {@code vexelray.frag}.
+ * contract — keep it in sync with {@code sdf.frag}.
  */
-public enum VexelRayView {
+public enum SdfView {
     /** Final Blinn-Phong + AO + soft-shadow shading. */
     LIT,
     /** Surface normal as RGB ({@code n*0.5+0.5}) — orientation debug. */
@@ -36,12 +36,12 @@ public enum VexelRayView {
      *  (Mandelbulb only). */
     WORK;
 
-    private static volatile VexelRayView current = LIT;
+    private static volatile SdfView current = LIT;
 
-    public static VexelRayView current() { return current; }
+    public static SdfView current() { return current; }
 
     /** Set the global view mode and request a redraw. */
-    public static void set(VexelRayView v) {
+    public static void set(SdfView v) {
         if (v == null || v == current) return;
         current = v;
         Invalidator.invalidate();

@@ -9,7 +9,7 @@ import sibarum.dasum.gui.vis.scene.VolumeLayer;
  * box (a unit cube scaled/centred by uniforms, per-axis via {@code u_half}); the fragment stage
  * builds a camera ray, clips it to the box, and marches it, sampling the {@code sampler3D} volume
  * (bound to unit 0) and accumulating {@code rgb*a} emissively. Camera rays are constructed exactly
- * like {@link VexelRayMaterial}. The program compiles once at {@code init}.
+ * like {@link SdfMaterial}. The program compiles once at {@code init}.
  */
 final class VolumeMaterial implements AutoCloseable {
 

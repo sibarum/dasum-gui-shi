@@ -20,9 +20,9 @@ import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.SceneStates;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
-import sibarum.dasum.gui.vis.scene.VexelRayLayer;
+import sibarum.dasum.gui.vis.scene.SdfLayer;
 import sibarum.dasum.gui.vis.scene.VolumeLayer;
-import sibarum.dasum.gui.vis.scene.VexelRayView;
+import sibarum.dasum.gui.vis.scene.SdfView;
 
 import static sibarum.dasum.gui.natives.gl.Gl.GL_BLEND;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_DEPTH_TEST;
@@ -67,7 +67,7 @@ public final class SceneRenderer implements AutoCloseable {
     private final FlatMaterial flatMaterial           = new FlatMaterial();
     private final ImageMaterial imageMaterial         = new ImageMaterial();
     private final SceneTextMaterial sceneTextMaterial = new SceneTextMaterial();
-    private final VexelRayMaterial vexelRayMaterial   = new VexelRayMaterial();
+    private final SdfMaterial sdfMaterial   = new SdfMaterial();
     private final RaymarchMaterial raymarchMaterial   = new RaymarchMaterial();
     private final VolumeMaterial volumeMaterial       = new VolumeMaterial();
     private final SceneGlBuffers buffers              = new SceneGlBuffers();
@@ -83,7 +83,7 @@ public final class SceneRenderer implements AutoCloseable {
         flatMaterial.init();
         imageMaterial.init();
         sceneTextMaterial.init();
-        vexelRayMaterial.init();
+        sdfMaterial.init();
         raymarchMaterial.init();
         volumeMaterial.init();
         initialized = true;
@@ -160,27 +160,27 @@ public final class SceneRenderer implements AutoCloseable {
                         imageMaterial.bind(scratchMvp, img.opacity());
                         draw(slot, GL_TRIANGLES);
                     }
-                    case VexelRayLayer v -> {
-                        vexelRayMaterial.bind(scratchMvp, v,
+                    case SdfLayer v -> {
+                        sdfMaterial.bind(scratchMvp, v,
                             CameraMath.eye(cam), CameraMath.forward(cam), keyLight(cam),
                             cam.mode() == CameraMode.ORTHOGRAPHIC,
-                            VexelRayView.current().ordinal());
+                            SdfView.current().ordinal());
                         draw(slot, GL_TRIANGLES);
                     }
                     case RaymarchLayer r -> {
                         // Same camera-anchored key light and inspector view mode
                         // as the built-in fields, so custom shaders shade
-                        // consistently with VexelRay.
+                        // consistently with the SdfLayer path.
                         raymarchMaterial.bind(scratchMvp, r,
                             CameraMath.eye(cam), CameraMath.forward(cam), keyLight(cam),
                             cam.mode() == CameraMode.ORTHOGRAPHIC,
-                            VexelRayView.current().ordinal());
+                            SdfView.current().ordinal());
                         draw(slot, GL_TRIANGLES);
                     }
                     case VolumeLayer vol -> {
                         // Raymarch the 3D-texture volume: bind it to unit 0, march camera rays
                         // through the box accumulating emission (additive; depth write already
-                        // off for a non-OPAQUE layer). Same camera-ray setup as VexelRay.
+                        // off for a non-OPAQUE layer). Same camera-ray setup as the SdfLayer path.
                         slot.volumeTexture.bind(0);
                         volumeMaterial.bind(scratchMvp, vol,
                             CameraMath.eye(cam), CameraMath.forward(cam),
@@ -277,7 +277,7 @@ public final class SceneRenderer implements AutoCloseable {
         flatMaterial.close();
         imageMaterial.close();
         sceneTextMaterial.close();
-        vexelRayMaterial.close();
+        sdfMaterial.close();
         raymarchMaterial.close();
         volumeMaterial.close();
     }

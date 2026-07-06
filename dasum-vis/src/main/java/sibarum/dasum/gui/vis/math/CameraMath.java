@@ -6,7 +6,7 @@ import org.joml.Vector3f;
 /**
  * The single source of truth for composing a {@link CameraSpec} into a
  * model-view-projection matrix. Previously this logic was duplicated
- * (renderer + picker); any new renderer (scene layers, VexelRay field
+ * (renderer + picker); any new renderer (scene layers, SDF field
  * layers) and any CPU-side projection (picking, tick derivation) must go
  * through here so screen mapping can never drift between consumers.
  *

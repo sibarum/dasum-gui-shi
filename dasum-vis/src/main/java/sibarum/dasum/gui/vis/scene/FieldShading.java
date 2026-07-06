@@ -5,9 +5,9 @@ import sibarum.dasum.gui.vis.math.Vec3;
 /**
  * Bakes view-INDEPENDENT shading of a {@link ScalarField} surface into
  * per-point RGB — diffuse under a fixed light plus the same
- * direction-relative hemisphere AO the {@code vexelray.frag} CSG path
- * uses. This is exactly the surface-cache contract from the VexelRay
- * product vision: cache the view-independent terms (albedo · diffuse ·
+ * direction-relative hemisphere AO the {@code sdf.frag} CSG path
+ * uses. This is exactly a view-independent surface-cache scheme:
+ * cache the view-independent terms (albedo · diffuse ·
  * AO), recompute view-dependent terms (specular, camera-anchored light)
  * live. Specular and soft shadows are deliberately omitted here — they're
  * the live terms — which is why a baked cloud orbits correctly.
@@ -44,7 +44,7 @@ public final class FieldShading {
         return rgb;
     }
 
-    /** CPU port of vexelray.frag's hemisphereAO (direction-relative baseline). */
+    /** CPU port of sdf.frag's hemisphereAO (direction-relative baseline). */
     private static float hemisphereAO(ScalarField f, float px, float py, float pz,
                                       float nx, float ny, float nz, float scale) {
         // Tangent frame around the normal.

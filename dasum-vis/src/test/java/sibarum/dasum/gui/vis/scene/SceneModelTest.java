@@ -129,23 +129,23 @@ final class SceneModelTest {
     }
 
     @Test
-    void vexelRayLayerValidationAndDefaults() {
-        VexelRayLayer bulb = VexelRayLayer.of(VexelRayLayer.Field.MANDELBULB);
-        assertEquals(VexelRayLayer.Field.MANDELBULB, bulb.field());
+    void sdfLayerValidationAndDefaults() {
+        SdfLayer bulb = SdfLayer.of(SdfLayer.Field.MANDELBULB);
+        assertEquals(SdfLayer.Field.MANDELBULB, bulb.field());
         assertEquals(BlendMode.OPAQUE, bulb.blend(), "fields are surfaces — OPAQUE writes depth");
         assertEquals(1f, bulb.opacity());
         assertEquals(8f, bulb.params()[0], "canonical bulb power");
 
-        VexelRayLayer tuned = bulb.withMaxSteps(64).withScale(2f);
+        SdfLayer tuned = bulb.withMaxSteps(64).withScale(2f);
         assertEquals(64, tuned.maxSteps());
         assertEquals(2f, tuned.scale());
 
         sibarum.dasum.gui.vis.math.Vec3 o = sibarum.dasum.gui.vis.math.Vec3.ZERO;
         sibarum.dasum.gui.core.render.Color w = new sibarum.dasum.gui.core.render.Color(1f, 1f, 1f, 1f);
         assertThrows(IllegalArgumentException.class,
-            () -> new VexelRayLayer(null, new float[4], o, 1f, w, 96, BlendMode.OPAQUE, 1f));
+            () -> new SdfLayer(null, new float[4], o, 1f, w, 96, BlendMode.OPAQUE, 1f));
         assertThrows(IllegalArgumentException.class,
-            () -> new VexelRayLayer(VexelRayLayer.Field.SPHERE, new float[3], o, 1f, w, 96, BlendMode.OPAQUE, 1f));
+            () -> new SdfLayer(SdfLayer.Field.SPHERE, new float[3], o, 1f, w, 96, BlendMode.OPAQUE, 1f));
         assertThrows(IllegalArgumentException.class,
             () -> bulb.withScale(0f));
         assertThrows(IllegalArgumentException.class,
@@ -176,29 +176,29 @@ final class SceneModelTest {
         assertThrows(IllegalArgumentException.class, () -> CsgBox.pack(java.util.List.of()));
 
         // Layer-level: csg required iff CSG_BOXES.
-        VexelRayLayer shape = VexelRayLayer.csgBoxes(
+        SdfLayer shape = SdfLayer.csgBoxes(
             java.util.List.of(new CsgBox(CsgBox.Op.UNION, c, he)), 0.05f);
-        assertEquals(VexelRayLayer.Field.CSG_BOXES, shape.field());
+        assertEquals(SdfLayer.Field.CSG_BOXES, shape.field());
         assertEquals(1, shape.csgOpCount());
         assertEquals(0.05f, shape.params()[0], "params[0] = global rounding");
 
         sibarum.dasum.gui.core.render.Color w = new sibarum.dasum.gui.core.render.Color(1f, 1f, 1f, 1f);
         assertThrows(IllegalArgumentException.class,
-            () -> new VexelRayLayer(VexelRayLayer.Field.CSG_BOXES, new float[4], null,
+            () -> new SdfLayer(SdfLayer.Field.CSG_BOXES, new float[4], null,
                 sibarum.dasum.gui.vis.math.Vec3.ZERO, 1f, w, 96, BlendMode.OPAQUE, 1f),
             "CSG_BOXES without an op list must be rejected");
         assertThrows(IllegalArgumentException.class,
-            () -> new VexelRayLayer(VexelRayLayer.Field.SPHERE, new float[4], packed,
+            () -> new SdfLayer(SdfLayer.Field.SPHERE, new float[4], packed,
                 sibarum.dasum.gui.vis.math.Vec3.ZERO, 1f, w, 96, BlendMode.OPAQUE, 1f),
             "csg on an analytic field must be rejected");
         assertThrows(IllegalArgumentException.class,
-            () -> VexelRayLayer.of(VexelRayLayer.Field.CSG_BOXES));
+            () -> SdfLayer.of(SdfLayer.Field.CSG_BOXES));
     }
 
     @Test
     void alienPlantDefaults() {
-        VexelRayLayer plant = VexelRayLayer.of(VexelRayLayer.Field.ALIEN_PLANT);
-        assertEquals(VexelRayLayer.Field.ALIEN_PLANT, plant.field());
+        SdfLayer plant = SdfLayer.of(SdfLayer.Field.ALIEN_PLANT);
+        assertEquals(SdfLayer.Field.ALIEN_PLANT, plant.field());
         assertEquals(9f, plant.params()[2], "default generations");
         assertEquals(BlendMode.OPAQUE, plant.blend());
         assertNull(plant.csg(), "plant carries no csg program");

@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * CPU evaluation of a {@link CsgBox} op-list field — a faithful port of
- * the {@code sdCsgBoxes} GLSL in {@code vexelray.frag}, so a shape sampled
+ * the {@code sdCsgBoxes} GLSL in {@code sdf.frag}, so a shape sampled
  * on the CPU matches what the raymarcher draws. The seed of the eventual
  * CPU field evaluator for collision / surface probes; today it backs the
  * "bake an SDF into a splat point cloud" experiment.

@@ -14,7 +14,7 @@ A tour of the `dasum-mvp-demo` showcase app. Every pixel — toolbar, tabs, card
 |---|---|
 | [![Home](docs/demo-1.png)](docs/demo-1.png)<br>**Home** — landing page; the feature cards jump straight to each section | [![Nodes](docs/demo-2.png)](docs/demo-2.png)<br>**Nodes** — node editor with typed ports, drag-to-connect, a legend sidebar, and an embedded point-cloud viewport |
 | [![Widgets](docs/demo-3.png)](docs/demo-3.png)<br>**Widgets** — buttons, checkboxes, radios and sliders across all six theme variants | [![Text](docs/demo-4.png)](docs/demo-4.png)<br>**Text** — editable, selectable text with carets, selection and live styling |
-| [![Scenes & Stress](docs/demo-5.png)](docs/demo-5.png)<br>**Graphics › Scenes & Stress** — the layered `SceneView` renderer and edge-case stress layouts | [![VexelRay](docs/demo-6.png)](docs/demo-6.png)<br>**Graphics › VexelRay** — raymarched signed-distance fields (here a CSG monument) with a live inspector |
+| [![Scenes & Stress](docs/demo-5.png)](docs/demo-5.png)<br>**Graphics › Scenes & Stress** — the layered `SceneView` renderer and edge-case stress layouts | [![SDF](docs/demo-6.png)](docs/demo-6.png)<br>**Graphics › SDF** — raymarched signed-distance fields (here a CSG monument) with a live inspector |
 | [![Tables](docs/demo-7.png)](docs/demo-7.png)<br>**Tables** — a virtualized 1,000,000-row grid beside a small editable one | |
 
 ## Quick start
@@ -47,7 +47,7 @@ mvn install
 mvn -pl dasum-mvp-demo exec:exec
 ```
 
-A 1280×800 window opens on a **Home** landing page. The top-level tabs are **Home**, **Nodes**, **Widgets**, **Text**, **Graphics**, and **Tables**. The Nodes tab includes a scene viewport (a point cloud) — click to expand it into a full-screen modal with orbit / zoom / point-pick. **Graphics** groups three sub-tabs: **Scenes & Stress** (the layered `SceneView` renderer — mixed blend modes, streamed images, in-scene MSDF text), **VexelRay** (raymarched signed-distance-field shapes — primitives, boolean CSG, a Mandelbulb, alien flora), and **Plots** (line/curve charts, complex domain colouring, a sliced 3D volume). Each card expands to full screen.
+A 1280×800 window opens on a **Home** landing page. The top-level tabs are **Home**, **Nodes**, **Widgets**, **Text**, **Graphics**, and **Tables**. The Nodes tab includes a scene viewport (a point cloud) — click to expand it into a full-screen modal with orbit / zoom / point-pick. **Graphics** groups three sub-tabs: **Scenes & Stress** (the layered `SceneView` renderer — mixed blend modes, streamed images, in-scene MSDF text), **SDF** (raymarched signed-distance-field shapes — primitives, boolean CSG, a Mandelbulb, alien flora), and **Plots** (line/curve charts, complex domain colouring, a sliced 3D volume). Each card expands to full screen.
 
 ### Run the demo (native-image)
 
@@ -66,7 +66,7 @@ Produces a single executable with no JVM dependency.
 | `dasum-glfw` | Holds the GLFW dynamic library (`glfw3.dll` etc.) as a classpath resource. Split out from `dasum-natives` so the bindings can be vendored / replaced without the binary. |
 | `dasum-nfd` | Native file-dialog wrapper. Exposes `FileDialog.open` / `save` / `pickFolder` backed by [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended); the platform's native picker, not an in-process imitation. |
 | `dasum-core` | The framework. All packages under `sibarum.dasum.gui.core`. See below. |
-| `dasum-vis` | Optional visualization module — `Component.SceneView`, a layered 3D scene viewport: point / line / triangle / image / text layers with per-layer blend modes, plus **VexelRay**, a raymarched signed-distance-field layer. Orbit/pan/zoom camera, click-pick, thumbnail-or-expanded layout. Uses JOML internally, exposes immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md). |
+| `dasum-vis` | Optional visualization module — `Component.SceneView`, a layered 3D scene viewport: point / line / triangle / image / text layers with per-layer blend modes, plus **SDF**, a raymarched signed-distance-field layer. Orbit/pan/zoom camera, click-pick, thumbnail-or-expanded layout. Uses JOML internally, exposes immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md). |
 | `dasum-msdf-maven-plugin` | Build-time MSDF atlas generation. Text atlases from charset presets (optionally merging glyphs from several fonts into one atlas), icon atlases from named glyph subsets of icon fonts (Lucide / Material) with generated Java constants. See [`dasum-msdf-maven-plugin/README.md`](dasum-msdf-maven-plugin/README.md). |
 | `dasum-mvp-demo` | The reference / showcase app. The best place to look when learning the API. |
 
@@ -342,7 +342,7 @@ The 4-arg constructor fills sensible dark-theme defaults (header height, row hei
 
 ### Scene visualization (`dasum-vis`)
 
-Optional module — depend on `dasum-vis` to render 3D scenes inside any GUI panel. Each viewport is a `Component.SceneView`; its scene is a `SceneSnapshot` — an ordered list of layers (points, lines, triangles, images, in-scene MSDF text) each with a blend mode, plus **VexelRay** layers that raymarch a signed-distance field (analytic primitives, boolean CSG box programs, fractals, folded-IFS shapes). Scene + camera + interaction state are held in per-component `AtomicReference`s in `SceneStates`, so worker threads can publish data (typical for ML / training visualizations) without blocking the render thread; GPU uploads are skipped per layer when a layer reference is unchanged. Drag-orbit / pan, scroll-zoom (cursor-anchored in 2D mode), click-pick. The same `SceneView` instance can move between a thumbnail and a modal overlay via `DynamicChildren` — scene, camera, and GPU buffers all follow the component identity. The legacy `PointCloudStates` API still works as a thin compat layer over `SceneStates`. JOML lives entirely inside `dasum-vis`; the public API is immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md).
+Optional module — depend on `dasum-vis` to render 3D scenes inside any GUI panel. Each viewport is a `Component.SceneView`; its scene is a `SceneSnapshot` — an ordered list of layers (points, lines, triangles, images, in-scene MSDF text) each with a blend mode, plus **SDF** layers that raymarch a signed-distance field (analytic primitives, boolean CSG box programs, fractals, folded-IFS shapes). Scene + camera + interaction state are held in per-component `AtomicReference`s in `SceneStates`, so worker threads can publish data (typical for ML / training visualizations) without blocking the render thread; GPU uploads are skipped per layer when a layer reference is unchanged. Drag-orbit / pan, scroll-zoom (cursor-anchored in 2D mode), click-pick. The same `SceneView` instance can move between a thumbnail and a modal overlay via `DynamicChildren` — scene, camera, and GPU buffers all follow the component identity. The legacy `PointCloudStates` API still works as a thin compat layer over `SceneStates`. JOML lives entirely inside `dasum-vis`; the public API is immutable records. See [`dasum-vis/README.md`](dasum-vis/README.md).
 
 ### Icon fonts
 

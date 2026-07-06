@@ -90,7 +90,7 @@ import sibarum.dasum.gui.vis.scene.BlendMode;
 import sibarum.dasum.gui.vis.scene.CsgBox;
 import sibarum.dasum.gui.vis.scene.MandelbulbField;
 import sibarum.dasum.gui.vis.scene.SurfaceSampler;
-import sibarum.dasum.gui.vis.scene.VexelRayView;
+import sibarum.dasum.gui.vis.scene.SdfView;
 import sibarum.dasum.gui.vis.scene.ImageLayer;
 import sibarum.dasum.gui.vis.scene.InteractionSpec;
 import sibarum.dasum.gui.vis.scene.LineLayer;
@@ -99,7 +99,7 @@ import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.SceneStates;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
-import sibarum.dasum.gui.vis.scene.VexelRayLayer;
+import sibarum.dasum.gui.vis.scene.SdfLayer;
 import sibarum.dasum.gui.vis.plot.Axis;
 import sibarum.dasum.gui.vis.plot.ComplexColorMaps;
 import sibarum.dasum.gui.vis.plot.ComplexField3D;
@@ -501,7 +501,7 @@ public final class App {
             List.of(
                 statTile("6", "demo areas"),
                 statTile("1M", "table rows, virtualized"),
-                statTile("7", "VexelRay field models"),
+                statTile("7", "SDF field models"),
                 statTile("em", "everywhere - pixels stay at the edge")),
             false, 0, true);
 
@@ -526,7 +526,7 @@ public final class App {
                     "Editable, selectable text with live styling, carets and gutters.",
                     new Color(0.95f, 0.70f, 0.35f, 1f), () -> activeTab.set(TAB_TEXT)),
                 featureCard(Icons.LAYERS, "Graphics",
-                    "Layered scenes, the VexelRay field renderer, and live plots.",
+                    "Layered scenes, the SDF field renderer, and live plots.",
                     new Color(0.80f, 0.55f, 0.95f, 1f), () -> activeTab.set(TAB_GRAPHICS)),
                 featureCard(Icons.LAYOUT_GRID, "Tables",
                     "A million-row virtualized grid beside a tiny editable one.",
@@ -554,7 +554,7 @@ public final class App {
 
     /**
      * Graphics pane - groups the three heavier visual demos (layered scenes /
-     * stress, the VexelRay field renderer, and the plotting toolkit) under
+     * stress, the SDF field renderer, and the plotting toolkit) under
      * INFO-tinted sub-tabs so the top bar stays short and related demos sit
      * together.
      */
@@ -566,7 +566,7 @@ public final class App {
             Em.of(0.95f),
             List.of(
                 new Component.Tabs.TabPanel("Scenes & Stress", buildStressPane()),
-                new Component.Tabs.TabPanel("VexelRay",        buildVexelRayPane()),
+                new Component.Tabs.TabPanel("SDF",        buildSdfPane()),
                 new Component.Tabs.TabPanel("Plots",           buildPlotsPane())
             ),
             active,
@@ -1568,57 +1568,57 @@ public final class App {
     }
 
     /**
-     * VexelRay inspector tab ("Houdini-lite"): one orbit viewport plus a
+     * SDF inspector tab ("Houdini-lite"): one orbit viewport plus a
      * control panel that swaps the model, the inspection view mode, and the
      * march step budget - so any render-pipeline experiment applies to any
      * model. Geometry/quality is per-layer (republished on change); the view
-     * mode is the global {@link VexelRayView} read live by the renderer.
+     * mode is the global {@link SdfView} read live by the renderer.
      */
-    private enum VexelModel {
+    private enum SdfModel {
         SPHERE("Sphere", 3.0f), BOX("Box", 3.0f), TORUS("Torus", 3.2f),
         BLOBS("Blobs", 4.5f), MANDELBULB("Mandelbulb", 3.5f),
         CSG_MONUMENT("CSG Monument", 4.0f), ALIEN_TREE("Alien Tree", 3.4f);
         final String label; final float camDist;
-        VexelModel(String label, float camDist) { this.label = label; this.camDist = camDist; }
+        SdfModel(String label, float camDist) { this.label = label; this.camDist = camDist; }
     }
 
-    private static VexelRayLayer vexelModel(VexelModel m, int maxSteps, int bulbIters, float escapeR, float iterLod) {
+    private static SdfLayer sdfModel(SdfModel m, int maxSteps, int bulbIters, float escapeR, float iterLod) {
         return switch (m) {
-            case SPHERE     -> VexelRayLayer.of(VexelRayLayer.Field.SPHERE).withMaxSteps(maxSteps);
-            case BOX        -> VexelRayLayer.of(VexelRayLayer.Field.BOX).withMaxSteps(maxSteps);
-            case TORUS      -> VexelRayLayer.of(VexelRayLayer.Field.TORUS).withMaxSteps(maxSteps);
-            case BLOBS      -> VexelRayLayer.of(VexelRayLayer.Field.BLOBS)
+            case SPHERE     -> SdfLayer.of(SdfLayer.Field.SPHERE).withMaxSteps(maxSteps);
+            case BOX        -> SdfLayer.of(SdfLayer.Field.BOX).withMaxSteps(maxSteps);
+            case TORUS      -> SdfLayer.of(SdfLayer.Field.TORUS).withMaxSteps(maxSteps);
+            case BLOBS      -> SdfLayer.of(SdfLayer.Field.BLOBS)
                                    .withColor(new Color(0.45f, 0.9f, 0.6f, 1f)).withMaxSteps(maxSteps);
             // params: x=power, y=iterations, z=escape radius, w=iteration-LOD strength.
-            case MANDELBULB -> VexelRayLayer.of(VexelRayLayer.Field.MANDELBULB)
+            case MANDELBULB -> SdfLayer.of(SdfLayer.Field.MANDELBULB)
                                    .withParams(new float[]{8f, bulbIters, escapeR, iterLod})
                                    .withColor(new Color(0.92f, 0.74f, 1.00f, 1f)).withMaxSteps(maxSteps);
-            case CSG_MONUMENT -> VexelRayLayer.csgBoxes(monumentOps(), MONUMENT_ROUNDING)
+            case CSG_MONUMENT -> SdfLayer.csgBoxes(monumentOps(), MONUMENT_ROUNDING)
                                    .withColor(MONUMENT_COLOR).withMaxSteps(maxSteps);
-            case ALIEN_TREE -> VexelRayLayer.of(VexelRayLayer.Field.ALIEN_PLANT).withMaxSteps(maxSteps);
+            case ALIEN_TREE -> SdfLayer.of(SdfLayer.Field.ALIEN_PLANT).withMaxSteps(maxSteps);
         };
     }
 
-    private static Component buildVexelRayPane() {
+    private static Component buildSdfPane() {
         Component.SceneView viewport = new Component.SceneView(
             null, null, Em.ZERO, new Color(0.03f, 0.04f, 0.07f, 1f), true, 1
         );
 
-        Property<VexelModel> model = new Property<>(VexelModel.CSG_MONUMENT);
+        Property<SdfModel> model = new Property<>(SdfModel.CSG_MONUMENT);
         Property<Float> maxSteps = new Property<>(96f);
         Property<Float> bulbIters = new Property<>(10f);  // Mandelbulb only
         Property<Float> escapeR = new Property<>(2f);     // Mandelbulb only
         Property<Float> iterLod = new Property<>(0f);     // Mandelbulb only (0 = off)
-        Property<VexelRayView> view = new Property<>(VexelRayView.LIT);
+        Property<SdfView> view = new Property<>(SdfView.LIT);
 
         Runnable republish = () -> {
-            VexelModel m = model.get();
-            VexelRayLayer layer = vexelModel(m, Math.round(maxSteps.get()), Math.round(bulbIters.get()),
+            SdfModel m = model.get();
+            SdfLayer layer = sdfModel(m, Math.round(maxSteps.get()), Math.round(bulbIters.get()),
                                              escapeR.get(), iterLod.get());
             // COST_MINUS_ESCAPE paints a near-miss cost halo over the
             // background, which only composites if the layer is alpha-blended.
             // Every other view is an opaque, depth-writing surface.
-            if (view.get() == VexelRayView.COST_MINUS_ESCAPE) {
+            if (view.get() == SdfView.COST_MINUS_ESCAPE) {
                 layer = layer.withBlend(BlendMode.ALPHA);
             }
             SceneStates.publish(viewport, SceneSnapshot.of(layer));
@@ -1631,16 +1631,16 @@ public final class App {
         iterLod.subscribe(v -> republish.run());
         // Set the global view mode AND republish so the layer's blend mode
         // tracks the view (alpha for the cost-halo view, opaque otherwise).
-        view.subscribe(v -> { VexelRayView.set(v); republish.run(); });
+        view.subscribe(v -> { SdfView.set(v); republish.run(); });
         republish.run(); // initial publish
 
         List<Component> modelRows = new java.util.ArrayList<>();
-        for (VexelModel m : VexelModel.values()) modelRows.add(vexelRadioRow(model, m, m.label));
+        for (SdfModel m : SdfModel.values()) modelRows.add(sdfRadioRow(model, m, m.label));
 
         List<Component> viewRows = new java.util.ArrayList<>();
         String[] viewLabels = {"Lit", "Normals", "AO", "Steps (cost)", "Escape iters", "Cost - escape", "Work (iters)"};
-        VexelRayView[] views = VexelRayView.values();
-        for (int i = 0; i < views.length; i++) viewRows.add(vexelRadioRow(view, views[i], viewLabels[i]));
+        SdfView[] views = SdfView.values();
+        for (int i = 0; i < views.length; i++) viewRows.add(sdfRadioRow(view, views[i], viewLabels[i]));
 
         Component stepsSlider = new Component.Slider(
             Direction.ROW, Em.of(10f), Em.of(0.9f), Em.of(0.5f),
@@ -1659,13 +1659,13 @@ public final class App {
             null, Em.AUTO, Em.of(0.6f), new Color(0f, 0f, 0f, 0f),
             Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, Em.of(0.8f),
             List.of(
-                new Component.Text("VexelRay Inspector", Em.of(1.1f), LABEL_FG),
-                vexelGroup("Model", modelRows),
-                vexelGroup("View", viewRows),
-                vexelGroup("Max steps (16-256)", List.of(stepsSlider)),
-                vexelGroup("Mandelbulb iters (2-20)", List.of(itersSlider)),
-                vexelGroup("Mandelbulb escape R (1.2-12)", List.of(escapeSlider)),
-                vexelGroup("Mandelbulb iter-LOD (0=off)", List.of(lodSlider))
+                new Component.Text("SDF Inspector", Em.of(1.1f), LABEL_FG),
+                sdfGroup("Model", modelRows),
+                sdfGroup("View", viewRows),
+                sdfGroup("Max steps (16-256)", List.of(stepsSlider)),
+                sdfGroup("Mandelbulb iters (2-20)", List.of(itersSlider)),
+                sdfGroup("Mandelbulb escape R (1.2-12)", List.of(escapeSlider)),
+                sdfGroup("Mandelbulb iter-LOD (0=off)", List.of(lodSlider))
             ), false, 0);
 
         Component panel = new Component.Scroll(
@@ -1677,13 +1677,13 @@ public final class App {
             List.of(panel, viewport), false, 1);
     }
 
-    private static <T> Component vexelRadioRow(Property<T> prop, T value, String label) {
+    private static <T> Component sdfRadioRow(Property<T> prop, T value, String label) {
         return inlineRow(List.of(
             new Component.Radio<>(Em.of(1.1f), RB_BOX, RB_DOT, prop, value),
             new Component.Text(label, Em.of(0.9f), LABEL_FG)));
     }
 
-    private static Component vexelGroup(String heading, List<Component> rows) {
+    private static Component sdfGroup(String heading, List<Component> rows) {
         List<Component> kids = new java.util.ArrayList<>();
         kids.add(new Component.Text(heading, Em.of(0.95f), new Color(0.65f, 0.70f, 0.85f, 0.9f)));
         kids.addAll(rows);

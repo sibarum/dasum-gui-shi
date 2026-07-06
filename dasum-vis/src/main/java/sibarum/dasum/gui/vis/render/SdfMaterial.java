@@ -2,10 +2,10 @@ package sibarum.dasum.gui.vis.render;
 
 import sibarum.dasum.gui.core.render.ShaderUtil;
 import sibarum.dasum.gui.natives.gl.Gl;
-import sibarum.dasum.gui.vis.scene.VexelRayLayer;
+import sibarum.dasum.gui.vis.scene.SdfLayer;
 
 /**
- * GL program for {@link VexelRayLayer}: the R1 fixed-function sphere
+ * GL program for {@link SdfLayer}: the R1 fixed-function sphere
  * tracer. Geometry is the layer's bounding cube (pos3, scaled/centred by
  * uniforms); everything else — field selection, parameters, camera rays,
  * shading colour — travels as uniforms, so the program compiles once at
@@ -13,7 +13,7 @@ import sibarum.dasum.gui.vis.scene.VexelRayLayer;
  * from the hit point, which is what lets uploaded-geometry layers
  * depth-compose against the computed surface.
  */
-final class VexelRayMaterial implements AutoCloseable {
+final class SdfMaterial implements AutoCloseable {
 
     private int program = 0;
     private int uMvp = -1;
@@ -32,8 +32,8 @@ final class VexelRayMaterial implements AutoCloseable {
     private int uCsgCount = -1;
 
     void init() {
-        String vs = ShaderUtil.readResource("/shaders/vexelray.vert");
-        String fs = ShaderUtil.readResource("/shaders/vexelray.frag");
+        String vs = ShaderUtil.readResource("/shaders/sdf.vert");
+        String fs = ShaderUtil.readResource("/shaders/sdf.frag");
         program = ShaderUtil.buildProgram(vs, fs);
         uMvp       = Gl.glGetUniformLocation(program, "u_mvp");
         uCenter    = Gl.glGetUniformLocation(program, "u_center");
@@ -55,11 +55,11 @@ final class VexelRayMaterial implements AutoCloseable {
         if (uMvp < 0 || uCenter < 0 || uScale < 0 || uEye < 0 || uForward < 0
                 || uLightDir < 0 || uOrtho < 0 || uFieldType < 0 || uParams < 0
                 || uColor < 0 || uMaxSteps < 0 || uViewMode < 0 || uCsg < 0 || uCsgCount < 0) {
-            throw new IllegalStateException("vexelray shader missing required uniforms");
+            throw new IllegalStateException("sdf shader missing required uniforms");
         }
     }
 
-    void bind(float[] mvp, VexelRayLayer layer, float[] eye, float[] forward,
+    void bind(float[] mvp, SdfLayer layer, float[] eye, float[] forward,
               float[] lightDir, boolean ortho, int viewMode) {
         Gl.glUseProgram(program);
         Gl.glUniformMatrix4fv(uMvp, false, mvp);
@@ -77,7 +77,7 @@ final class VexelRayMaterial implements AutoCloseable {
             layer.color().a() * layer.opacity());
         Gl.glUniform1i(uMaxSteps, layer.maxSteps());
         Gl.glUniform1i(uViewMode, viewMode);
-        if (layer.field() == VexelRayLayer.Field.CSG_BOXES) {
+        if (layer.field() == SdfLayer.Field.CSG_BOXES) {
             Gl.glUniform4fv(uCsg, layer.csg().length / 4, layer.csg());
             Gl.glUniform1i(uCsgCount, layer.csgOpCount());
         } else {

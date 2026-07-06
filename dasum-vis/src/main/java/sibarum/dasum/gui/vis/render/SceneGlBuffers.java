@@ -16,7 +16,7 @@ import sibarum.dasum.gui.vis.scene.RaymarchLayer;
 import sibarum.dasum.gui.vis.scene.SceneSnapshot;
 import sibarum.dasum.gui.vis.scene.TextLayer;
 import sibarum.dasum.gui.vis.scene.TriangleLayer;
-import sibarum.dasum.gui.vis.scene.VexelRayLayer;
+import sibarum.dasum.gui.vis.scene.SdfLayer;
 import sibarum.dasum.gui.vis.scene.VolumeLayer;
 
 import java.util.ArrayDeque;
@@ -57,7 +57,7 @@ final class SceneGlBuffers {
     private static final float DEF_R = 0.85f, DEF_G = 0.90f, DEF_B = 1.00f;
 
     enum Kind {
-        POINT(7), FLAT(6), IMAGE(5), TEXT(4), VEXEL(3), VOLUME(3);
+        POINT(7), FLAT(6), IMAGE(5), TEXT(4), RAYMARCH(3), VOLUME(3);
 
         final int floatsPerVertex;
         Kind(int f) { this.floatsPerVertex = f; }
@@ -69,8 +69,8 @@ final class SceneGlBuffers {
                 case TriangleLayer t -> FLAT;
                 case ImageLayer i    -> IMAGE;
                 case TextLayer t     -> TEXT;
-                case VexelRayLayer v -> VEXEL;
-                case RaymarchLayer r -> VEXEL;
+                case SdfLayer v -> RAYMARCH;
+                case RaymarchLayer r -> RAYMARCH;
                 case VolumeLayer v   -> VOLUME;
             };
         }
@@ -79,7 +79,7 @@ final class SceneGlBuffers {
     /**
      * Unit cube [-1, 1]³ as 12 triangles — the raymarch bounding volume.
      * Layer-independent: the shader scales/centres via uniforms, so every
-     * VEXEL slot uploads these same 36 vertices.
+     * RAYMARCH slot uploads these same 36 vertices.
      */
     private static final float[] UNIT_CUBE = buildUnitCube();
 
@@ -198,7 +198,7 @@ final class SceneGlBuffers {
             case TriangleLayer t -> buildFlatVertices(t.vertices(), t.colors());
             case ImageLayer img  -> { syncImageTexture(s, img); yield buildImageVertices(img); }
             case TextLayer txt   -> buildTextVertices(txt);
-            case VexelRayLayer v -> UNIT_CUBE; // geometry is uniform-driven; cube is constant
+            case SdfLayer v -> UNIT_CUBE; // geometry is uniform-driven; cube is constant
             case RaymarchLayer r -> UNIT_CUBE; // same bounding-cube geometry; shape lives in the shader
             case VolumeLayer v   -> { syncVolumeTexture(s, v); yield UNIT_CUBE; }
         };
@@ -418,7 +418,7 @@ final class SceneGlBuffers {
                 Gl.glEnableVertexAttribArray(0);
                 Gl.glEnableVertexAttribArray(1);
             }
-            case VEXEL, VOLUME -> {
+            case RAYMARCH, VOLUME -> {
                 Gl.glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0L);
                 Gl.glEnableVertexAttribArray(0);
             }

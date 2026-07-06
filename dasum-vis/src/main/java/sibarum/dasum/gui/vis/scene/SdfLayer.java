@@ -6,18 +6,18 @@ import sibarum.dasum.gui.vis.math.Vec3;
 import java.util.List;
 
 /**
- * VexelRay R1 — a raymarched signed-distance field. Unlike every other
- * layer, the content is <em>computed per fragment</em>: the GPU sphere-
+ * A raymarched signed-distance field from a built-in field menu. Unlike
+ * every other layer, the content is <em>computed per fragment</em>: the GPU sphere-
  * traces the selected field inside an axis-aligned bounding cube
  * ({@code center} ± {@code scale}) and shades the hit surface. The hit
  * writes real depth, so in perspective scenes the other layers (points,
  * lines, text) correctly occlude and pierce the field surface.
  *
- * <p>R1 is the fixed-function tier: a built-in {@link Field} menu with
- * parameters delivered as uniforms — no shader recompilation ever. The
- * composable {@code Field}-tree codegen tier (CSG trees, domain ops,
- * Mix/Iterate) is R2 and will arrive as a separate authoring API on top
- * of the same rendering seam.
+ * <p>This is the fixed-function tier: a built-in {@link Field} menu with
+ * parameters delivered as uniforms — no shader recompilation ever. For
+ * arbitrary caller-supplied SDF shaders (composable CSG trees, domain
+ * ops, custom shading), see {@link RaymarchLayer}, which hosts complete
+ * fragment source on the same rendering seam.
  *
  * <p>Param block semantics by field (unused slots ignored):
  * <ul>
@@ -55,7 +55,7 @@ import java.util.List;
  * @param blend    fixed-function blend mode for this layer
  * @param opacity  uniform layer opacity in [0, 1]
  */
-public record VexelRayLayer(
+public record SdfLayer(
     Field field,
     float[] params,
     float[] csg,
@@ -69,7 +69,7 @@ public record VexelRayLayer(
 
     public enum Field { SPHERE, BOX, TORUS, BLOBS, MANDELBULB, CSG_BOXES, ALIEN_PLANT }
 
-    public VexelRayLayer {
+    public SdfLayer {
         if (field == null) throw new IllegalArgumentException("field != null");
         if (params == null || params.length != 4) {
             throw new IllegalArgumentException("params must be float[4]");
@@ -98,13 +98,13 @@ public record VexelRayLayer(
     }
 
     /** Compatibility constructor — analytic fields, no csg program. */
-    public VexelRayLayer(Field field, float[] params, Vec3 center, float scale,
+    public SdfLayer(Field field, float[] params, Vec3 center, float scale,
                          Color color, int maxSteps, BlendMode blend, float opacity) {
         this(field, params, null, center, scale, color, maxSteps, blend, opacity);
     }
 
     /** Sensible defaults per analytic field: unit-ish size, origin, soft blue-white, 96 steps. */
-    public static VexelRayLayer of(Field field) {
+    public static SdfLayer of(Field field) {
         if (field == Field.CSG_BOXES) {
             throw new IllegalArgumentException("CSG_BOXES needs an op list — use csgBoxes(...)");
         }
@@ -120,7 +120,7 @@ public record VexelRayLayer(
         Color color = field == Field.ALIEN_PLANT
             ? new Color(0.10f, 0.52f, 0.42f, 1f)  // deep teal stalk; tips hue-rotate to magenta
             : new Color(0.75f, 0.82f, 0.95f, 1f);
-        return new VexelRayLayer(field, params, Vec3.ZERO, 1.2f,
+        return new SdfLayer(field, params, Vec3.ZERO, 1.2f,
             color, 96, BlendMode.OPAQUE, 1f);
     }
 
@@ -129,8 +129,8 @@ public record VexelRayLayer(
      * {@code rounding} (world units; 0 = hard edges). The op list folds
      * sequentially — see {@link CsgBox}.
      */
-    public static VexelRayLayer csgBoxes(List<CsgBox> ops, float rounding) {
-        return new VexelRayLayer(Field.CSG_BOXES,
+    public static SdfLayer csgBoxes(List<CsgBox> ops, float rounding) {
+        return new SdfLayer(Field.CSG_BOXES,
             new float[]{rounding, 0f, 0f, 0f}, CsgBox.pack(ops),
             Vec3.ZERO, 1.2f, new Color(0.75f, 0.82f, 0.95f, 1f),
             96, BlendMode.OPAQUE, 1f);
@@ -138,11 +138,11 @@ public record VexelRayLayer(
 
     public int csgOpCount() { return csg == null ? 0 : csg.length / CsgBox.PACKED_FLOATS; }
 
-    public VexelRayLayer withParams(float[] p)   { return new VexelRayLayer(field, p, csg, center, scale, color, maxSteps, blend, opacity); }
-    public VexelRayLayer withCenter(Vec3 c)      { return new VexelRayLayer(field, params, csg, c, scale, color, maxSteps, blend, opacity); }
-    public VexelRayLayer withScale(float s)      { return new VexelRayLayer(field, params, csg, center, s, color, maxSteps, blend, opacity); }
-    public VexelRayLayer withColor(Color c)      { return new VexelRayLayer(field, params, csg, center, scale, c, maxSteps, blend, opacity); }
-    public VexelRayLayer withMaxSteps(int n)     { return new VexelRayLayer(field, params, csg, center, scale, color, n, blend, opacity); }
-    public VexelRayLayer withBlend(BlendMode b)  { return new VexelRayLayer(field, params, csg, center, scale, color, maxSteps, b, opacity); }
-    public VexelRayLayer withOpacity(float o)    { return new VexelRayLayer(field, params, csg, center, scale, color, maxSteps, blend, o); }
+    public SdfLayer withParams(float[] p)   { return new SdfLayer(field, p, csg, center, scale, color, maxSteps, blend, opacity); }
+    public SdfLayer withCenter(Vec3 c)      { return new SdfLayer(field, params, csg, c, scale, color, maxSteps, blend, opacity); }
+    public SdfLayer withScale(float s)      { return new SdfLayer(field, params, csg, center, s, color, maxSteps, blend, opacity); }
+    public SdfLayer withColor(Color c)      { return new SdfLayer(field, params, csg, center, scale, c, maxSteps, blend, opacity); }
+    public SdfLayer withMaxSteps(int n)     { return new SdfLayer(field, params, csg, center, scale, color, n, blend, opacity); }
+    public SdfLayer withBlend(BlendMode b)  { return new SdfLayer(field, params, csg, center, scale, color, maxSteps, b, opacity); }
+    public SdfLayer withOpacity(float o)    { return new SdfLayer(field, params, csg, center, scale, color, maxSteps, blend, o); }
 }

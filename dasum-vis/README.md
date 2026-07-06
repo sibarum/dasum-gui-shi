@@ -1,6 +1,6 @@
 # dasum-vis
 
-Optional visualization module — 3D scene viewports rendered through OpenGL inside the same `Component` tree as the rest of the GUI. A scene is a list of blend-mode **layers** (points, lines, triangles, images, in-scene text) plus **VexelRay** raymarched signed-distance-field shapes. Built for ML / training visualizations where a worker thread publishes data continuously and the UI just keeps up.
+Optional visualization module — 3D scene viewports rendered through OpenGL inside the same `Component` tree as the rest of the GUI. A scene is a list of blend-mode **layers** (points, lines, triangles, images, in-scene text) plus **SDF** raymarched signed-distance-field shapes. Built for ML / training visualizations where a worker thread publishes data continuously and the UI just keeps up.
 
 ## Why it's its own module
 
@@ -51,20 +51,20 @@ A `SceneSnapshot` holds a `List<Layer>` drawn in order — later layers blend ov
 | `TriangleLayer` | vertex triples + optional per-vertex RGB | the universal fill — bars, heatmap cells, pie wedges, thick polylines |
 | `ImageLayer` | `byte[]` RGBA + world-space quad corners + `smooth` flag | textured quad; same-dimension republish streams via `glTexSubImage2D` (fractals, heatmaps, volume slices) |
 | `TextLayer` | string + world anchor + em height + align + `billboard` | MSDF glyphs in world space; billboards orient in the vertex shader (no re-upload on camera move) |
-| `VexelRayLayer` | a built-in `Field` + params (+ a `CsgBox` op list) | a raymarched signed-distance field — see below |
+| `SdfLayer` | a built-in `Field` + params (+ a `CsgBox` op list) | a raymarched signed-distance field — see below |
 
 Every layer carries a `BlendMode` (`ALPHA`, `ADDITIVE`, `SCREEN`, `MULTIPLY`, `MAX`, `MIN`, `OPAQUE`) and a scalar `opacity`. Commutative modes (`ADDITIVE`/`MAX`/`MIN`) are order-independent — the right choice for translucent 3D, where unsorted `ALPHA` pops as the camera orbits. `MAX` over a colormapped point/voxel layer is maximum-intensity projection. Layers have the standard ownership contract: **don't mutate a published layer's backing arrays** — and GPU upload is skipped per layer whose reference is unchanged between snapshots, so reuse untouched layer instances and replace only what changed.
 
-## VexelRay — raymarched fields
+## SDF — raymarched fields
 
-A `VexelRayLayer` sphere-traces a signed-distance field inside a bounding cube and shades the hit surface (Blinn-Phong + soft shadows + ambient occlusion, camera-anchored key light). The hit writes real `gl_FragDepth`, so the other (uploaded-geometry) layers depth-compose correctly against the computed surface — axis lines pierce a Mandelbulb, text occludes behind it.
+A `SdfLayer` sphere-traces a signed-distance field inside a bounding cube and shades the hit surface (Blinn-Phong + soft shadows + ambient occlusion, camera-anchored key light). The hit writes real `gl_FragDepth`, so the other (uploaded-geometry) layers depth-compose correctly against the computed surface — axis lines pierce a Mandelbulb, text occludes behind it.
 
 This is the fixed-function tier: a built-in `Field` menu, all parameters as uniforms, so **the shader never recompiles** when a shape changes — animate any parameter through the transition system at zero cost.
 
 ```java
 SceneStates.publish(viewport, SceneSnapshot.of(
-    VexelRayLayer.of(VexelRayLayer.Field.MANDELBULB).withMaxSteps(128),
-    VexelRayLayer.csgBoxes(List.of(                       // boolean box program
+    SdfLayer.of(SdfLayer.Field.MANDELBULB).withMaxSteps(128),
+    SdfLayer.csgBoxes(List.of(                       // boolean box program
         new CsgBox(CsgBox.Op.UNION,         center, halfExtents),
         new CsgBox(CsgBox.Op.SMOOTH_UNION,  c2, he2, /*k*/0.1f),
         new CsgBox(CsgBox.Op.SUBTRACT,      c3, he3)
@@ -135,7 +135,7 @@ The renderer wraps its GL work in a `ViewportScope` (try-with-resources: flush t
 
 ## Rendering details
 
-- **Per-layer materials**: `PointMaterial` (point sprites with per-vertex size + round-dot discard), `FlatMaterial` (lines + triangles), `ImageMaterial` (textured quad), `SceneTextMaterial` (world-space MSDF), `VexelRayMaterial` (the sphere tracer). One program each, bound per layer.
+- **Per-layer materials**: `PointMaterial` (point sprites with per-vertex size + round-dot discard), `FlatMaterial` (lines + triangles), `ImageMaterial` (textured quad), `SceneTextMaterial` (world-space MSDF), `SdfMaterial` (the sphere tracer). One program each, bound per layer.
 - **Per-(component, layer) GPU cache** (`SceneGlBuffers`) with per-kind slot pooling — a worker streaming fresh layers every frame reuses VAOs/VBOs (and image textures via `glTexSubImage2D`) with no GL object churn.
 - **`glViewport` per rect** then restored, so a small-rect viewport (a thumbnail in a corner) maps NDC to its rect, not the whole framebuffer.
 - **Depth test** in perspective mode; the depth buffer is cleared scissored to the rect so multiple viewports don't fight. Translucent layers test depth but don't write it.
@@ -150,7 +150,7 @@ The layout pass maps each `Component` to one rect per frame, so a single `SceneV
 
 ## Aspirational / later phases
 
-- **VexelRay R2** — a composable `Field` tree (CSG, domain ops, `Mix` morphing, `Iterate`) compiled to GLSL and cached by structure hash; the `CSG_BOXES` op-list and `ALIEN_PLANT` are the fixed-function preview.
+- **Composable field trees** — a `Field` tree (CSG, domain ops, `Mix` morphing, `Iterate`) compiled to GLSL and cached by structure hash on top of `RaymarchLayer`; the `CSG_BOXES` op-list and `ALIEN_PLANT` are the fixed-function preview.
 - **Texture-backed fields** — cubemap heightfields, layered interval shells, voxel grids (3D textures) for arbitrary-topology / dense-tensor manifolds.
 - **Decal cache** — forward-splat cached surface points (position + gradient surfels) and march only disocclusions, for a large interaction speedup on heavy fields.
 - **Chart / fractal / tensor wrappers** — app-facing facades built on the layer model.
@@ -161,7 +161,7 @@ The layout pass maps each `Component` to one rect per frame, so a single `SceneV
 ```
 dasum-vis/
 ├── math/      — Vec3, Vec4, CameraMode, CameraSpec, CameraMath, CameraRig
-├── scene/     — BlendMode, Layer (sealed) + Point/Line/Triangle/Image/Text/VexelRay layers,
+├── scene/     — BlendMode, Layer (sealed) + Point/Line/Triangle/Image/Text/SDF layers,
 │               CsgBox, SceneSnapshot, SceneStates, SceneCompat, InteractionSpec
 ├── pointcloud/— PointCloudSnapshot, PointCloudStates (compat), SceneViewController,
 │               PointHandlers, PointPicker

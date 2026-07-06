@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * A raymarched layer whose surface is defined by a <em>caller-supplied
- * GLSL fragment shader</em>. Where {@link VexelRayLayer} selects from a
+ * GLSL fragment shader</em>. Where {@link SdfLayer} selects from a
  * fixed built-in field menu, {@code RaymarchLayer} hosts arbitrary shader
  * source — so a downstream program that generates GLSL (the codegen
  * project) can render any signed-distance field through dasum-vis without

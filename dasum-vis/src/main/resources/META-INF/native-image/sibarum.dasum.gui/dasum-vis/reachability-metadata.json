@@ -8,8 +8,8 @@
     { "glob": "shaders/image.frag" },
     { "glob": "shaders/scene-text.vert" },
     { "glob": "shaders/scene-text.frag" },
-    { "glob": "shaders/vexelray.vert" },
-    { "glob": "shaders/vexelray.frag" },
+    { "glob": "shaders/sdf.vert" },
+    { "glob": "shaders/sdf.frag" },
     { "glob": "shaders/raymarch.vert" },
     { "glob": "shaders/raymarch_std.frag" }
   ]

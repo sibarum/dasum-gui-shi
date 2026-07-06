@@ -5,7 +5,7 @@ import sibarum.dasum.gui.vis.math.Vec3;
 import java.util.List;
 
 /**
- * One step of a {@link VexelRayLayer.Field#CSG_BOXES} shape program: an
+ * One step of a {@link SdfLayer.Field#CSG_BOXES} shape program: an
  * axis-aligned box combined into the running field by a boolean op. A
  * shape is a sequential left-fold over its op list —
  * {@code d = op(d, box)} — which covers union/subtract/intersect chains
@@ -16,7 +16,7 @@ import java.util.List;
  * <p>Smooth variants use the polynomial smooth-min with blend radius
  * {@code smoothK} (world units) — boxes melt together / carve with
  * fillets instead of hard creases. Layer-level rounding
- * ({@code VexelRayLayer.params()[0]} for CSG_BOXES) additionally rounds
+ * ({@code SdfLayer.params()[0]} for CSG_BOXES) additionally rounds
  * every edge of the final result.
  *
  * <p>The first op in a list should be a UNION (it combines against
@@ -60,7 +60,7 @@ public record CsgBox(Op op, Vec3 center, Vec3 halfExtents, float smoothK) {
 
     /**
      * Pack an op list into the uniform-array layout consumed by the
-     * vexelray shader: {@value #PACKED_FLOATS} floats per op, two vec4s —
+     * SDF shader: {@value #PACKED_FLOATS} floats per op, two vec4s —
      * {@code (center.xyz, opcode)} then {@code (halfExtents.xyz, smoothK)}.
      */
     public static float[] pack(List<CsgBox> ops) {

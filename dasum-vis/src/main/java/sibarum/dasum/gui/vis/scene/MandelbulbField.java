@@ -2,7 +2,7 @@ package sibarum.dasum.gui.vis.scene;
 
 /**
  * CPU Mandelbulb field — a faithful port of {@code sdMandelbulb} in
- * {@code vexelray.frag}, implementing the dual-output
+ * {@code sdf.frag}, implementing the dual-output
  * {@link ComplexityField} contract: the triplex distance estimate, and
  * the normalized escape-iteration count as the view-independent
  * complexity signal that drives surface-probe density.
