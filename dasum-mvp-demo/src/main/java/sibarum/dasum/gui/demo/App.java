@@ -3,6 +3,7 @@ package sibarum.dasum.gui.demo;
 import sibarum.dasum.gui.core.GlfwContext;
 import sibarum.dasum.gui.core.command.CommandRegistry;
 import sibarum.dasum.gui.core.command.EverythingMenu;
+import sibarum.dasum.gui.core.find.FindBar;
 import sibarum.dasum.gui.core.dialog.FileDialog;
 import sibarum.dasum.gui.core.component.AlignItems;
 import sibarum.dasum.gui.core.component.Component;
@@ -237,6 +238,12 @@ public final class App {
                 AtlasData iconsAtlas   = AtlasData.loadFromResource("/dasum/atlas/icons.json");
                 FontGroups.register(FontGroup.of(FontGroups.DEFAULT, primaryAtlas, primaryTexture));
                 FontGroups.register(FontGroup.of(Icon.DEFAULT_FONT_GROUP, iconsAtlas, iconsTexture));
+
+                // Give the global Find bar (Ctrl+F) proper lucide glyphs — core
+                // ships no icons of its own, so the app supplies them.
+                FindBar.configureIcons(new FindBar.IconSpec(
+                    Icon.DEFAULT_FONT_GROUP,
+                    Icons.CHEVRON_UP, Icons.CHEVRON_DOWN, Icons.X, Icons.SEARCH));
 
                 Component root = buildUi();
                 // Dev-mode structural lint: surface collapse/overlap/overflow
@@ -2491,6 +2498,17 @@ public final class App {
                 return;
             }
 
+            // Ctrl+F opens the Find bar for the focused selectable text area.
+            // Guarded on focus so it only fires where there's something to
+            // search; FindBar.open is itself a no-op otherwise.
+            if (ctrl && key == 'F' && !FindBar.isOpen()) {
+                Component f = FocusState.focused();
+                if (f instanceof Component.Text t && t.selectable()) {
+                    FindBar.open();
+                    return;
+                }
+            }
+
             // Context menu (if open) intercepts arrows / Enter / Escape so
             // they don't fall through to focused widgets behind the popup.
             if (ContextMenuController.handleKey(key)) return;
@@ -2498,6 +2516,11 @@ public final class App {
             // Up/Down/Enter route through the menu's key handler before any
             // text-input handler so they don't move the query caret.
             if (EverythingMenu.handleKey(key)) return;
+
+            // Find bar (if open) consumes Enter / Shift+Enter / Up / Down for
+            // next/prev-match navigation before the text-input handlers so
+            // Enter doesn't insert a newline and arrows don't move the caret.
+            if (FindBar.handleKey(key, shift)) return;
 
             // Clipboard shortcuts run first so they're not intercepted by other handlers.
             // GLFW key codes for letters match ASCII uppercase ('A'..'Z' = 65..90).

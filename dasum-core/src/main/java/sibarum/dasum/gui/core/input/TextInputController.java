@@ -418,6 +418,25 @@ public final class TextInputController {
      * grows the rect on the next frame; the worst case is a one-frame lag
      * before the scroll catches up.
      */
+    /**
+     * Programmatically set {@code text}'s selection to the half-open range
+     * {@code [start, end)} — anchor at {@code start}, caret at {@code end} —
+     * clamped to the live content, then scroll the caret into view and
+     * invalidate. Used by external features (e.g. the Find bar) that drive a
+     * text area they don't have focus on: the selection fill marks the range
+     * and {@link #scrollCaretIntoView} reveals it inside any enclosing Scroll.
+     */
+    public static void selectRange(Component.Text text, int start, int end) {
+        if (text == null) return;
+        int len = TextStates.contentOf(text).length();
+        TextState ts = TextStates.of(text);
+        ts.selectionAnchor = Math.max(0, Math.min(start, len));
+        ts.caretIndex      = Math.max(0, Math.min(end,   len));
+        ts.lastVisualX     = -1f;
+        scrollCaretIntoView(text);
+        Invalidator.invalidate();
+    }
+
     static void scrollCaretIntoView(Component.Text text) {
         Component root = LatestLayout.root();
         LayoutResult lr = LatestLayout.result();

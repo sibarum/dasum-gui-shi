@@ -124,11 +124,25 @@ public final class WheelRouter {
      */
     public static void dispatch(double xOff, double yOff) {
         LayoutResult lr = LatestLayout.result();
-        Component root = OverlayStack.activeInputRoot(LatestLayout.root());
+        Component mainRoot = LatestLayout.root();
+        Component root = OverlayStack.activeInputRoot(mainRoot);
         if (lr == null || root == null) return;
 
         double mx = InputState.mouseX();
         double my = InputState.mouseY();
+
+        // A non-modal overlay (e.g. the Find bar) doesn't block the content
+        // behind it. When the cursor is outside the topmost non-modal overlay,
+        // route the wheel to the main UI so its scroll containers still
+        // respond — otherwise the overlay would silently swallow every notch.
+        // Modal overlays keep capturing (they draw a backdrop and block input).
+        OverlayStack.Overlay top = OverlayStack.topmost();
+        if (top != null && !top.modal()
+                && OverlayStack.isOutsideTopmost(lr, (float) mx, (float) my)
+                && mainRoot != null) {
+            root = mainRoot;
+        }
+
         boolean shift = shiftDown();
         Component hit = HitTest.test(root, lr, (float) mx, (float) my);
 
