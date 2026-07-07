@@ -35,4 +35,20 @@ final class SceneViewControllerTest {
         assertEquals(once.x(), twice.x(), 1e-5f);
         assertEquals(once.y(), twice.y(), 1e-5f);
     }
+
+    @Test
+    void clampAxisPinsVisibleSpanInsideContent() {
+        // Content [0, 10], visible half-span 2 ⇒ target confined to [2, 8].
+        assertEquals(2f, SceneViewController.clampAxis(-5f, 2f, 0f, 10f), 1e-6f);  // pushed to low edge
+        assertEquals(8f, SceneViewController.clampAxis(50f, 2f, 0f, 10f), 1e-6f);  // pushed to high edge
+        assertEquals(5f, SceneViewController.clampAxis(5f, 2f, 0f, 10f), 1e-6f);   // interior untouched
+    }
+
+    @Test
+    void clampAxisCentersWhenContentNarrowerThanViewport() {
+        // Visible half-span 8 exceeds the content's half-width 5 ⇒ centre on content,
+        // regardless of where the pan tried to go.
+        assertEquals(5f, SceneViewController.clampAxis(-100f, 8f, 0f, 10f), 1e-6f);
+        assertEquals(5f, SceneViewController.clampAxis(100f, 8f, 0f, 10f), 1e-6f);
+    }
 }

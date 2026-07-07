@@ -219,6 +219,6 @@ final class SceneModelTest {
         assertThrows(IllegalArgumentException.class, () -> d.withZoomRange(2f, 1f));
         assertThrows(IllegalArgumentException.class, () -> d.withPitchClamp(0f));
         assertThrows(IllegalArgumentException.class,
-            () -> new InteractionSpec(null, 1f, 2f, 1f));
+            () -> new InteractionSpec(null, 1f, 2f, 1f, null));
     }
 }

@@ -124,6 +124,9 @@ public final class SceneViewController {
                 t.y() + dy * worldPerPixel,  // screen-Y-down, world-Y-up
                 t.z()
             );
+            // Fence the pan to the content rect (PAN_ZOOM_2D with panBounds set)
+            // so the plot can't be dragged off into empty space.
+            t2 = clampTarget(pressed, cam, spec, t2);
             SceneStates.setCamera(pressed, cam.withTarget(t2));
         }
     }
@@ -228,6 +231,9 @@ public final class SceneViewController {
                 float wx = t.x() + (cx - (rect.x() + rect.width()  * 0.5f)) * worldPerPixel;
                 float wy = t.y() - (cy - (rect.y() + rect.height() * 0.5f)) * worldPerPixel;
                 Vec3 t2 = anchoredZoomTarget(t, wx, wy, s2 / s1);
+                // Re-fence after the zoom: zooming out near an edge would
+                // otherwise reveal empty space beyond the content rect.
+                t2 = clampTarget(pc, cam.withOrthoScale(s2), spec, t2);
                 SceneStates.setCamera(pc, cam.withOrthoScale(s2).withTarget(t2));
                 return true;
             }
@@ -252,6 +258,37 @@ public final class SceneViewController {
 
     private static float clamp(float v, float min, float max) {
         return Math.max(min, Math.min(max, v));
+    }
+
+    /**
+     * Confine an ortho pan/zoom target to the spec's {@link InteractionSpec.PanBounds},
+     * so the visible world rectangle stays within the content rect. No-op unless the
+     * spec is PAN_ZOOM_2D with pan bounds set and the viewport rect is known.
+     */
+    private static Vec3 clampTarget(Component.SceneView pc, CameraSpec cam,
+                                    InteractionSpec spec, Vec3 target) {
+        if (spec.mode() != InteractionSpec.Mode.PAN_ZOOM_2D || spec.panBounds() == null) return target;
+        PixelRect r = rectOf(pc);
+        if (r == null || r.height() <= 0f || r.width() <= 0f) return target;
+        float halfH = cam.orthoScale();
+        float halfW = cam.orthoScale() * (r.width() / r.height());
+        InteractionSpec.PanBounds b = spec.panBounds();
+        return new Vec3(
+            clampAxis(target.x(), halfW, b.minX(), b.maxX()),
+            clampAxis(target.y(), halfH, b.minY(), b.maxY()),
+            target.z()
+        );
+    }
+
+    /**
+     * Clamp one axis of the camera target so the visible span {@code [c-half, c+half]}
+     * stays inside {@code [lo, hi]}. When the content is narrower than the viewport
+     * ({@code hi-lo <= 2*half}) it can't be contained, so centre it on the content
+     * instead of jittering against a crossed clamp. Package-visible for testing.
+     */
+    static float clampAxis(float c, float half, float lo, float hi) {
+        if (hi - lo <= 2f * half) return (lo + hi) * 0.5f;
+        return Math.max(lo + half, Math.min(hi - half, c));
     }
 
     private static PixelRect rectOf(Component.SceneView pc) {

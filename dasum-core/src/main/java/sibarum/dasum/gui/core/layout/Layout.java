@@ -656,8 +656,15 @@ public final class Layout {
             float childMain  = mainSize[i];
             float childCross = intrinsicCross(child, row);
 
+            // A viewport with no explicit cross-axis size means "fill the parent"
+            // — the same null→fill rule resolveRect applies to a root viewport,
+            // extended to a flex child. Without this a plot dropped into a
+            // CENTER-aligned column (window's auto-wrapper) collapses to its zero
+            // intrinsic width instead of spanning the line.
+            boolean fillCross = childCross == 0f && fillsCrossAxis(child, row);
+
             float crossOffset;
-            if (flex.align() == AlignItems.STRETCH) {
+            if (flex.align() == AlignItems.STRETCH || fillCross) {
                 childCross = lineCross;
                 crossOffset = 0f;
             } else {
@@ -731,6 +738,20 @@ public final class Layout {
                 Em e = row ? dt.width() : dt.height();
                 yield e != null ? e.toPixels() : 0f;
             }
+        };
+    }
+
+    /**
+     * A viewport ({@link Component.SceneView}/{@link Component.GraphSurface}) with no
+     * explicit cross-axis size fills its parent on the cross axis, mirroring the
+     * null→fill rule {@code resolveRect} gives a root viewport. Other components fall
+     * back to align-items positioning.
+     */
+    private static boolean fillsCrossAxis(Component c, boolean row) {
+        return switch (c) {
+            case Component.SceneView pc    -> (row ? pc.height() : pc.width()) == null;
+            case Component.GraphSurface cv -> (row ? cv.height() : cv.width()) == null;
+            default -> false;
         };
     }
 
