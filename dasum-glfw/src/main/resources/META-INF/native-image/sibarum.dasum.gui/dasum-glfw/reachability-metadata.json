@@ -1,5 +1,7 @@
 {
   "resources": [
-    { "glob": "natives/windows-x64/glfw3.dll" }
+    { "glob": "natives/windows-x64/glfw3.dll" },
+    { "glob": "natives/macos-aarch64/libglfw3.dylib" },
+    { "glob": "natives/macos-x64/libglfw3.dylib" }
   ]
 }

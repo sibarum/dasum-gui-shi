@@ -139,6 +139,17 @@ public class GenerateAtlasMojo extends AbstractMojo {
                     "). Switch to the default primary profile to regenerate, or commit the atlas.");
             }
             getLog().info("Atlas '" + cfg.name + "' (prebuilt): " + pngOut.getName() + " + " + jsonOut.getName());
+            // An icon atlas also emits a generated Java constants class. That class is derived
+            // purely from the manifest + glyph list (see resolveIconSelection / IconsCodegen),
+            // NOT from msdf-atlas-gen, so it must still be produced in prebuilt mode — otherwise
+            // application code referencing the Icons constants (e.g. the Pontif editor) won't
+            // compile on platforms that consume the committed atlas instead of regenerating it.
+            if (cfg.icons != null) {
+                Map<String, Integer> selectedIcons = resolveIconSelection(cfg);
+                File java = IconsCodegen.generate(cfg.icons, selectedIcons, cfg.icons.manifestFormat);
+                getLog().info("Icons class generated: " + java + " (" + selectedIcons.size() + " constants)");
+                registerGeneratedSourceRoot(cfg.icons);
+            }
             return;
         }
 
