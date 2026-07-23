@@ -31,6 +31,13 @@ import sibarum.dasum.gui.vis.math.Vec3;
  * @param billboard   face the camera instead of lying in the XY plane
  * @param blend       fixed-function blend mode for this layer
  * @param opacity     uniform layer opacity in [0, 1]
+ * @param outlineColor colour of the outline/corona band around each glyph
+ *                     (alpha multiplies with {@code opacity}); ignored when
+ *                     {@code outlineWidth == 0}
+ * @param outlineWidth outline half-width in <b>screen pixels</b> — a dark
+ *                     corona keeps a label legible over busy geometry.
+ *                     {@code 0} (the default) draws no outline and leaves the
+ *                     plain-glyph path byte-for-byte unchanged
  */
 public record TextLayer(
     String text,
@@ -41,7 +48,9 @@ public record TextLayer(
     HAlign align,
     boolean billboard,
     BlendMode blend,
-    float opacity
+    float opacity,
+    Color outlineColor,
+    float outlineWidth
 ) implements Layer {
 
     public enum HAlign { LEFT, CENTER, RIGHT }
@@ -55,17 +64,30 @@ public record TextLayer(
         if (align == null) throw new IllegalArgumentException("align != null");
         if (blend == null) throw new IllegalArgumentException("blend != null");
         if (opacity < 0f || opacity > 1f) throw new IllegalArgumentException("opacity in [0, 1]");
+        if (outlineColor == null) throw new IllegalArgumentException("outlineColor != null");
+        if (outlineWidth < 0f) throw new IllegalArgumentException("outlineWidth >= 0");
     }
 
-    /** Convenience: default font group, CENTER, non-billboard, ALPHA, full opacity. */
+    /** Convenience: default font group, CENTER, non-billboard, ALPHA, full opacity, no outline. */
     public TextLayer(String text, Vec3 anchor, float heightWorld, Color color) {
         this(text, FontGroups.DEFAULT, anchor, heightWorld, color,
              HAlign.CENTER, false, BlendMode.ALPHA, 1f);
     }
 
-    public TextLayer withAlign(HAlign a)       { return new TextLayer(text, fontGroup, anchor, heightWorld, color, a, billboard, blend, opacity); }
-    public TextLayer withBillboard(boolean b)  { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, b, blend, opacity); }
-    public TextLayer withFontGroup(String g)   { return new TextLayer(text, g, anchor, heightWorld, color, align, billboard, blend, opacity); }
-    public TextLayer withBlend(BlendMode b)    { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, b, opacity); }
-    public TextLayer withOpacity(float o)      { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, blend, o); }
+    /** Back-compat: the pre-outline full constructor (no outline). */
+    public TextLayer(String text, String fontGroup, Vec3 anchor, float heightWorld, Color color,
+                     HAlign align, boolean billboard, BlendMode blend, float opacity) {
+        this(text, fontGroup, anchor, heightWorld, color, align, billboard, blend, opacity,
+             Color.TRANSPARENT, 0f);
+    }
+
+    public TextLayer withAlign(HAlign a)       { return new TextLayer(text, fontGroup, anchor, heightWorld, color, a, billboard, blend, opacity, outlineColor, outlineWidth); }
+    public TextLayer withBillboard(boolean b)  { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, b, blend, opacity, outlineColor, outlineWidth); }
+    public TextLayer withFontGroup(String g)   { return new TextLayer(text, g, anchor, heightWorld, color, align, billboard, blend, opacity, outlineColor, outlineWidth); }
+    public TextLayer withBlend(BlendMode b)    { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, b, opacity, outlineColor, outlineWidth); }
+    public TextLayer withOpacity(float o)      { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, blend, o, outlineColor, outlineWidth); }
+
+    /** A dark (or coloured) corona around the glyphs, {@code width} screen pixels wide, so the label
+     *  stays legible over busy geometry. {@code width <= 0} clears it. */
+    public TextLayer withOutline(Color c, float width) { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, blend, opacity, c, width); }
 }

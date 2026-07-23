@@ -72,6 +72,8 @@ public final class Glfw {
     public static final int GLFW_VISIBLE               = 0x00020004;
     public static final int GLFW_RESIZABLE             = 0x00020003;
     public static final int GLFW_MAXIMIZED             = 0x00020008;
+    /** Requested MSAA sample count for the window's default framebuffer (0 = none). */
+    public static final int GLFW_SAMPLES               = 0x0002100D;
 
     public static final int GLFW_OPENGL_CORE_PROFILE = 0x00032001;
 

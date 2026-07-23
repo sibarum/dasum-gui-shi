@@ -198,7 +198,8 @@ public final class SceneRenderer implements AutoCloseable {
                             : CameraMath.IDENTITY_BASIS;
                         sceneTextMaterial.bind(scratchMvp,
                             txt.anchor().x(), txt.anchor().y(), txt.anchor().z(),
-                            basis, txt.color(), txt.opacity(), fgrp.distanceRange());
+                            basis, txt.color(), txt.opacity(), fgrp.distanceRange(),
+                            txt.outlineColor(), txt.outlineWidth());
                         // Labels read ON TOP of geometry — a depth-occluded label is unreadable,
                         // and billboard text already faces the viewer. Disable the depth test for
                         // just this draw (perspective only; ortho never enabled it).

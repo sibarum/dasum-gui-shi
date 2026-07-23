@@ -2,6 +2,7 @@ package sibarum.dasum.gui.core.window;
 
 import sibarum.dasum.gui.core.event.Invalidator;
 import sibarum.dasum.gui.core.input.wheel.WheelRouter;
+import sibarum.dasum.gui.natives.gl.Gl;
 import sibarum.dasum.gui.natives.glfw.Glfw;
 import sibarum.dasum.gui.natives.glfw.GlfwCallbacks;
 
@@ -13,10 +14,14 @@ import static sibarum.dasum.gui.natives.glfw.Glfw.GLFW_OPENGL_CORE_PROFILE;
 import static sibarum.dasum.gui.natives.glfw.Glfw.GLFW_OPENGL_FORWARD_COMPAT;
 import static sibarum.dasum.gui.natives.glfw.Glfw.GLFW_OPENGL_PROFILE;
 import static sibarum.dasum.gui.natives.glfw.Glfw.GLFW_RESIZABLE;
+import static sibarum.dasum.gui.natives.glfw.Glfw.GLFW_SAMPLES;
 import static sibarum.dasum.gui.natives.glfw.Glfw.GLFW_TRUE;
 import static sibarum.dasum.gui.natives.glfw.Glfw.GLFW_VISIBLE;
 
 public final class Window implements AutoCloseable {
+
+    /** MSAA sample count requested for every window's default framebuffer. */
+    private static final int MSAA_SAMPLES = 4;
 
     private final MemorySegment handle;
     private int framebufferWidth;
@@ -39,6 +44,10 @@ public final class Window implements AutoCloseable {
         Glfw.glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
         Glfw.glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
         Glfw.glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+        // Request a 4x multisampled default framebuffer so lines, triangle edges, and glyph
+        // silhouettes are anti-aliased everywhere (enabled below via GL_MULTISAMPLE). Drivers that
+        // can't honor it fall back to a single-sample framebuffer — MSAA then quietly does nothing.
+        Glfw.glfwWindowHint(GLFW_SAMPLES, MSAA_SAMPLES);
 
         MemorySegment handle = Glfw.glfwCreateWindow(width, height, title);
         if (handle == null || handle.address() == 0L) {
@@ -47,6 +56,9 @@ public final class Window implements AutoCloseable {
 
         Glfw.glfwMakeContextCurrent(handle);
         Glfw.glfwSwapInterval(1);
+        // Coverage MSAA for the multisampled default framebuffer requested above. Harmless when the
+        // framebuffer ended up single-sampled (the enable is a no-op then).
+        Gl.glEnable(Gl.GL_MULTISAMPLE);
 
         int[] fb = Glfw.glfwGetFramebufferSize(handle);
         float[] scale = Glfw.glfwGetWindowContentScale(handle);

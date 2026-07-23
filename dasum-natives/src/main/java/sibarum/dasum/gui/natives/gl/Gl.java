@@ -42,6 +42,8 @@ public final class Gl {
     public static final int GL_SCISSOR_TEST         = 0x0C11;
     public static final int GL_DEPTH_TEST           = 0x0B71;
     public static final int GL_PROGRAM_POINT_SIZE   = 0x8642;
+    /** Enable coverage-based MSAA when the framebuffer is multisampled. */
+    public static final int GL_MULTISAMPLE          = 0x809D;
     public static final int GL_SRC_ALPHA            = 0x0302;
     public static final int GL_ONE_MINUS_SRC_ALPHA  = 0x0303;
     public static final int GL_ZERO                 = 0;

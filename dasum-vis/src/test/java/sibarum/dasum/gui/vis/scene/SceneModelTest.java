@@ -4,7 +4,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import sibarum.dasum.gui.core.render.Color;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -122,10 +125,27 @@ final class SceneModelTest {
         assertEquals(true, t.withBillboard(true).billboard());
         assertEquals(TextLayer.HAlign.RIGHT, t.withAlign(TextLayer.HAlign.RIGHT).align());
 
+        // Outline defaults to none (width 0), so the plain-glyph path is unchanged; the back-compat
+        // 9-arg constructor likewise carries no outline.
+        assertEquals(0f, t.outlineWidth());
+        assertNotNull(t.outlineColor());
+        TextLayer legacy = new TextLayer("hi", "default", a, 0.5f, white,
+            TextLayer.HAlign.LEFT, false, BlendMode.ALPHA, 1f);
+        assertEquals(0f, legacy.outlineWidth());
+
+        // withOutline sets a corona; opacity/other fields are preserved.
+        Color dark = new Color(0f, 0f, 0f, 1f);
+        TextLayer outlined = t.withOutline(dark, 2.5f);
+        assertEquals(2.5f, outlined.outlineWidth());
+        assertEquals(dark, outlined.outlineColor());
+        assertEquals(t.color(), outlined.color());
+
         assertThrows(IllegalArgumentException.class, () -> new TextLayer(null, a, 0.5f, white));
         assertThrows(IllegalArgumentException.class, () -> new TextLayer("x", a, 0f, white));
         assertThrows(IllegalArgumentException.class, () -> new TextLayer("x", null, 0.5f, white));
         assertThrows(IllegalArgumentException.class, () -> new TextLayer("x", a, 0.5f, null));
+        assertThrows(IllegalArgumentException.class, () -> t.withOutline(null, 1f));
+        assertThrows(IllegalArgumentException.class, () -> t.withOutline(dark, -1f));
     }
 
     @Test
