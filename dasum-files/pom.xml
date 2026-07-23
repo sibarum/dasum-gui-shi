@@ -78,6 +78,24 @@
                             <pxRange>4</pxRange>
                         </atlas>
                         <atlas>
+                            <!-- STIX Two Math (OFL) for the math typesetter: italic latin math
+                                 alphanumerics, Greek, blackboard, operators, radical, delimiters,
+                                 arrows. Glyphs are selected by their true Unicode math codepoints. -->
+                            <name>math</name>
+                            <font>${project.basedir}/fonts/STIX/STIXTwoMath.ttf</font>
+                            <charset>[0x20, 0x7E]
+[0x00A0, 0x00FF]
+[0x0391, 0x03C9]
+[0x2102, 0x2102],[0x210D, 0x210D],[0x210E, 0x210E],[0x2115, 0x2115],[0x2119, 0x2119],[0x211A, 0x211A],[0x211D, 0x211D],[0x2124, 0x2124]
+[0x2190, 0x21FF]
+[0x2200, 0x22FF]
+[0x27E8, 0x27E9]
+[0x1D434, 0x1D467]</charset>
+                            <atlasSize>1024</atlasSize>
+                            <fontSize>32</fontSize>
+                            <pxRange>4</pxRange>
+                        </atlas>
+                        <atlas>
                             <name>icons</name>
                             <font>${project.basedir}/fonts/lucide/lucide.ttf</font>
                             <atlasSize>512</atlasSize>
