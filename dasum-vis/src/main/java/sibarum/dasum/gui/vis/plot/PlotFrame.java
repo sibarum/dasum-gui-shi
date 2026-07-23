@@ -47,6 +47,11 @@ public record PlotFrame(float wx0, float wy0, float wx1, float wy1, Axis x, Axis
     /** Upper-right world corner (z = 0) — for camera framing. */
     public Vec3 worldMax() { return new Vec3(wx1, wy1, 0f); }
 
+    /** The dark corona drawn around tick labels (screen px + colour) for legibility over gridlines
+     *  and the curve — matches the annotation-label outline so all plot text reads consistently. */
+    private static final float LABEL_OUTLINE_PX = 2.2f;
+    private static final Color LABEL_OUTLINE = new Color(0.03f, 0.04f, 0.06f, 0.9f);
+
     /**
      * Build the frame chrome — border, optional gridlines, and tick labels —
      * in painter's order (grid, then border, then labels). Layers reuse the
@@ -80,20 +85,23 @@ public record PlotFrame(float wx0, float wy0, float wx1, float wy1, Axis x, Axis
         addSegment(border, wx0, wy1, wx0, wy0);
         layers.add(new LineLayer(toArray(border), uniform(style.axisColor(), border.size())));
 
-        // Tick labels — one TextLayer per label.
+        // Tick labels — one TextLayer per label, each with a dark corona (outline) so the digits
+        // stay legible where a gridline or the curve crosses them, without a solid background plate.
         float h = style.labelHeightWorld();
         float gap = h * 0.5f;
         for (int i = 0; i < xt.count(); i++) {
             float wx = worldX(xt.values()[i]);
             layers.add(new TextLayer(xt.labels()[i],
                 new Vec3(wx, wy0 - gap - h, 0f), h, style.labelColor())
-                .withAlign(TextLayer.HAlign.CENTER));
+                .withAlign(TextLayer.HAlign.CENTER)
+                .withOutline(LABEL_OUTLINE, LABEL_OUTLINE_PX));
         }
         for (int i = 0; i < yt.count(); i++) {
             float wy = worldY(yt.values()[i]);
             layers.add(new TextLayer(yt.labels()[i],
                 new Vec3(wx0 - gap, wy - h * 0.35f, 0f), h, style.labelColor())
-                .withAlign(TextLayer.HAlign.RIGHT));
+                .withAlign(TextLayer.HAlign.RIGHT)
+                .withOutline(LABEL_OUTLINE, LABEL_OUTLINE_PX));
         }
         return layers;
     }
