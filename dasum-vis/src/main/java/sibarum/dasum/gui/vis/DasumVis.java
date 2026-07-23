@@ -3,6 +3,7 @@ package sibarum.dasum.gui.vis;
 import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.component.Components;
 import sibarum.dasum.gui.core.render.CustomRenderers;
+import sibarum.dasum.gui.natives.gl.Gl;
 import sibarum.dasum.gui.vis.pointcloud.PointCloudStates;
 import sibarum.dasum.gui.vis.pointcloud.PointHandlers;
 import sibarum.dasum.gui.vis.render.SceneRenderer;
@@ -36,6 +37,10 @@ public final class DasumVis implements AutoCloseable {
      */
     public static synchronized DasumVis init() {
         if (instance != null) return instance;
+        // Coverage MSAA on the (multisampled) default framebuffer — anti-aliases scene lines, edges,
+        // and glyph silhouettes. Enabled here rather than at window creation because the GL function
+        // handles are only bound once the app has called Gl.load(), which this init() requires.
+        Gl.glEnable(Gl.GL_MULTISAMPLE);
         DasumVis v = new DasumVis();
         v.renderer.init();
         CustomRenderers.register(Component.SceneView.class, v.renderer.asRenderer());

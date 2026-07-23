@@ -2,7 +2,6 @@ package sibarum.dasum.gui.core.window;
 
 import sibarum.dasum.gui.core.event.Invalidator;
 import sibarum.dasum.gui.core.input.wheel.WheelRouter;
-import sibarum.dasum.gui.natives.gl.Gl;
 import sibarum.dasum.gui.natives.glfw.Glfw;
 import sibarum.dasum.gui.natives.glfw.GlfwCallbacks;
 
@@ -56,9 +55,9 @@ public final class Window implements AutoCloseable {
 
         Glfw.glfwMakeContextCurrent(handle);
         Glfw.glfwSwapInterval(1);
-        // Coverage MSAA for the multisampled default framebuffer requested above. Harmless when the
-        // framebuffer ended up single-sampled (the enable is a no-op then).
-        Gl.glEnable(Gl.GL_MULTISAMPLE);
+        // The GLFW_SAMPLES hint above gives a multisampled default framebuffer; GL multisampling is
+        // enabled by default (GL spec), so coverage MSAA is active with no glEnable here — which
+        // matters because the GL function handles aren't bound until the app calls Gl.load() later.
 
         int[] fb = Glfw.glfwGetFramebufferSize(handle);
         float[] scale = Glfw.glfwGetWindowContentScale(handle);
