@@ -5,6 +5,9 @@ import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.component.Direction;
 import sibarum.dasum.gui.core.component.JustifyContent;
 import sibarum.dasum.gui.core.em.Em;
+import sibarum.dasum.gui.core.layout.Layout;
+import sibarum.dasum.gui.core.layout.LayoutResult;
+import sibarum.dasum.gui.core.layout.PixelRect;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,11 +28,58 @@ public final class LayoutLint {
 
     private LayoutLint() {}
 
+    /** A reference viewport for the geometry pass. Collapse (a zero-size result) is size-independent,
+     *  so any large rect exposes it. */
+    private static final PixelRect LINT_VIEWPORT = new PixelRect(0f, 0f, 1280f, 800f);
+
     /** Collect all diagnostics for the tree rooted at {@code root}. */
     public static List<Diagnostic> check(Component root) {
         List<Diagnostic> out = new ArrayList<>();
-        if (root != null) walk(root, null, "", 0, out);
+        if (root != null) {
+            walk(root, null, "", 0, out);
+            geometryRules(root, out);
+        }
         return out;
+    }
+
+    /**
+     * The geometry pass: actually LAY THE TREE OUT once (at a reference size) and flag any content
+     * viewport ({@link Component.SceneView} / {@link Component.GraphSurface}) that computes to a
+     * zero-area rect — it will render blank. This catches collapses the structural rules miss (e.g. a
+     * fill scene whose ancestor {@code Flex} doesn't propagate cross-fill — the plot-in-a-column trap),
+     * regardless of the grow/align combination that caused it. If the tree can't be laid out here
+     * (e.g. Text without a registered font in a bare unit test), the pass is skipped rather than
+     * throwing — it is a lint, not a hard dependency on a render context.
+     */
+    private static void geometryRules(Component root, List<Diagnostic> out) {
+        LayoutResult layout;
+        try {
+            layout = Layout.compute(root, LINT_VIEWPORT);
+        } catch (Throwable notLayableHere) {
+            return;
+        }
+        geometryWalk(root, "", 0, layout, out);
+    }
+
+    private static void geometryWalk(Component node, String parentPath, int index,
+                                     LayoutResult layout, List<Diagnostic> out) {
+        String path = parentPath.isEmpty()
+            ? descriptor(node, index)
+            : parentPath + " > " + descriptor(node, index);
+        if (node instanceof Component.SceneView || node instanceof Component.GraphSurface) {
+            PixelRect r = layout.rectOf(node);
+            boolean collapsed = r == null || r.width() < 1f || r.height() < 1f;
+            if (collapsed) {
+                String size = r == null ? "no rect" : trim(r.width()) + "x" + trim(r.height()) + " px";
+                out.add(new Diagnostic(Diagnostic.Severity.ERROR, path, "collapsed-render",
+                    typeName(node) + " lays out to " + size + " - it will render blank",
+                    "a scene fills its slot: place it as a direct child of a filling/stretching "
+                        + "parent (Ui.sceneView() defaults to fill+grow), or give the wrapping Flex "
+                        + ".fill()/.grow() and align=STRETCH so the fill can resolve"));
+            }
+        }
+        List<Component> kids = declaredChildren(node);
+        for (int i = 0; i < kids.size(); i++) geometryWalk(kids.get(i), path, i, layout, out);
     }
 
     private static void walk(Component node, Component parent, String parentPath,

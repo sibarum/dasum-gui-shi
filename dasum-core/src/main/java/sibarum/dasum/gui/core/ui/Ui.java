@@ -46,6 +46,10 @@ public final class Ui {
     public static ScrollBuilder scroll(UiBuilder child) { return new ScrollBuilder(child.build()); }
     /** A themed button; terminate with {@code .onClick(...)} to wire it. */
     public static ButtonBuilder button(String label) { return new ButtonBuilder(label); }
+    /** A scene viewport (plot / cloud / 3D). Defaults to fill + grow + interactive — a scene has no
+     *  intrinsic size, so filling its slot is the correct default (raw {@code new SceneView(null,…)}
+     *  collapses as a plain child). */
+    public static SceneViewBuilder sceneView() { return new SceneViewBuilder(); }
 
     // ---- common pattern helpers ----
 
