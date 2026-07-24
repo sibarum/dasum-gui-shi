@@ -24,16 +24,20 @@ import java.util.List;
  * @param curves      the drawn curves, each one CONTINUOUS series
  * @param asymptotes  vertical asymptotes (a data-x and its display label)
  * @param features    marked features (zeros, local optima, intersections)
- * @param enclosure   the reliable interval-enclosure band, or {@code null} when not supplied — the
- *                    provably-contains-the-curve region a reliable plot can honestly shade
+ * @param enclosures  the reliable interval-enclosure bands — one per reliably-plotted expression, in
+ *                    curve order (empty when none supplied). Each is the provably-contains-the-curve
+ *                    region a reliable plot can honestly shade; multiple auto-plots contribute one each.
  */
 public record PlotScene2D(
     PlotFrame frame,
     List<Series> curves,
     List<Asymptote> asymptotes,
     List<Feature> features,
-    EnclosureBand enclosure
+    List<EnclosureBand> enclosures
 ) {
+    public PlotScene2D {
+        enclosures = enclosures == null ? List.of() : enclosures;
+    }
 
     /** A vertical asymptote at data-x {@code x}, labelled {@code label} (e.g. {@code "x=0.385"}). */
     public record Asymptote(double x, String label) {}

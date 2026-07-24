@@ -26,7 +26,7 @@ class SvgPlotWriterTest {
             new PlotScene2D.Feature(PlotScene2D.FeatureKind.OPTIMUM, -1.0, 2.0, "(-1, 2)"));
         var band = new PlotScene2D.EnclosureBand(
             new double[]{-2, -1, 0}, new double[]{-2.6, -1.1, 0.4}, new double[]{-2.4, -0.9, 0.6});
-        return new PlotScene2D(frame, curves, asymptotes, features, band);
+        return new PlotScene2D(frame, curves, asymptotes, features, List.of(band));
     }
 
     @Test
@@ -60,12 +60,29 @@ class SvgPlotWriterTest {
     }
 
     @Test
+    void export_emitsOneEnclosureBandPerReliablePlot() {
+        // Two reliably-plotted expressions → two enclosure bands, each indexed by data-band so a
+        // host can target them independently.
+        PlotFrame frame = new PlotFrame(0f, 0f, 10f, 5.5f, Axis.linear(-2, 2), Axis.linear(-3, 3));
+        var b0 = new PlotScene2D.EnclosureBand(
+            new double[]{-2, -1, 0}, new double[]{-2.6, -1.1, 0.4}, new double[]{-2.4, -0.9, 0.6});
+        var b1 = new PlotScene2D.EnclosureBand(
+            new double[]{0, 1, 2}, new double[]{0.4, 0.9, 1.4}, new double[]{0.6, 1.1, 1.6});
+        var scene = new PlotScene2D(frame,
+            List.of(Series.line(new double[]{-2, 2}, new double[]{-2, 2}, Color.WHITE)),
+            List.of(), List.of(), List.of(b0, b1));
+        String svg = SvgPlotWriter.write(scene, 900, 550);
+        assertTrue(svg.contains("data-band=\"0\"") && svg.contains("data-band=\"1\""),
+            "one classed, indexed enclosure band per reliable plot:\n" + svg);
+    }
+
+    @Test
     void export_omitsOptionalLayersCleanly() {
         // No asymptotes / features / enclosure → those groups are simply absent, still well-formed.
         PlotFrame frame = new PlotFrame(0f, 0f, 10f, 5.5f, Axis.linear(0, 1), Axis.linear(0, 1));
         var scene = new PlotScene2D(frame,
             List.of(Series.line(new double[]{0, 1}, new double[]{0, 1}, Color.WHITE)),
-            List.of(), List.of(), null);
+            List.of(), List.of(), List.of());
         String svg = SvgPlotWriter.write(scene, 400, 300);
         assertDoesNotThrow(() -> DocumentBuilderFactory.newInstance().newDocumentBuilder()
             .parse(new ByteArrayInputStream(svg.getBytes(StandardCharsets.UTF_8))));

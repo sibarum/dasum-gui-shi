@@ -1,5 +1,6 @@
 package sibarum.dasum.gui.vis.plot;
 
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -127,18 +128,27 @@ public final class SvgPlotWriter {
     }
 
     private void enclosure() {
-        PlotScene2D.EnclosureBand b = scene.enclosure();
-        if (b == null || b.columnCount() < 2) return;
-        StringBuilder d = new StringBuilder("M");
-        for (int i = 0; i < b.columnCount(); i++) {          // forward along the upper bound
-            d.append(i == 0 ? "" : "L").append(num(px(b.xs()[i]))).append(',').append(num(py(b.hiYs()[i]))).append(' ');
+        List<PlotScene2D.EnclosureBand> bands = scene.enclosures();
+        if (bands.isEmpty()) return;
+        boolean any = false;
+        StringBuilder g = new StringBuilder("<g class=\"enclosure\" clip-path=\"url(#pontif-plot-area)\">");
+        for (int bi = 0; bi < bands.size(); bi++) {
+            PlotScene2D.EnclosureBand b = bands.get(bi);
+            if (b == null || b.columnCount() < 2) continue;
+            any = true;
+            StringBuilder d = new StringBuilder("M");
+            for (int i = 0; i < b.columnCount(); i++) {          // forward along the upper bound
+                d.append(i == 0 ? "" : "L").append(num(px(b.xs()[i]))).append(',').append(num(py(b.hiYs()[i]))).append(' ');
+            }
+            for (int i = b.columnCount() - 1; i >= 0; i--) {     // back along the lower bound → closed area
+                d.append('L').append(num(px(b.xs()[i]))).append(',').append(num(py(b.loYs()[i]))).append(' ');
+            }
+            d.append('Z');
+            // One path per reliably-plotted expression; data-band indexes it so a host can target each.
+            g.append("<path class=\"enclosure-band\" data-band=\"").append(bi).append("\" d=\"")
+             .append(d).append("\"/>");
         }
-        for (int i = b.columnCount() - 1; i >= 0; i--) {     // back along the lower bound → closed area
-            d.append('L').append(num(px(b.xs()[i]))).append(',').append(num(py(b.loYs()[i]))).append(' ');
-        }
-        d.append('Z');
-        sb.append("<g class=\"enclosure\" clip-path=\"url(#pontif-plot-area)\">")
-          .append("<path class=\"enclosure-band\" d=\"").append(d).append("\"/></g>\n");
+        if (any) sb.append(g).append("</g>\n");
     }
 
     private void curves() {
