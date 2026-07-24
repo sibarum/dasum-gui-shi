@@ -2,8 +2,8 @@ package sibarum.dasum.gui.vis.plot;
 
 import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.vis.math.CameraMode;
-import sibarum.dasum.gui.vis.math.CameraRig;
 import sibarum.dasum.gui.vis.math.CameraSpec;
+import sibarum.dasum.gui.vis.math.Vec3;
 import sibarum.dasum.gui.vis.scene.ImageLayer;
 import sibarum.dasum.gui.vis.scene.Layer;
 import sibarum.dasum.gui.vis.scene.SceneSnapshot;
@@ -186,11 +186,22 @@ public final class PlotView {
         frameTo(frame);
     }
 
-    /** Point the ortho camera at {@code frame} and record the base zoom. */
+    /**
+     * Point the ortho camera at {@code frame} and record the base zoom. Fits a 2D plot TIGHTLY by
+     * height — filling its viewport — rather than the loose bounding-DIAGONAL fit {@code CameraRig}
+     * uses for 3D scenes (which left a plot at ~40% of its viewport). A small band is added around
+     * the frame for the tick labels drawn just outside it; width follows from the viewport aspect.
+     */
     private void frameTo(PlotFrame frame) {
-        CameraSpec spec = CameraRig.fitToBounds(CameraSpec.defaultOrtho(), frame.worldMin(), frame.worldMax());
-        baseScale = spec.orthoScale();
-        SceneStates.setCamera(view, spec);
+        float h = frame.wy1() - frame.wy0();
+        float pad = h * 0.12f;                              // tick-label band, proportional to the frame
+        float bot = frame.wy0() - pad, top = frame.wy1() + pad * 0.3f;
+        float left = frame.wx0() - pad * 1.6f, right = frame.wx1() + pad * 0.3f;
+        float cx = (left + right) * 0.5f, cy = (bot + top) * 0.5f;
+        float halfH = Math.max(1e-4f, (top - bot) * 0.5f);
+        baseScale = halfH;
+        SceneStates.setCamera(view,
+            CameraSpec.defaultOrtho().withTarget(new Vec3(cx, cy, 0f)).withOrthoScale(halfH));
     }
 
     /** Scale the tick targets with zoom: closer (smaller orthoScale) → more ticks. */
