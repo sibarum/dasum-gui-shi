@@ -77,6 +77,21 @@ class SvgPlotWriterTest {
     }
 
     @Test
+    void export_curvesCarryTheirOwnColour() {
+        // Overlaid colour-coded plots: each curve must emit its OWN stroke, not a single shared CSS
+        // colour for every path (which would render two differently-coloured plots identically).
+        PlotFrame frame = new PlotFrame(0f, 0f, 10f, 5.5f, Axis.linear(-2, 2), Axis.linear(-3, 3));
+        var scene = new PlotScene2D(frame, List.of(
+                Series.line(new double[]{-2, 0, 2}, new double[]{-2, 0, 2}, new Color(0.4f, 0.8f, 1f, 1f)),
+                Series.line(new double[]{-2, 0, 2}, new double[]{2, 0, -2}, new Color(1f, 0.55f, 0.35f, 1f))),
+                List.of(), List.of(), List.of());
+        String svg = SvgPlotWriter.write(scene, 900, 550);
+        assertTrue(svg.contains("class=\"curve\""), "curves still carry the class for host restyling");
+        assertTrue(svg.contains("stroke:#66ccff") && svg.contains("stroke:#ff8c59"),
+                "each curve emits its own inline stroke colour:\n" + svg);
+    }
+
+    @Test
     void export_colourMatchedAnnotationsCarryInlineColour() {
         // A colour-coded asymptote/feature emits an inline stroke/fill override (matching its plot),
         // while keeping its class so a host can still restyle by class.

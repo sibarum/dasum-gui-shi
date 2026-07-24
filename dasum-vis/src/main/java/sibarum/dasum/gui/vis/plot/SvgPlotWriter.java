@@ -162,7 +162,10 @@ public final class SvgPlotWriter {
             for (int i = 0; i < xs.length; i++) {
                 d.append(i == 0 ? "" : "L").append(num(px(xs[i]))).append(',').append(num(py(ys[i]))).append(' ');
             }
-            sb.append("<path class=\"curve\" d=\"").append(d.toString().trim()).append("\"/>\n");
+            // Each curve carries its own colour (colour-coded overlaid plots) as an inline stroke
+            // override; the .curve class still supplies width/joins and lets a host restyle by class.
+            sb.append("<path class=\"curve\"").append(c.color() == null ? "" : stroke(c.color()))
+              .append(" d=\"").append(d.toString().trim()).append("\"/>\n");
         }
         sb.append("</g>\n");
     }
