@@ -1,5 +1,7 @@
 package sibarum.dasum.gui.vis.plot;
 
+import sibarum.dasum.gui.core.render.Color;
+
 import java.util.List;
 import java.util.Locale;
 
@@ -171,8 +173,12 @@ public final class SvgPlotWriter {
         for (PlotScene2D.Asymptote a : scene.asymptotes()) {
             double x = px(a.x());
             String data = " data-x=\"" + num(a.x()) + "\"";
-            line("asymptote", x, top, x, top + plotH, data);
-            text("label asymptote-label", x, top + 12, a.label(), data);
+            // An owning-plot colour rides as an inline stroke/fill override — the .asymptote class still
+            // supplies the dashes/opacity, and a host can still restyle by class.
+            String lineStyle = a.color() == null ? data : data + stroke(a.color());
+            String labelStyle = a.color() == null ? data : data + fill(a.color());
+            line("asymptote", x, top, x, top + plotH, lineStyle);
+            text("label asymptote-label", x, top + 12, a.label(), labelStyle);
         }
         sb.append("</g>\n");
     }
@@ -186,12 +192,27 @@ public final class SvgPlotWriter {
             String data = " data-x=\"" + num(f.x()) + "\" data-y=\"" + num(f.y())
                         + "\" data-kind=\"" + f.kind().name().toLowerCase(Locale.ROOT) + "\"";
             sb.append("<g class=\"").append(cls).append("\"").append(data).append(">")
-              .append("<circle class=\"feature-mark\" cx=\"").append(num(x)).append("\" cy=\"")
+              .append("<circle class=\"feature-mark\"").append(f.color() == null ? "" : stroke(f.color()))
+              .append(" cx=\"").append(num(x)).append("\" cy=\"")
               .append(num(y)).append("\" r=\"4\"/>");
-            text("label feature-label", x + 7, y - 7, f.label(), null);
+            text("label feature-label", x + 7, y - 7, f.label(), f.color() == null ? null : fill(f.color()));
             sb.append("</g>\n");
         }
         sb.append("</g>\n");
+    }
+
+    /** An inline {@code style="stroke:#rrggbb"} — an owning-plot colour override for a line/mark. */
+    private static String stroke(Color c) { return " style=\"stroke:" + hex(c) + "\""; }
+
+    /** An inline {@code style="fill:#rrggbb"} — an owning-plot colour override for a label. */
+    private static String fill(Color c) { return " style=\"fill:" + hex(c) + "\""; }
+
+    /** A {@code #rrggbb} hex string for an OGL {@link Color} (alpha dropped; opacity stays with CSS). */
+    private static String hex(Color c) {
+        return String.format(Locale.ROOT, "#%02x%02x%02x",
+                Math.round(Math.max(0, Math.min(1, c.r())) * 255),
+                Math.round(Math.max(0, Math.min(1, c.g())) * 255),
+                Math.round(Math.max(0, Math.min(1, c.b())) * 255));
     }
 
     // --- primitives ------------------------------------------------------------------------------

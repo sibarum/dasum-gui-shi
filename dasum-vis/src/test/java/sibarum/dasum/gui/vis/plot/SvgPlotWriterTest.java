@@ -77,6 +77,24 @@ class SvgPlotWriterTest {
     }
 
     @Test
+    void export_colourMatchedAnnotationsCarryInlineColour() {
+        // A colour-coded asymptote/feature emits an inline stroke/fill override (matching its plot),
+        // while keeping its class so a host can still restyle by class.
+        PlotFrame frame = new PlotFrame(0f, 0f, 10f, 5.5f, Axis.linear(-2, 2), Axis.linear(-3, 3));
+        var asy = List.of(new PlotScene2D.Asymptote(1.0, "x=1", new Color(1f, 0.55f, 0.35f, 1f)));
+        var feats = List.of(new PlotScene2D.Feature(
+                PlotScene2D.FeatureKind.ZERO, 0.5, 0.0, "0.5", new Color(0.4f, 0.8f, 1f, 1f)));
+        var scene = new PlotScene2D(frame,
+                List.of(Series.line(new double[]{-2, 2}, new double[]{-2, 2}, Color.WHITE)),
+                asy, feats, List.of());
+        String svg = SvgPlotWriter.write(scene, 900, 550);
+        assertTrue(svg.contains("class=\"asymptote\"") && svg.contains("stroke:#ff8c59"),
+                "the colour-matched asymptote keeps its class and adds an inline stroke:\n" + svg);
+        assertTrue(svg.contains("stroke:#66ccff"),
+                "the colour-matched feature marker carries its plot's colour:\n" + svg);
+    }
+
+    @Test
     void export_omitsOptionalLayersCleanly() {
         // No asymptotes / features / enclosure → those groups are simply absent, still well-formed.
         PlotFrame frame = new PlotFrame(0f, 0f, 10f, 5.5f, Axis.linear(0, 1), Axis.linear(0, 1));

@@ -1,5 +1,7 @@
 package sibarum.dasum.gui.vis.plot;
 
+import sibarum.dasum.gui.core.render.Color;
+
 import java.util.List;
 
 /**
@@ -39,14 +41,22 @@ public record PlotScene2D(
         enclosures = enclosures == null ? List.of() : enclosures;
     }
 
-    /** A vertical asymptote at data-x {@code x}, labelled {@code label} (e.g. {@code "x=0.385"}). */
-    public record Asymptote(double x, String label) {}
+    /** A vertical asymptote at data-x {@code x}, labelled {@code label} (e.g. {@code "x=0.385"}). The
+     *  optional {@code color} colour-codes the line/label to its owning plot; {@code null} means the
+     *  renderer's default asymptote colour (and, for SVG, the {@code --pontif-asymptote} CSS var). */
+    public record Asymptote(double x, String label, Color color) {
+        public Asymptote(double x, String label) { this(x, label, null); }
+    }
 
     /** The kind of a marked feature — selects its glyph and how a host might treat it. */
     public enum FeatureKind { ZERO, OPTIMUM, INTERSECTION }
 
-    /** A marked feature at data point {@code (x, y)} with a display {@code label}. */
-    public record Feature(FeatureKind kind, double x, double y, String label) {}
+    /** A marked feature at data point {@code (x, y)} with a display {@code label}. The optional
+     *  {@code color} colour-codes the marker/label to its owning plot; {@code null} means the
+     *  renderer's default feature colour (and, for SVG, the {@code --pontif-feature} CSS var). */
+    public record Feature(FeatureKind kind, double x, double y, String label, Color color) {
+        public Feature(FeatureKind kind, double x, double y, String label) { this(kind, x, y, label, null); }
+    }
 
     /**
      * The reliable enclosure band: for each sampled column {@code xs[i]}, the guaranteed value range

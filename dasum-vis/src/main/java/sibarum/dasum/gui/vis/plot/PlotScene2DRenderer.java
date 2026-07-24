@@ -54,23 +54,27 @@ public final class PlotScene2DRenderer {
 
         for (PlotScene2D.Feature f : scene.features()) {
             Vec3 a = frame.toWorld(f.x(), f.y());
+            Color mark = f.color() != null ? f.color() : MARK_COLOR;   // colour-code to the owning plot
             float[] seg = {a.x() - GLYPH, a.y(), 0f, a.x() + GLYPH, a.y(), 0f,
                            a.x(), a.y() - GLYPH, 0f, a.x(), a.y() + GLYPH, 0f};
-            layers.add(new LineLayer(seg, filledColor(seg.length, MARK_COLOR)));
+            layers.add(new LineLayer(seg, filledColor(seg.length, mark)));
             float lx = a.x() + GLYPH * 1.5f, ly = a.y() + GLYPH * 1.5f;
-            if (placed.tryPlace(f.label(), lx, ly)) layers.add(label(f.label(), lx, ly, LABEL_COLOR));
+            Color labelCol = f.color() != null ? f.color() : LABEL_COLOR;
+            if (placed.tryPlace(f.label(), lx, ly)) layers.add(label(f.label(), lx, ly, labelCol));
         }
 
         // Left-to-right, so a cluster's surviving labels are a spread-out subset (greedy by x).
         List<PlotScene2D.Asymptote> asy = new ArrayList<>(scene.asymptotes());
         asy.sort(Comparator.comparingDouble(PlotScene2D.Asymptote::x));
         for (PlotScene2D.Asymptote a : asy) {
+            Color asymCol = a.color() != null ? a.color() : ASYM_COLOR;   // tint to the owning plot
             float wx = frame.worldX(a.x());
             float[] seg = {wx, frame.wy0(), 0f, wx, frame.wy1(), 0f};
-            layers.add(new LineLayer(seg, filledColor(seg.length, ASYM_COLOR))
+            // Keep the half-opacity blend so a tinted asymptote still reads as an asymptote, not a curve.
+            layers.add(new LineLayer(seg, filledColor(seg.length, asymCol))
                     .withBlend(BlendMode.ALPHA).withOpacity(0.5f));
             float lx = wx + GLYPH, ly = frame.wy1() - LABEL_HEIGHT;
-            if (placed.tryPlace(a.label(), lx, ly)) layers.add(label(a.label(), lx, ly, ASYM_COLOR));
+            if (placed.tryPlace(a.label(), lx, ly)) layers.add(label(a.label(), lx, ly, asymCol));
         }
         return layers;
     }
