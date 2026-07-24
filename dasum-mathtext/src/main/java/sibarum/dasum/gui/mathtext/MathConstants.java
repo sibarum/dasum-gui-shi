@@ -1,4 +1,4 @@
-package sibarum.dasum.gui.vis.mathtext;
+package sibarum.dasum.gui.mathtext;
 
 /**
  * The per-font layout constants for the math typesetter — every offset and "magic number" the box

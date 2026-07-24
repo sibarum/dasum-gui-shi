@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>sibarum.dasum.gui</groupId>
+        <artifactId>dasum-gui-shi</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <!-- Math notation typesetter: a semantic math IR + a shared em-layout pass, projected to either
+         backend (OpenGL scene layers or self-contained SVG) by a dumb tree-walk. All the formatting
+         logic lives once, in layout; the backends only place glyphs and rules. -->
+    <artifactId>dasum-mathtext</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>sibarum.dasum.gui</groupId>
+            <artifactId>dasum-core</artifactId>
+        </dependency>
+        <!-- The OpenGL backend emits scene Layers (TextLayer / LineLayer). -->
+        <dependency>
+            <groupId>sibarum.dasum.gui</groupId>
+            <artifactId>dasum-vis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.11.4</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
