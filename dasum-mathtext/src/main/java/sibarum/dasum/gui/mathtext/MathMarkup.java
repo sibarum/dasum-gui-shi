@@ -37,9 +37,11 @@ import java.util.Map;
  * one {@link Role#VARIABLE} run per letter so {@code xy} spaces as a product — which is why a Greek
  * name must be matched as a whole token before falling back to single letters.
  *
- * <p>Not yet handled (they need IR nodes that don't exist yet — matrices, big operators with limits,
- * branches, prescripts, and the {@code root} degree index): those are a follow-up that extends
- * {@link MathBox} first. Encountering one is a parse error rather than a wrong render.
+ * <p>Also handled, mapping onto the extended IR: matrices/vectors ({@code [[a,b],[c,d]]}, {@code
+ * [a,b]}), branches ({@code &#123;->a,->b&#125;} → cases), prescripts ({@code &#123;^a&#125;b}), the
+ * {@code root(index, radicand)} radical, and the call aliases {@code sum} / {@code product} /
+ * {@code integral} / {@code lim} that carry limits (e.g. {@code sum(k=1, n, expr)}, {@code
+ * lim(x->0, expr)}). See the call-alias builders for the exact argument conventions.
  */
 public final class MathMarkup {
 
@@ -51,7 +53,7 @@ public final class MathMarkup {
     /** Parse {@code s} to a {@link MathBox}; throws {@link MarkupError} on malformed input. */
     public static MathBox parse(String s) {
         MathMarkup p = new MathMarkup(s == null ? "" : s);
-        MathBox box = p.expr(END_OF_INPUT);
+        MathBox box = p.expr("");                         // stops only at end of input
         p.skipWs();
         if (p.pos != p.src.length()) throw new MarkupError("unexpected '" + p.src.charAt(p.pos) + "'", p.pos);
         return box;
@@ -72,13 +74,15 @@ public final class MathMarkup {
 
     // --- grammar ---------------------------------------------------------------------------------
 
-    /** A sequence of intermediates up to (but not consuming) {@code closer}; {@code '/'} between two
-     *  makes a {@link MathBox.Fraction}. Returns a single box when there's exactly one item. */
-    private MathBox expr(char closer) {
+    /** A sequence of intermediates up to (but not consuming) any char in {@code stops}; {@code '/'}
+     *  between two makes a {@link MathBox.Fraction}. Returns a single box when there's exactly one
+     *  item. A {@code ','} in {@code stops} makes commas SEPARATORS (for cell/argument lists);
+     *  otherwise a comma is an ordinary punctuation run. */
+    private MathBox expr(String stops) {
         List<MathBox> items = new ArrayList<>();
         while (true) {
             skipWs();
-            if (pos >= src.length() || peekRaw() == closer) break;
+            if (pos >= src.length() || stops.indexOf(peekRaw()) >= 0) break;
             MathBox i = inter();
             skipWs();
             // A single '/' is a fraction; '//' is the literal-slash operator (handled as a symbol in
@@ -128,25 +132,15 @@ public final class MathMarkup {
                 MathBox circled = circledOp();
                 if (circled != null) return circled;
                 pos++;
-                MathBox inner = expr(')');
+                MathBox inner = expr(")");
                 expect(')');
                 return new MathBox.Fenced("(", ")", inner);
             }
-            case '[': {
-                pos++;
-                MathBox inner = expr(']');
-                expect(']');
-                return new MathBox.Fenced("[", "]", inner);
-            }
-            case '{': {                                   // invisible grouping — braces not drawn
-                pos++;
-                MathBox inner = expr('}');
-                expect('}');
-                return inner;
-            }
+            case '[': return bracket();                   // vector [a,b] or matrix [[a,b],[c,d]]
+            case '{': return braceGroup();                // invisible group, branches, or prescript
             case '|': {
                 pos++;
-                MathBox inner = expr('|');
+                MathBox inner = expr("|");
                 expect('|');
                 return new MathBox.Fenced("|", "|", inner);
             }
@@ -168,9 +162,100 @@ public final class MathMarkup {
     private MathBox unaryArg() {
         skipWs();
         char c = peekRaw();
-        if (c == '(') { pos++; MathBox inner = expr(')'); expect(')'); return inner; }
-        if (c == '{') { pos++; MathBox inner = expr('}'); expect('}'); return inner; }
+        if (c == '(') { pos++; MathBox inner = expr(")"); expect(')'); return inner; }
+        if (c == '{') { pos++; MathBox inner = expr("}"); expect('}'); return inner; }
         return simple();
+    }
+
+    // --- brackets, braces, argument lists --------------------------------------------------------
+
+    /** A {@code [...]} group: a matrix when its top-level items are themselves bracketed rows
+     *  ({@code [[a,b],[c,d]]}), otherwise a bracketed list / vector ({@code [a,b]}, drawn {@code [a, b]}). */
+    private MathBox bracket() {
+        pos++;                                            // consume '['
+        List<List<MathBox>> matrixRows = null;
+        List<MathBox> flat = new ArrayList<>();
+        while (true) {
+            skipWs();
+            if (peekRaw() == ']' || pos >= src.length()) break;
+            if (peekRaw() == '[') {                       // a nested row → matrix mode
+                if (matrixRows == null) matrixRows = new ArrayList<>();
+                matrixRows.add(commaCells('['));
+            } else {
+                flat.add(expr(",]"));
+            }
+            skipWs();
+            if (peekRaw() == ',') pos++; else break;
+        }
+        expect(']');
+        if (matrixRows != null) return new MathBox.Matrix(matrixRows, "[", "]");
+        return new MathBox.Fenced("[", "]", withCommas(flat));   // vector / list
+    }
+
+    /** A {@code {...}}: a prescript when it opens with {@code ^}/{@code _} ({@code &#123;^a&#125;b}), a
+     *  {@link MathBox.Cases branches} block when it has top-level commas ({@code &#123;->a,->b&#125;}),
+     *  otherwise an INVISIBLE group (the braces aren't drawn). */
+    private MathBox braceGroup() {
+        pos++;                                            // consume '{'
+        skipWs();
+        if (peekRaw() == '^' || peekRaw() == '_') {       // prescript group: {^a}, {_a}, {^a_b}
+            MathBox sup = null, sub = null;
+            while (peekRaw() == '^' || peekRaw() == '_') {
+                boolean up = peekRaw() == '^';
+                pos++;
+                if (up) sup = simple(); else sub = simple();
+                skipWs();
+            }
+            expect('}');
+            return new MathBox.Prescript(simple(), sup, sub);
+        }
+        List<MathBox> cells = commaList("}");
+        expect('}');
+        if (cells.size() > 1) return new MathBox.Cases(cells);   // branches
+        return cells.get(0);                              // invisible group (single content)
+    }
+
+    /** A bracketed row {@code [a,b,…]} → its cells, for matrix assembly. Consumes the {@code [ … ]}. */
+    private List<MathBox> commaCells(char open) {
+        expect(open);
+        List<MathBox> cells = commaList(",]");
+        expect(']');
+        return cells;
+    }
+
+    /** One-or-more comma-separated expressions, each stopping at ',' or a char in {@code closers}. */
+    private List<MathBox> commaList(String closers) {
+        List<MathBox> out = new ArrayList<>();
+        while (true) {
+            skipWs();
+            if (pos >= src.length() || closers.indexOf(peekRaw()) >= 0) break;
+            out.add(expr("," + closers));
+            skipWs();
+            if (peekRaw() == ',') pos++; else break;
+        }
+        if (out.isEmpty()) throw new MarkupError("empty list", pos);
+        return out;
+    }
+
+    /** A parenthesised, comma-separated argument list {@code (a, b, …)} for a call alias. */
+    private List<MathBox> parenArgs() {
+        expect('(');
+        skipWs();
+        if (peekRaw() == ')') { pos++; return new ArrayList<>(); }
+        List<MathBox> args = commaList(")");
+        expect(')');
+        return args;
+    }
+
+    /** Join list items with comma punctuation runs (the drawn form of a bracketed list / vector). */
+    private static MathBox withCommas(List<MathBox> items) {
+        if (items.size() == 1) return items.get(0);
+        List<MathBox> row = new ArrayList<>();
+        for (int i = 0; i < items.size(); i++) {
+            if (i > 0) row.add(new MathBox.Run(",", Role.PUNCT));
+            row.add(items.get(i));
+        }
+        return new MathBox.Row(row);
     }
 
     // --- atoms -----------------------------------------------------------------------------------
@@ -203,14 +288,19 @@ public final class MathMarkup {
         while (i < run.length()) {
             Keyword kw = longestKeyword(run, i);
             if (kw != null) {
+                boolean atEnd = i + kw.text.length() == run.length();
                 if (kw.unary != null) {                   // sqrt/abs consume an argument from the stream
                     // Only valid when the keyword ends the letter run (nothing glued after it).
-                    if (i + kw.text.length() != run.length()) {
+                    if (!atEnd) {
                         throw new MarkupError("'" + kw.text + "' must be followed by an argument", startOffset + i);
                     }
                     parts.add(kw.unary.apply(unaryArg()));
+                } else if (kw.call != null && atEnd && nextIsLParen()) {   // sum/integral/lim/root(…)
+                    parts.add(kw.call.apply(parenArgs()));
+                } else if (kw.call != null && kw.glyph.isEmpty()) {        // call-only keyword, no '('
+                    throw new MarkupError("'" + kw.text + "' expects a parenthesised argument list", startOffset + i);
                 } else {
-                    parts.add(new MathBox.Run(kw.glyph, kw.role));
+                    parts.add(new MathBox.Run(kw.glyph, kw.role));         // bare word / fallback glyph
                 }
                 i += kw.text.length();
             } else {
@@ -249,9 +339,25 @@ public final class MathMarkup {
     // --- keyword & symbol tables -----------------------------------------------------------------
 
     private interface UnaryBox { MathBox apply(MathBox arg); }
+    private interface CallBox { MathBox apply(List<MathBox> args); }
 
-    private record Keyword(String text, String glyph, Role role, UnaryBox unary) {
-        Keyword(String text, String glyph, Role role) { this(text, glyph, role, null); }
+    /** A recognised word. {@code unary} (sqrt/abs) takes one following simple; {@code call}
+     *  (sum/integral/lim/root) takes a parenthesised argument list — and, when {@code glyph} is
+     *  non-empty, falls back to that glyph as a bare word (e.g. {@code sum} alone → ∑). Otherwise it's
+     *  a plain glyph run of {@code role}. */
+    private record Keyword(String text, String glyph, Role role, UnaryBox unary, CallBox call) {
+        Keyword(String text, String glyph, Role role) { this(text, glyph, role, null, null); }
+        static Keyword unary(String text, UnaryBox u) { return new Keyword(text, "", Role.FUNCTION, u, null); }
+        static Keyword call(String text, String bareGlyph, Role role, CallBox c) {
+            return new Keyword(text, bareGlyph, role, null, c);
+        }
+    }
+
+    /** Is the next non-whitespace source char a '(' (a call's argument list)? Doesn't consume. */
+    private boolean nextIsLParen() {
+        int i = pos;
+        while (i < src.length() && Character.isWhitespace(src.charAt(i))) i++;
+        return i < src.length() && src.charAt(i) == '(';
     }
 
     /** The longest keyword whose text is a prefix of {@code run} at {@code i}, or {@code null}. */
@@ -274,6 +380,8 @@ public final class MathMarkup {
         new Sym("<--", "←", Role.RELATION),   // ←
         new Sym("==>", "⇒", Role.RELATION),   // ⇒
         new Sym("<==", "⇐", Role.RELATION),   // ⇐
+        new Sym("->",  "→", Role.RELATION),   // → (short arrow, e.g. inside lim(x->0, …))
+        new Sym("<-",  "←", Role.RELATION),   // ←
         new Sym("<=",  "≤", Role.RELATION),   // ≤
         new Sym(">=",  "≥", Role.RELATION),   // ≥
         new Sym("!=",  "≠", Role.RELATION),   // ≠
@@ -306,10 +414,21 @@ public final class MathMarkup {
 
     private static Keyword[] buildKeywords() {
         List<Keyword> k = new ArrayList<>();
-        // Unary constructs.
-        k.add(new Keyword("sqrt", "", Role.FUNCTION, MathBox::sqrt));
-        k.add(new Keyword("abs", "", Role.FUNCTION, arg -> new MathBox.Fenced("|", "|", arg)));
-        // The degree symbol.
+        // Unary constructs: one following simple.
+        k.add(Keyword.unary("sqrt", MathBox::sqrt));
+        k.add(Keyword.unary("abs", arg -> new MathBox.Fenced("|", "|", arg)));
+        // Call aliases: a parenthesised argument list (and a bare fallback glyph where sensible).
+        //   sum(under, over, body) / sum(under, body) — ∑ carrying its limits above/below.
+        //   product(…)             — same, ∏.
+        //   integral(under, over, body) / (under, body) / (body) — ∫ with side limits (int_lo^hi).
+        //   lim(under, body) / lim(body) — "lim" with x→a underneath.
+        //   root(index, radicand) — a non-square root.
+        k.add(Keyword.call("sum", "∑", Role.SYMBOL, args -> bigOp("∑", args)));
+        k.add(Keyword.call("product", "∏", Role.SYMBOL, args -> bigOp("∏", args)));
+        k.add(Keyword.call("integral", "∫", Role.SYMBOL, MathMarkup::integralOp));
+        k.add(Keyword.call("lim", "lim", Role.FUNCTION, MathMarkup::limOp));
+        k.add(Keyword.call("root", "", Role.FUNCTION, MathMarkup::rootOp));
+        // The degree symbol and infinity.
         k.add(new Keyword("degrees", "°", Role.SYMBOL));
         k.add(new Keyword("degree", "°", Role.SYMBOL));
         k.add(new Keyword("infinity", "∞", Role.SYMBOL));
@@ -317,7 +436,7 @@ public final class MathMarkup {
         for (String fn : new String[]{
                 "sin", "cos", "tan", "sec", "csc", "cot",
                 "sinh", "cosh", "tanh", "arcsin", "arccos", "arctan",
-                "exp", "log", "ln", "det", "dim", "gcd", "lcm", "max", "min", "lim", "mod"}) {
+                "exp", "log", "ln", "det", "dim", "gcd", "lcm", "max", "min", "mod"}) {
             k.add(new Keyword(fn, fn, Role.FUNCTION));
         }
         // Greek letters: lower and upper (capitalised name → uppercase Greek).
@@ -328,6 +447,48 @@ public final class MathMarkup {
             k.add(new Keyword(cap, String.valueOf((char) upper), Role.SYMBOL));
         });
         return k.toArray(new Keyword[0]);
+    }
+
+    // --- call-alias builders ---------------------------------------------------------------------
+
+    /** A big operator ({@code ∑}, {@code ∏}) carrying under/over limits, followed by the body:
+     *  {@code (under, over, body)} or {@code (under, body)}. */
+    private static MathBox bigOp(String glyph, List<MathBox> args) {
+        MathBox op = new MathBox.Run(glyph, Role.OPERATOR);
+        return switch (args.size()) {
+            case 3 -> new MathBox.Row(List.of(new MathBox.UnderOver(op, args.get(1), args.get(0)), args.get(2)));
+            case 2 -> new MathBox.Row(List.of(new MathBox.UnderOver(op, null, args.get(0)), args.get(1)));
+            default -> throw new MarkupError("this operator takes (under, over, body) or (under, body)", 0);
+        };
+    }
+
+    /** An integral with side-set limits {@code ∫_under^over body}: {@code (under, over, body)},
+     *  {@code (under, body)}, or just {@code (body)}. */
+    private static MathBox integralOp(List<MathBox> args) {
+        MathBox sign = new MathBox.Run("∫", Role.OPERATOR);
+        return switch (args.size()) {
+            case 3 -> new MathBox.Row(List.of(new MathBox.Script(sign, args.get(1), args.get(0)), args.get(2)));
+            case 2 -> new MathBox.Row(List.of(new MathBox.Script(sign, null, args.get(0)), args.get(1)));
+            case 1 -> new MathBox.Row(List.of(sign, args.get(0)));
+            default -> throw new MarkupError("integral takes (under, over, body), (under, body) or (body)", 0);
+        };
+    }
+
+    /** {@code lim(under, body)} → "lim" with {@code under} below and the body to the right;
+     *  {@code lim(body)} → a bare limit. */
+    private static MathBox limOp(List<MathBox> args) {
+        MathBox lim = new MathBox.Run("lim", Role.FUNCTION);
+        return switch (args.size()) {
+            case 2 -> new MathBox.Row(List.of(new MathBox.UnderOver(lim, null, args.get(0)), args.get(1)));
+            case 1 -> new MathBox.Row(List.of(lim, args.get(0)));
+            default -> throw new MarkupError("lim takes (under, body) or (body)", 0);
+        };
+    }
+
+    /** {@code root(index, radicand)} → a radical with a degree index. */
+    private static MathBox rootOp(List<MathBox> args) {
+        if (args.size() != 2) throw new MarkupError("root takes (index, radicand)", 0);
+        return new MathBox.Radical(args.get(1), args.get(0));
     }
 
     // --- lexing helpers --------------------------------------------------------------------------

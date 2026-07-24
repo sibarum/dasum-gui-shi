@@ -28,11 +28,31 @@ class MathMarkupTest {
             case MathBox.Radical rad -> "sqrt(" + s(rad.radicand())
                     + (rad.index() == null ? "" : ", idx=" + s(rad.index())) + ")";
             case MathBox.Fenced fe -> "fence" + fe.open() + fe.close() + "(" + s(fe.content()) + ")";
-            // Phase-1 markup never produces these; render them anyway so the switch stays total.
-            case MathBox.Matrix mx -> "matrix" + mx.rows();
-            case MathBox.UnderOver uo -> "underover(" + s(uo.base()) + ")";
-            case MathBox.Cases cs -> "cases" + cs.rows();
-            case MathBox.Prescript pr -> "prescript(" + s(pr.base()) + ")";
+            case MathBox.Matrix mx -> {
+                StringBuilder sb = new StringBuilder("matrix[");
+                for (int r = 0; r < mx.rows().size(); r++) {
+                    if (r > 0) sb.append("; ");
+                    for (int cix = 0; cix < mx.rows().get(r).size(); cix++) {
+                        if (cix > 0) sb.append(", ");
+                        sb.append(s(mx.rows().get(r).get(cix)));
+                    }
+                }
+                yield sb.append(']').toString();
+            }
+            case MathBox.UnderOver uo -> "underover(" + s(uo.base()) + ", over="
+                    + (uo.over() == null ? "_" : s(uo.over())) + ", under="
+                    + (uo.under() == null ? "_" : s(uo.under())) + ")";
+            case MathBox.Cases cs -> {
+                StringBuilder sb = new StringBuilder("cases[");
+                for (int r = 0; r < cs.rows().size(); r++) {
+                    if (r > 0) sb.append("; ");
+                    sb.append(s(cs.rows().get(r)));
+                }
+                yield sb.append(']').toString();
+            }
+            case MathBox.Prescript pr -> "prescript(" + s(pr.base()) + ", sup="
+                    + (pr.superscript() == null ? "_" : s(pr.superscript())) + ", sub="
+                    + (pr.subscript() == null ? "_" : s(pr.subscript())) + ")";
         };
     }
 
@@ -123,6 +143,30 @@ class MathMarkupTest {
     void verbatimText_upright() {
         assertEquals("F'hello world'", p("'hello world'"));
         assertEquals("F'x=y'", p("\"x=y\""), "double quotes, symbols verbatim");
+    }
+
+    @Test
+    void matrix_andVector() {
+        assertEquals("matrix[V'a', V'b'; V'c', V'd']", p("[[a,b],[c,d]]"));
+        assertEquals("matrix[V'a'; V'b']", p("[[a],[b]]"), "one column is a column vector");
+        // A flat bracket list is a bracketed vector, drawn with comma punctuation (no matrix grid).
+        assertEquals("fence[]([V'a' P',' V'b'])", p("[a,b]"));
+    }
+
+    @Test
+    void branches_andPrescript() {
+        assertEquals("cases[[R'→' V'a']; [R'→' V'b']]", p("{->a,->b}"));
+        assertEquals("prescript(V'C', sup=N'14', sub=N'6')", p("{^14_6}C"), "prescripts left of base");
+        assertEquals("script(V'x', sup=[N'2' V'y'], sub=_)", p("x^{2y}"), "single-content braces still group");
+    }
+
+    @Test
+    void callAliases_sumIntegralLimRoot() {
+        assertEquals("[underover(O'∑', over=V'n', under=[V'k' R'=' N'1']) V'k']", p("sum(k=1,n,k)"));
+        assertEquals("[script(O'∫', sup=V'b', sub=V'a') V'f']", p("integral(a,b,f)"), "integral side limits");
+        assertEquals("[underover(F'lim', over=_, under=[V'x' R'→' N'0']) V'f']", p("lim(x->0,f)"));
+        assertEquals("sqrt(V'x', idx=N'3')", p("root(3,x)"), "cube root");
+        assertEquals("S'∑'", p("sum"), "bare sum is the operator glyph");
     }
 
     @Test
