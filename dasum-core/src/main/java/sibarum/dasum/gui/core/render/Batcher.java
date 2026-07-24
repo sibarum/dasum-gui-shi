@@ -10,21 +10,33 @@ import static sibarum.dasum.gui.natives.gl.Gl.GL_SRC_ALPHA;
  * Top-level render coordinator. Holds one per-material accumulator (each
  * with its own VAO/VBO + vertex layout). {@link #submit(DrawCommand)}
  * dispatches by command variant; {@link #endFrame(float[])} flushes each
- * accumulator in render order — opaque solid fills first, then translucent
- * SDF text.
+ * accumulator in render order — flat solid fills first, then rounded/bordered
+ * fills, then translucent SDF text.
  * <p>
- * For M2c there are exactly two accumulators. Adding a new material means
- * adding a new accumulator + a new {@link DrawCommand} variant + a switch
- * arm here.
+ * <b>Rectangle ordering contract.</b> Flat {@link DrawCommand.ColoredQuad}s
+ * and {@link DrawCommand.RoundedQuad}s live in separate accumulators, so
+ * their painter's-order is NOT preserved <em>across</em> the two buckets
+ * within a frame: every rounded fill is drawn on top of every flat fill.
+ * This is chosen so the dominant case — a rounded/bordered widget (button,
+ * tab cell, styled card) sitting inside a flat ancestor panel — composites
+ * correctly. The inverse (a rounded ancestor whose descendant draws a flat
+ * background that must sit on top of it) would be mis-ordered; give such a
+ * descendant its own rounded style, or flush between them. Unifying all
+ * rectangles into one stream is a tracked follow-up.
+ * <p>
+ * Adding a new material means adding a new accumulator + a new
+ * {@link DrawCommand} variant + a switch arm here.
  */
 public final class Batcher implements AutoCloseable {
 
     private final SolidFillAccumulator solidFill = new SolidFillAccumulator();
+    private final RoundedFillAccumulator roundedFill = new RoundedFillAccumulator();
     private final MsdfTextAccumulator msdfText  = new MsdfTextAccumulator();
     private final ScissorStack scissor          = new ScissorStack();
 
     public void init() {
         solidFill.init();
+        roundedFill.init();
         msdfText.init();
         Gl.glEnable(GL_BLEND);
         Gl.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -63,10 +75,11 @@ public final class Batcher implements AutoCloseable {
      */
     public void setTextAtlas(Texture atlas, float distanceRange, float[] projection) {
         if (msdfText.willAtlasChange(atlas, distanceRange) && msdfText.hasPendingGeometry()) {
-            // Flush solids first so painter's order is preserved across
-            // the atlas swap, then the text accumulator finalizes its
-            // own pending vertices against the OUTGOING atlas.
+            // Flush solids + rounded fills first so painter's order is
+            // preserved across the atlas swap, then the text accumulator
+            // finalizes its own pending vertices against the OUTGOING atlas.
             solidFill.flush(projection);
+            roundedFill.flush(projection);
             msdfText.flush(projection);
         }
         msdfText.setAtlas(atlas, distanceRange);
@@ -76,6 +89,7 @@ public final class Batcher implements AutoCloseable {
 
     public void beginFrame(int framebufferHeightPx) {
         solidFill.beginFrame();
+        roundedFill.beginFrame();
         msdfText.beginFrame();
         scissor.beginFrame(framebufferHeightPx);
     }
@@ -84,6 +98,7 @@ public final class Batcher implements AutoCloseable {
         switch (cmd) {
             case DrawCommand.ColoredTriangle t -> solidFill.submit(t);
             case DrawCommand.ColoredQuad q     -> solidFill.submit(q);
+            case DrawCommand.RoundedQuad q     -> roundedFill.submit(q);
             case DrawCommand.GlyphQuad q       -> msdfText.submit(q);
         }
     }
@@ -100,15 +115,17 @@ public final class Batcher implements AutoCloseable {
      */
     public void flush(float[] projection) {
         solidFill.flush(projection);
+        roundedFill.flush(projection);
         msdfText.flush(projection);
     }
 
-    public int drawCallsThisFrame() { return solidFill.drawCalls() + msdfText.drawCalls(); }
-    public int verticesThisFrame()  { return solidFill.vertices()  + msdfText.vertices();  }
+    public int drawCallsThisFrame() { return solidFill.drawCalls() + roundedFill.drawCalls() + msdfText.drawCalls(); }
+    public int verticesThisFrame()  { return solidFill.vertices()  + roundedFill.vertices()  + msdfText.vertices();  }
 
     @Override
     public void close() {
         msdfText.close();
+        roundedFill.close();
         solidFill.close();
     }
 }

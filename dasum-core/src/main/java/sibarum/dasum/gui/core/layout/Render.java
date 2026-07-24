@@ -76,9 +76,7 @@ public final class Render {
         PixelRect r = layout.rectOf(c);
         if (r != null && r.width() > 0f && r.height() > 0f) {
             Color color = backgroundColorOf(c);
-            if (color.a() > 0f) {
-                batcher.submit(new DrawCommand.ColoredQuad(r.x(), r.y(), r.width(), r.height(), color));
-            }
+            emitBackground(batcher, r, color, styleOf(c));
             if (c == hovered && !(c instanceof Component.Tabs) && !(c instanceof Component.GraphSurface) && !(c instanceof Component.SceneView)
                 && !(c instanceof Component.Text txt && txt.selectable())) {
                 // Tabs does its own per-cell hover inside renderTabs — skip the
@@ -93,7 +91,7 @@ public final class Render {
                 // hoverability with the IBEAM cursor and a phantom caret at
                 // the cursor position; the whole-rect wash on top of that
                 // reads like a selection state, not a hover.
-                batcher.submit(new DrawCommand.ColoredQuad(r.x(), r.y(), r.width(), r.height(), HOVER_TINT));
+                emitShapedFill(batcher, r, HOVER_TINT, styleOf(c));
             }
             if (c == focused) {
                 emitFocusRing(batcher, r);
@@ -180,14 +178,17 @@ public final class Render {
         TabsController.StripLayout sl = TabsController.stripLayout(tabs, rect);
         boolean activeHidden = sl.markerRect() != null && active >= sl.visible().size();
 
+        // Top-only corner radius for tab cells (bottom seats flush against the panel).
+        float tabR = tabs.tabCornerRadius().toPixels();
+
         // Cells (active fill / hover tint) — emit before glyphs so labels sit on top.
         for (int vi = 0; vi < sl.visible().size(); vi++) {
             int i = sl.visible().get(vi);
             PixelRect cell = sl.cells().get(vi);
             if (i == active) {
-                batcher.submit(new DrawCommand.ColoredQuad(cell.x(), cell.y(), cell.width(), cell.height(), tabs.activeTabBg()));
+                emitTabCellFill(batcher, cell, tabs.activeTabBg(), tabR);
             } else if (TabsController.isTabHovered(tabs, i)) {
-                batcher.submit(new DrawCommand.ColoredQuad(cell.x(), cell.y(), cell.width(), cell.height(), HOVER_TINT));
+                emitTabCellFill(batcher, cell, HOVER_TINT, tabR);
             }
         }
         // Marker cell fill: active color when the current tab is hidden inside
@@ -195,10 +196,10 @@ public final class Render {
         if (sl.markerRect() != null) {
             PixelRect mc = sl.markerRect();
             if (activeHidden) {
-                batcher.submit(new DrawCommand.ColoredQuad(mc.x(), mc.y(), mc.width(), mc.height(), tabs.activeTabBg()));
+                emitTabCellFill(batcher, mc, tabs.activeTabBg(), tabR);
             }
             if (TabsController.isMarkerHovered(tabs)) {
-                batcher.submit(new DrawCommand.ColoredQuad(mc.x(), mc.y(), mc.width(), mc.height(), HOVER_TINT));
+                emitTabCellFill(batcher, mc, HOVER_TINT, tabR);
             }
         }
 
@@ -550,6 +551,74 @@ public final class Render {
             Math.max(0f, rect.width()  - 2f * pad),
             Math.max(0f, rect.height() - 2f * pad)
         );
+    }
+
+    /** The optional geometry style carried by container records, or null. */
+    private static sibarum.dasum.gui.core.style.BoxStyle styleOf(Component c) {
+        return switch (c) {
+            case Component.Box  b -> b.style();
+            case Component.Flex f -> f.style();
+            default -> null;
+        };
+    }
+
+    /**
+     * Emit a component's background: the flat {@link DrawCommand.ColoredQuad}
+     * fast path when there's no visible style, otherwise an anti-aliased
+     * {@link DrawCommand.RoundedQuad} carrying per-corner rounding + the inset
+     * border. A border-only style still draws even when the fill is
+     * transparent.
+     */
+    private static void emitBackground(Batcher batcher, PixelRect r, Color fill,
+                                       sibarum.dasum.gui.core.style.BoxStyle style) {
+        if (style == null || style.isPlain()) {
+            if (fill.a() > 0f) {
+                batcher.submit(new DrawCommand.ColoredQuad(r.x(), r.y(), r.width(), r.height(), fill));
+            }
+            return;
+        }
+        var radii = style.radii();
+        var border = style.border();
+        float bw = border.visible() ? border.width().toPixels() : 0f;
+        Color bc = border.visible() ? border.color() : Color.TRANSPARENT;
+        batcher.submit(new DrawCommand.RoundedQuad(
+            r.x(), r.y(), r.width(), r.height(),
+            radii.tl().toPixels(), radii.tr().toPixels(), radii.br().toPixels(), radii.bl().toPixels(),
+            fill, bw, bc));
+    }
+
+    /**
+     * Emit a fill that follows a style's corner rounding but paints NO border
+     * — used for overlays like the hover tint, which should hug the rounded
+     * silhouette without re-drawing the outline.
+     */
+    private static void emitShapedFill(Batcher batcher, PixelRect r, Color fill,
+                                       sibarum.dasum.gui.core.style.BoxStyle style) {
+        if (fill.a() <= 0f) return;
+        if (style == null || !style.radii().rounded()) {
+            batcher.submit(new DrawCommand.ColoredQuad(r.x(), r.y(), r.width(), r.height(), fill));
+            return;
+        }
+        var radii = style.radii();
+        batcher.submit(new DrawCommand.RoundedQuad(
+            r.x(), r.y(), r.width(), r.height(),
+            radii.tl().toPixels(), radii.tr().toPixels(), radii.br().toPixels(), radii.bl().toPixels(),
+            fill, 0f, Color.TRANSPARENT));
+    }
+
+    /**
+     * Emit a tab cell fill with only its top two corners rounded (bottom stays
+     * square so the active cell seats flush against the content panel).
+     * {@code radiusPx <= 0} falls back to a flat quad.
+     */
+    private static void emitTabCellFill(Batcher batcher, PixelRect cell, Color fill, float radiusPx) {
+        if (radiusPx <= 0f) {
+            batcher.submit(new DrawCommand.ColoredQuad(cell.x(), cell.y(), cell.width(), cell.height(), fill));
+            return;
+        }
+        batcher.submit(new DrawCommand.RoundedQuad(
+            cell.x(), cell.y(), cell.width(), cell.height(),
+            radiusPx, radiusPx, 0f, 0f, fill, 0f, Color.TRANSPARENT));
     }
 
     private static Color backgroundColorOf(Component c) {

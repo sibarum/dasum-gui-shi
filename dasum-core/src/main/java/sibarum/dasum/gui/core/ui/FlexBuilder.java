@@ -6,6 +6,9 @@ import sibarum.dasum.gui.core.component.Direction;
 import sibarum.dasum.gui.core.component.JustifyContent;
 import sibarum.dasum.gui.core.em.Em;
 import sibarum.dasum.gui.core.render.Color;
+import sibarum.dasum.gui.core.style.Border;
+import sibarum.dasum.gui.core.style.BoxStyle;
+import sibarum.dasum.gui.core.style.CornerRadii;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +47,8 @@ public final class FlexBuilder extends BaseBuilder<FlexBuilder> {
     private JustifyContent justify = JustifyContent.START;
     private AlignItems align;
     private boolean wrap = false;
+    private CornerRadii radii;   // null = square
+    private Border border;       // null = none
     private final List<Component> children = new ArrayList<>();
 
     FlexBuilder(Direction direction) {
@@ -70,6 +75,8 @@ public final class FlexBuilder extends BaseBuilder<FlexBuilder> {
         this.wrap = from.wrap();
         this.grow = from.flexGrow();
         this.interactive = from.interactive();
+        BoxStyle s = from.style();
+        if (s != null) { this.radii = s.radii(); this.border = s.border(); }
         this.children.addAll(from.children());
     }
 
@@ -96,6 +103,13 @@ public final class FlexBuilder extends BaseBuilder<FlexBuilder> {
     /** Wrap children onto multiple lines when they overflow (ROW only). */
     public FlexBuilder wrap()                    { this.wrap = true; return this; }
     public FlexBuilder wrap(boolean w)           { this.wrap = w; return this; }
+    /** Round all four corners uniformly. */
+    public FlexBuilder cornerRadius(Em r)        { this.radii = CornerRadii.all(r); return this; }
+    /** Round corners individually (clockwise from top-left). */
+    public FlexBuilder corners(Em tl, Em tr, Em br, Em bl) { this.radii = new CornerRadii(tl, tr, br, bl); return this; }
+    /** Add an inset outline of the given width and color. */
+    public FlexBuilder border(Em width, Color color) { this.border = Border.of(width, color); return this; }
+    public FlexBuilder border(Border b)          { this.border = b; return this; }
 
     // ---- children (accept raw records or nested builders) ----
 
@@ -109,7 +123,8 @@ public final class FlexBuilder extends BaseBuilder<FlexBuilder> {
         Component.Flex flex = new Component.Flex(
             width, height, padding, background,
             direction, justify, align, gap,
-            List.copyOf(children), interactive, grow, wrap);
+            List.copyOf(children), interactive, grow, wrap,
+            BoxBuilder.boxStyle(radii, border));
         return tagged(flex);
     }
 }

@@ -3,6 +3,9 @@ package sibarum.dasum.gui.core.ui;
 import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.em.Em;
 import sibarum.dasum.gui.core.render.Color;
+import sibarum.dasum.gui.core.style.Border;
+import sibarum.dasum.gui.core.style.BoxStyle;
+import sibarum.dasum.gui.core.style.CornerRadii;
 
 import java.util.List;
 
@@ -25,6 +28,8 @@ public final class BoxBuilder extends BaseBuilder<BoxBuilder> {
     private Em height;
     private Em padding = Em.ZERO;
     private Color background = Color.TRANSPARENT;
+    private CornerRadii radii;   // null = square
+    private Border border;       // null = none
     private Component child;
 
     BoxBuilder() {}
@@ -36,6 +41,8 @@ public final class BoxBuilder extends BaseBuilder<BoxBuilder> {
         this.background = from.color();
         this.grow = from.flexGrow();
         this.interactive = from.interactive();
+        BoxStyle s = from.style();
+        if (s != null) { this.radii = s.radii(); this.border = s.border(); }
         List<Component> kids = from.children();
         this.child = (kids == null || kids.isEmpty()) ? null : kids.get(0);
     }
@@ -48,6 +55,14 @@ public final class BoxBuilder extends BaseBuilder<BoxBuilder> {
     public BoxBuilder child(Component c)  { this.child = c; return this; }
     public BoxBuilder child(UiBuilder b)  { this.child = b.build(); return this; }
 
+    /** Round all four corners uniformly. */
+    public BoxBuilder cornerRadius(Em r) { this.radii = CornerRadii.all(r); return this; }
+    /** Round corners individually (clockwise from top-left). */
+    public BoxBuilder corners(Em tl, Em tr, Em br, Em bl) { this.radii = new CornerRadii(tl, tr, br, bl); return this; }
+    /** Add an inset outline of the given width and color. */
+    public BoxBuilder border(Em width, Color color) { this.border = Border.of(width, color); return this; }
+    public BoxBuilder border(Border b) { this.border = b; return this; }
+
     @Override
     public Component build() {
         String who = label != null ? "Ui.box() '" + label + "'" : "Ui.box()";
@@ -57,7 +72,15 @@ public final class BoxBuilder extends BaseBuilder<BoxBuilder> {
                 + " concrete size; use Ui.row()/Ui.column() to fill or fit content");
         }
         List<Component> children = child == null ? List.of() : List.of(child);
-        Component.Box box = new Component.Box(width, height, padding, background, children, interactive, grow);
+        BoxStyle style = boxStyle(radii, border);
+        Component.Box box = new Component.Box(width, height, padding, background, children, interactive, grow, style);
         return tagged(box);
+    }
+
+    /** Assemble a {@link BoxStyle} from optional radii/border, or null when neither is set. */
+    static BoxStyle boxStyle(CornerRadii radii, Border border) {
+        if (radii == null && border == null) return null;
+        return new BoxStyle(radii != null ? radii : CornerRadii.NONE,
+                            border != null ? border : Border.NONE);
     }
 }

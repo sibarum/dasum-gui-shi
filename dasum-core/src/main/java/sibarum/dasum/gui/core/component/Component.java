@@ -31,7 +31,15 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
     /** Whether this component participates in hover/focus/hit testing. */
     boolean interactive();
 
-    record Box(Em width, Em height, Em padding, Color color, List<Component> children, boolean interactive, int flexGrow) implements Component {
+    /**
+     * @param style optional {@link sibarum.dasum.gui.core.style.BoxStyle}
+     *              carrying per-corner rounding + an inset border. {@code null}
+     *              (the common case) renders as a flat filled rect on the
+     *              renderer's fast path; a non-null style routes the background
+     *              through the anti-aliased rounded-rect draw path.
+     */
+    record Box(Em width, Em height, Em padding, Color color, List<Component> children, boolean interactive, int flexGrow,
+               sibarum.dasum.gui.core.style.BoxStyle style) implements Component {
 
         public Box {
             Validate.fixed(width, "Box", "width");
@@ -40,24 +48,31 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
             Validate.em(padding, "Box", "padding");
             Validate.children(children, "Box", "children");
             Validate.flexGrow(flexGrow, "Box");
+            // style == null is the legitimate "flat, no rounding/border" sentinel.
+        }
+
+        /** Canonical pre-style shape — kept so existing positional call sites compile. */
+        public Box(Em width, Em height, Em padding, Color color, List<Component> children, boolean interactive, int flexGrow) {
+            this(width, height, padding, color, children, interactive, flexGrow, null);
         }
 
         public Box(Em width, Em height, Em padding, Color color) {
-            this(width, height, padding, color, List.of(), false, 0);
+            this(width, height, padding, color, List.of(), false, 0, null);
         }
 
         public Box(Em width, Em height, Em padding, Color color, Component child) {
-            this(width, height, padding, color, List.of(child), false, 0);
+            this(width, height, padding, color, List.of(child), false, 0, null);
         }
 
         public Box(Em width, Em height, Em padding, Color color, List<Component> children) {
-            this(width, height, padding, color, children, false, 0);
+            this(width, height, padding, color, children, false, 0, null);
         }
 
-        public Box withInteractive(boolean v) { return new Box(width, height, padding, color, children, v, flexGrow); }
-        public Box withColor(Color c)         { return new Box(width, height, padding, c, children, interactive, flexGrow); }
-        public Box withChildren(List<Component> kids) { return new Box(width, height, padding, color, kids, interactive, flexGrow); }
-        public Box withFlexGrow(int g)        { return new Box(width, height, padding, color, children, interactive, g); }
+        public Box withInteractive(boolean v) { return new Box(width, height, padding, color, children, v, flexGrow, style); }
+        public Box withColor(Color c)         { return new Box(width, height, padding, c, children, interactive, flexGrow, style); }
+        public Box withChildren(List<Component> kids) { return new Box(width, height, padding, color, kids, interactive, flexGrow, style); }
+        public Box withFlexGrow(int g)        { return new Box(width, height, padding, color, children, interactive, g, style); }
+        public Box withStyle(sibarum.dasum.gui.core.style.BoxStyle s) { return new Box(width, height, padding, color, children, interactive, flexGrow, s); }
     }
 
     /**
@@ -67,7 +82,8 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
     record Flex(
         Em width, Em height, Em padding, Color color,
         Direction direction, JustifyContent justify, AlignItems align, Em gap,
-        List<Component> children, boolean interactive, int flexGrow, boolean wrap
+        List<Component> children, boolean interactive, int flexGrow, boolean wrap,
+        sibarum.dasum.gui.core.style.BoxStyle style
     ) implements Component {
 
         public Flex {
@@ -79,17 +95,31 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
             Validate.required(align, "Flex", "align");
             Validate.children(children, "Flex", "children");
             Validate.flexGrow(flexGrow, "Flex");
+            // style == null is the legitimate "flat, no rounding/border" sentinel.
         }
 
         /**
-         * Compatibility constructor — {@code wrap} defaults to {@code false}.
-         * Keeps every pre-wrap positional call site compiling.
+         * Canonical pre-style shape — {@code style} defaults to {@code null}
+         * (flat). Keeps every positional call site that predates the style
+         * field compiling.
+         */
+        public Flex(Em width, Em height, Em padding, Color color,
+                    Direction direction, JustifyContent justify, AlignItems align, Em gap,
+                    List<Component> children, boolean interactive, int flexGrow, boolean wrap) {
+            this(width, height, padding, color, direction, justify, align, gap,
+                 children, interactive, flexGrow, wrap, null);
+        }
+
+        /**
+         * Compatibility constructor — {@code wrap} defaults to {@code false}
+         * and {@code style} to {@code null}. Keeps every pre-wrap positional
+         * call site compiling.
          */
         public Flex(Em width, Em height, Em padding, Color color,
                     Direction direction, JustifyContent justify, AlignItems align, Em gap,
                     List<Component> children, boolean interactive, int flexGrow) {
             this(width, height, padding, color, direction, justify, align, gap,
-                 children, interactive, flexGrow, false);
+                 children, interactive, flexGrow, false, null);
         }
 
         public static Flex row(Em gap, List<Component> children) {
@@ -102,15 +132,16 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
                 Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, gap, children, false, 0);
         }
 
-        public Flex withWidth(Em w)               { return new Flex(w, height, padding, color, direction, justify, align, gap, children, interactive, flexGrow, wrap); }
-        public Flex withHeight(Em h)              { return new Flex(width, h, padding, color, direction, justify, align, gap, children, interactive, flexGrow, wrap); }
-        public Flex withPadding(Em p)             { return new Flex(width, height, p, color, direction, justify, align, gap, children, interactive, flexGrow, wrap); }
-        public Flex withColor(Color c)            { return new Flex(width, height, padding, c, direction, justify, align, gap, children, interactive, flexGrow, wrap); }
-        public Flex withJustify(JustifyContent j) { return new Flex(width, height, padding, color, direction, j, align, gap, children, interactive, flexGrow, wrap); }
-        public Flex withAlign(AlignItems a)       { return new Flex(width, height, padding, color, direction, justify, a, gap, children, interactive, flexGrow, wrap); }
-        public Flex withFlexGrow(int g)           { return new Flex(width, height, padding, color, direction, justify, align, gap, children, interactive, g, wrap); }
+        public Flex withWidth(Em w)               { return new Flex(w, height, padding, color, direction, justify, align, gap, children, interactive, flexGrow, wrap, style); }
+        public Flex withHeight(Em h)              { return new Flex(width, h, padding, color, direction, justify, align, gap, children, interactive, flexGrow, wrap, style); }
+        public Flex withPadding(Em p)             { return new Flex(width, height, p, color, direction, justify, align, gap, children, interactive, flexGrow, wrap, style); }
+        public Flex withColor(Color c)            { return new Flex(width, height, padding, c, direction, justify, align, gap, children, interactive, flexGrow, wrap, style); }
+        public Flex withJustify(JustifyContent j) { return new Flex(width, height, padding, color, direction, j, align, gap, children, interactive, flexGrow, wrap, style); }
+        public Flex withAlign(AlignItems a)       { return new Flex(width, height, padding, color, direction, justify, a, gap, children, interactive, flexGrow, wrap, style); }
+        public Flex withFlexGrow(int g)           { return new Flex(width, height, padding, color, direction, justify, align, gap, children, interactive, g, wrap, style); }
         /** Wrap ROW children onto multiple rows when they overflow the main axis (ROW only). */
-        public Flex withWrap(boolean w)           { return new Flex(width, height, padding, color, direction, justify, align, gap, children, interactive, flexGrow, w); }
+        public Flex withWrap(boolean w)           { return new Flex(width, height, padding, color, direction, justify, align, gap, children, interactive, flexGrow, w, style); }
+        public Flex withStyle(sibarum.dasum.gui.core.style.BoxStyle s) { return new Flex(width, height, padding, color, direction, justify, align, gap, children, interactive, flexGrow, wrap, s); }
     }
 
     /**
@@ -425,7 +456,8 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
         Property<Integer> activeIndex,
         Consumer<Integer> onTabPressed,
         boolean interactive, int flexGrow,
-        OverflowGlyph overflowGlyph
+        OverflowGlyph overflowGlyph,
+        Em tabCornerRadius
     ) implements Component {
 
         public Tabs {
@@ -433,6 +465,7 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
             Validate.em(tabPadding, "Tabs", "tabPadding");
             Validate.em(contentPadding, "Tabs", "contentPadding");
             Validate.em(tabFontSize, "Tabs", "tabFontSize");
+            Validate.em(tabCornerRadius, "Tabs", "tabCornerRadius");
             Validate.color(headerBg, "Tabs", "headerBg");
             Validate.color(activeTabBg, "Tabs", "activeTabBg");
             Validate.color(tabFg, "Tabs", "tabFg");
@@ -475,7 +508,28 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
         ) {
             this(width, height, headerHeight, tabPadding, contentPadding,
                 headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup,
-                tabs, activeIndex, onTabPressed, interactive, flexGrow, null);
+                tabs, activeIndex, onTabPressed, interactive, flexGrow, null, Em.ZERO);
+        }
+
+        /**
+         * Pre-{@code tabCornerRadius} canonical shape — defaults tab corners to
+         * square ({@link Em#ZERO}). Keeps positional call sites that pass an
+         * {@link OverflowGlyph} compiling.
+         */
+        public Tabs(
+            Em width, Em height,
+            Em headerHeight, Em tabPadding, Em contentPadding,
+            Color headerBg, Color activeTabBg, Color tabFg, Color contentBg,
+            Em tabFontSize, String fontGroup,
+            List<TabPanel> tabs,
+            Property<Integer> activeIndex,
+            Consumer<Integer> onTabPressed,
+            boolean interactive, int flexGrow,
+            OverflowGlyph overflowGlyph
+        ) {
+            this(width, height, headerHeight, tabPadding, contentPadding,
+                headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup,
+                tabs, activeIndex, onTabPressed, interactive, flexGrow, overflowGlyph, Em.ZERO);
         }
 
         public Component activeContent() {
@@ -484,10 +538,12 @@ public sealed interface Component permits Component.Box, Component.Flex, Compone
             return tabs.get(idx).content();
         }
 
-        public Tabs withFlexGrow(int g)        { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, interactive, g, overflowGlyph); }
-        public Tabs withInteractive(boolean v) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, v, flexGrow, overflowGlyph); }
-        public Tabs withOnTabPressed(Consumer<Integer> cb) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, cb, interactive, flexGrow, overflowGlyph); }
-        public Tabs withOverflowGlyph(OverflowGlyph g) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, interactive, flexGrow, g); }
+        public Tabs withFlexGrow(int g)        { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, interactive, g, overflowGlyph, tabCornerRadius); }
+        public Tabs withInteractive(boolean v) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, v, flexGrow, overflowGlyph, tabCornerRadius); }
+        public Tabs withOnTabPressed(Consumer<Integer> cb) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, cb, interactive, flexGrow, overflowGlyph, tabCornerRadius); }
+        public Tabs withOverflowGlyph(OverflowGlyph g) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, interactive, flexGrow, g, tabCornerRadius); }
+        /** Radius applied to the <em>top two</em> corners of each tab cell (bottom stays square so cells seat flush against the content panel). {@link Em#ZERO} = square tabs. */
+        public Tabs withTabCornerRadius(Em r) { return new Tabs(width, height, headerHeight, tabPadding, contentPadding, headerBg, activeTabBg, tabFg, contentBg, tabFontSize, fontGroup, tabs, activeIndex, onTabPressed, interactive, flexGrow, overflowGlyph, r); }
     }
 
     /**

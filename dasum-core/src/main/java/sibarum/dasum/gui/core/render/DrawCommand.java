@@ -13,7 +13,7 @@ package sibarum.dasum.gui.core.render;
  * </ol>
  */
 public sealed interface DrawCommand
-    permits DrawCommand.ColoredTriangle, DrawCommand.ColoredQuad, DrawCommand.GlyphQuad {
+    permits DrawCommand.ColoredTriangle, DrawCommand.ColoredQuad, DrawCommand.RoundedQuad, DrawCommand.GlyphQuad {
 
     record ColoredTriangle(Vec2 a, Vec2 b, Vec2 c, Color cA, Color cB, Color cC) implements DrawCommand {}
 
@@ -23,6 +23,44 @@ public sealed interface DrawCommand
      * with the same per-vertex color across all six.
      */
     record ColoredQuad(float x, float y, float width, float height, Color color) implements DrawCommand {}
+
+    /**
+     * Axis-aligned rectangle in screen pixels (Y-down) with per-corner
+     * rounding and an optional inset border, rasterized by an anti-aliased
+     * signed-distance-field fragment shader (see
+     * {@code /shaders/rounded-fill.frag}). All measurements are already
+     * resolved to <em>pixels</em> at emit time — the renderer layer never
+     * sees em units.
+     * <p>
+     * Corner radii are ordered {@code tl, tr, br, bl}; each is clamped in the
+     * shader to {@code min(width, height) / 2}. {@code borderWidthPx == 0} (or
+     * a fully-transparent {@code borderColor}) yields a fill-only rect. A
+     * radius set of all-zeros with a zero border is legal but wasteful —
+     * callers should prefer {@link ColoredQuad} for that case.
+     *
+     * @param x             top-left X in screen pixels
+     * @param y             top-left Y in screen pixels
+     * @param width         width in pixels (positive)
+     * @param height        height in pixels (positive)
+     * @param rTL           top-left corner radius in pixels
+     * @param rTR           top-right corner radius in pixels
+     * @param rBR           bottom-right corner radius in pixels
+     * @param rBL           bottom-left corner radius in pixels
+     * @param fill          interior fill color
+     * @param borderWidthPx inset border thickness in pixels; 0 for none
+     * @param borderColor   border color; multiply-transparent for none
+     */
+    record RoundedQuad(
+        float x, float y, float width, float height,
+        float rTL, float rTR, float rBR, float rBL,
+        Color fill, float borderWidthPx, Color borderColor
+    ) implements DrawCommand {
+
+        /** Fill-only convenience — uniform radius, no border. */
+        public RoundedQuad(float x, float y, float width, float height, float radiusPx, Color fill) {
+            this(x, y, width, height, radiusPx, radiusPx, radiusPx, radiusPx, fill, 0f, Color.TRANSPARENT);
+        }
+    }
 
     /**
      * A textured quad aligned to screen axes. Used for MSDF glyphs (atlas-bound

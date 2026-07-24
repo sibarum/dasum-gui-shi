@@ -20,6 +20,8 @@ public final class Theme {
 
     private static final Map<Variant, Palette> PALETTES = new EnumMap<>(Variant.class);
     private static Color subtleBg = new Color(0.18f, 0.20f, 0.25f, 1f);
+    private static Em buttonCornerRadius = Em.of(0.35f);
+    private static Em tabCornerRadius = Em.of(0.4f);
     private static Em scrollbarThickness = Em.of(0.5f);
     private static Color overlayBackdrop = new Color(0f, 0f, 0f, 0.40f);
     private static float wheelEmPerNotch = 2.5f;
@@ -73,6 +75,16 @@ public final class Theme {
     public static Color subtleBg() { return subtleBg; }
 
     public static void setSubtleBg(Color c) { subtleBg = c; }
+
+    /** Default corner radius applied to themed buttons, in em. {@link Em#ZERO} for square buttons. */
+    public static Em buttonCornerRadius() { return buttonCornerRadius; }
+
+    public static void setButtonCornerRadius(Em r) { buttonCornerRadius = r; }
+
+    /** Default top-corner radius applied to themed tab cells, in em. {@link Em#ZERO} for square tabs. */
+    public static Em tabCornerRadius() { return tabCornerRadius; }
+
+    public static void setTabCornerRadius(Em r) { tabCornerRadius = r; }
 
     /** Track / thumb thickness for scrollbars rendered by {@code Component.Scroll}, in em. */
     public static Em scrollbarThickness() { return scrollbarThickness; }

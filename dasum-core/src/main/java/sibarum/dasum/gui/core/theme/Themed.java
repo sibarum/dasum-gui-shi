@@ -32,7 +32,13 @@ public final class Themed {
             Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
             List.of(labelText),
             true, 0
-        ).withFlexGrow(flexGrow);
+        ).withFlexGrow(flexGrow).withStyle(buttonStyle());
+    }
+
+    /** Default rounded style for themed buttons, driven by {@link Theme#buttonCornerRadius()}. */
+    private static sibarum.dasum.gui.core.style.BoxStyle buttonStyle() {
+        Em r = Theme.buttonCornerRadius();
+        return r.value() > 0f ? sibarum.dasum.gui.core.style.BoxStyle.rounded(r) : null;
     }
 
     /**
@@ -66,7 +72,7 @@ public final class Themed {
             Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.of(0.4f),
             List.of(icon, labelText),
             true, 0
-        ).withFlexGrow(flexGrow);
+        ).withFlexGrow(flexGrow).withStyle(buttonStyle());
     }
 
     /**
@@ -93,7 +99,7 @@ public final class Themed {
             Direction.ROW, JustifyContent.CENTER, AlignItems.CENTER, Em.ZERO,
             List.of(icon),
             true, 0
-        ).withFlexGrow(flexGrow);
+        ).withFlexGrow(flexGrow).withStyle(buttonStyle());
     }
 
     /** Icon-only square button with the click handler wired in one call. */
@@ -181,6 +187,6 @@ public final class Themed {
             Theme.subtleBg(), p.base(), p.emphasis(), Theme.subtleBg(),
             tabFontSize, sibarum.dasum.gui.core.text.FontGroups.DEFAULT,
             panels, activeIndex, null, true, 0
-        );
+        ).withTabCornerRadius(Theme.tabCornerRadius());
     }
 }
