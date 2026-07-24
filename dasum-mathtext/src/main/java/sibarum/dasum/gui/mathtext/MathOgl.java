@@ -28,20 +28,34 @@ public final class MathOgl {
      */
     public static List<Layer> toLayers(LaidOut m, MathConstants constants, Color color,
                                        float pxPerEm, float originX, float originY) {
+        return toLayers(m, constants, color, pxPerEm, originX, originY, false);
+    }
+
+    /**
+     * As above, but {@code yUp} flips the vertical axis: with {@code yUp=false} the layout's y grows
+     * DOWN (screen-native, top-left origin); with {@code yUp=true} y grows UP with the math sitting on
+     * {@code originY} — the convention an orthographic camera / {@code PlotFrame} uses — so a title can
+     * be framed without per-layer surgery.
+     */
+    public static List<Layer> toLayers(LaidOut m, MathConstants constants, Color color,
+                                       float pxPerEm, float originX, float originY, boolean yUp) {
         List<Layer> layers = new ArrayList<>();
-        float baseline = originY + (float) (m.ascent() * pxPerEm);
+        // Baseline: y-down puts it ascent below the top; y-up puts it descent above the bottom.
+        float baseline = yUp ? originY + (float) (m.descent() * pxPerEm)
+                             : originY + (float) (m.ascent() * pxPerEm);
+        float sign = yUp ? -1f : 1f;                 // a positive layout-y is DOWN; flip for y-up
         for (LaidOut.Draw d : m.draws()) {
             switch (d) {
                 case GlyphRun g -> layers.add(new TextLayer(
                         g.glyphs(),
-                        new Vec3(originX + (float) (g.x() * pxPerEm), baseline + (float) (g.y() * pxPerEm), 0f),
+                        new Vec3(originX + (float) (g.x() * pxPerEm), baseline + sign * (float) (g.y() * pxPerEm), 0f),
                         (float) (g.size() * pxPerEm), color)
                         .withFontGroup(constants.fontGroup())
                         .withAlign(TextLayer.HAlign.LEFT));
                 case Rule r -> {
                     float x1 = originX + (float) (r.x() * pxPerEm);
                     float x2 = x1 + (float) (r.width() * pxPerEm);
-                    float yc = baseline + (float) ((r.y() + r.height() / 2) * pxPerEm);
+                    float yc = baseline + sign * (float) ((r.y() + r.height() / 2) * pxPerEm);
                     float[] seg = {x1, yc, 0f, x2, yc, 0f};
                     layers.add(new LineLayer(seg, rgb(seg.length, color)));
                 }
