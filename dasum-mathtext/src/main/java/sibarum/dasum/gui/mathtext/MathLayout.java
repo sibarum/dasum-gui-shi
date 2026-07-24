@@ -43,6 +43,10 @@ public final class MathLayout {
             case MathBox.Script s -> script(s, scale);
             case MathBox.Radical r -> radical(r, scale);
             case MathBox.Fenced f -> fenced(f, scale);
+            case MathBox.Matrix m -> matrix(m, scale);
+            case MathBox.UnderOver u -> underOver(u, scale);
+            case MathBox.Cases c -> cases(c, scale);
+            case MathBox.Prescript p -> prescript(p, scale);
         };
     }
 
@@ -169,12 +173,24 @@ public final class MathLayout {
         double vinY = -(rad.ascent() + gapA) - rt;
 
         List<Draw> out = new ArrayList<>();
-        // Surd baseline placed so the glyph descends to the radicand's bottom.
-        out.add(new GlyphRun("√", kernB, rad.descent(), surdScale));
-        out.addAll(shift(rad.draws(), radX, 0));
-        out.add(new Rule(radX, vinY, rad.width(), rt));
         double ascent = rad.ascent() + gapA + rt;
-        return new LaidOut(radX + rad.width(), ascent, rad.descent(), out);
+        double leadX = 0;
+
+        // The degree index (e.g. the 3 of a cube root) sits small at the upper-left, tucked into the
+        // surd's kick. It shifts the whole radical right by its width where it overhangs the surd stem.
+        if (r.index() != null) {
+            LaidOut idx = lay(r.index(), scale * c.scriptScale() * c.scriptScale());
+            double idxY = -(ascent - idx.descent()) + idx.ascent() * 0.5;   // high on the surd's left arm
+            double overhang = Math.max(0, idx.width() - surdW * 0.5);
+            leadX = overhang;
+            out.addAll(shift(idx.draws(), 0, idxY));
+        }
+
+        // Surd baseline placed so the glyph descends to the radicand's bottom.
+        out.add(new GlyphRun("√", leadX + kernB, rad.descent(), surdScale));
+        out.addAll(shift(rad.draws(), leadX + radX, 0));
+        out.add(new Rule(leadX + radX, vinY, rad.width(), rt));
+        return new LaidOut(leadX + radX + rad.width(), ascent, rad.descent(), out);
     }
 
     // --- Fenced (growable delimiters) -------------------------------------------------------------
@@ -198,6 +214,151 @@ public final class MathLayout {
         double descent = Math.max(inner.descent(), h / 2 - c.axisHeight() * scale);
         double width = openW + pad + inner.width() + pad + closeW;
         return new LaidOut(width, ascent, descent, out);
+    }
+
+    // --- Matrix (grid of cells in growable delimiters) -------------------------------------------
+
+    private LaidOut matrix(MathBox.Matrix m, double scale) {
+        List<List<MathBox>> rows = m.rows();
+        int nRows = rows.size();
+        int nCols = 0;
+        for (List<MathBox> r : rows) nCols = Math.max(nCols, r.size());
+
+        LaidOut[][] cell = new LaidOut[nRows][nCols];
+        double[] colW = new double[nCols];
+        double[] rowAsc = new double[nRows], rowDesc = new double[nRows];
+        for (int r = 0; r < nRows; r++) {
+            for (int cix = 0; cix < rows.get(r).size(); cix++) {
+                LaidOut b = lay(rows.get(r).get(cix), scale);
+                cell[r][cix] = b;
+                colW[cix] = Math.max(colW[cix], b.width());
+                rowAsc[r] = Math.max(rowAsc[r], b.ascent());
+                rowDesc[r] = Math.max(rowDesc[r], b.descent());
+            }
+        }
+        double colGap = 0.6 * scale, rowGap = 0.35 * scale, pad = 0.15 * scale;
+
+        double innerW = colGap * Math.max(0, nCols - 1);
+        for (double w : colW) innerW += w;
+        double gridH = rowGap * Math.max(0, nRows - 1);
+        for (int r = 0; r < nRows; r++) gridH += rowAsc[r] + rowDesc[r];
+
+        double axis = c.axisHeight() * scale;
+        double topY = -gridH / 2 - axis;                 // grid's vertical middle on the math axis
+
+        List<Draw> body = new ArrayList<>();
+        double y = topY;
+        for (int r = 0; r < nRows; r++) {
+            double baseY = y + rowAsc[r], x = 0;
+            for (int cix = 0; cix < nCols; cix++) {
+                LaidOut b = cell[r][cix];
+                if (b != null) body.addAll(shift(b.draws(), x + (colW[cix] - b.width()) / 2, baseY));
+                x += colW[cix] + colGap;
+            }
+            y += rowAsc[r] + rowDesc[r] + rowGap;
+        }
+        double gridAscent = -topY, gridDescent = topY + gridH;
+        return wrapInDelimiters(m.open(), m.close(), body, innerW, gridAscent, gridDescent, pad, scale);
+    }
+
+    /** Place {@code body} (already positioned around baseline 0) inside a growable delimiter pair,
+     *  mirroring {@link #fenced}. Shared by {@link #matrix} and {@link #cases} (close = "" → no right
+     *  delimiter). */
+    private LaidOut wrapInDelimiters(String open, String close, List<Draw> body, double innerW,
+                                     double ascent, double descent, double pad, double scale) {
+        double h = ascent + descent;
+        double dScale = delimScale(open, h, scale);
+        double openW = advance(open) * dScale;
+        double baseY = (descent - ascent) / 2 + c.axisHeight() * scale;
+        List<Draw> out = new ArrayList<>();
+        out.add(new GlyphRun(open, 0, baseY, dScale));
+        out.addAll(shift(body, openW + pad, 0));
+        double width = openW + pad + innerW;
+        if (!close.isEmpty()) {
+            out.add(new GlyphRun(close, openW + pad + innerW + pad, baseY, delimScale(close, h, scale)));
+            width += pad + advance(close) * dScale;
+        }
+        return new LaidOut(width, ascent, descent, out);
+    }
+
+    // --- UnderOver (a base carrying limits above / below) ----------------------------------------
+
+    private LaidOut underOver(MathBox.UnderOver u, double scale) {
+        LaidOut base = lay(u.base(), scale);
+        double sScale = scale * c.scriptScale();
+        LaidOut over = u.over() == null ? null : lay(u.over(), sScale);
+        LaidOut under = u.under() == null ? null : lay(u.under(), sScale);
+        double gap = 0.15 * scale;
+        double w = base.width();
+        if (over != null) w = Math.max(w, over.width());
+        if (under != null) w = Math.max(w, under.width());
+
+        List<Draw> out = new ArrayList<>(shift(base.draws(), (w - base.width()) / 2, 0));
+        double ascent = base.ascent(), descent = base.descent();
+        if (over != null) {
+            double oy = -base.ascent() - gap - over.descent();
+            out.addAll(shift(over.draws(), (w - over.width()) / 2, oy));
+            ascent = Math.max(ascent, over.ascent() - oy);
+        }
+        if (under != null) {
+            double uy = base.descent() + gap + under.ascent();
+            out.addAll(shift(under.draws(), (w - under.width()) / 2, uy));
+            descent = Math.max(descent, uy + under.descent());
+        }
+        return new LaidOut(w, ascent, descent, out);
+    }
+
+    // --- Cases (rows under a tall left brace) ----------------------------------------------------
+
+    private LaidOut cases(MathBox.Cases cs, double scale) {
+        double rowGap = 0.35 * scale, pad = 0.15 * scale;
+        List<LaidOut> laid = new ArrayList<>();
+        double innerW = 0, gridH = rowGap * Math.max(0, cs.rows().size() - 1);
+        for (MathBox row : cs.rows()) {
+            LaidOut b = lay(row, scale);
+            laid.add(b);
+            innerW = Math.max(innerW, b.width());
+            gridH += b.ascent() + b.descent();
+        }
+        double axis = c.axisHeight() * scale;
+        double topY = -gridH / 2 - axis;
+
+        List<Draw> body = new ArrayList<>();
+        double y = topY;
+        for (LaidOut b : laid) {                          // rows left-aligned (unlike matrix's centering)
+            body.addAll(shift(b.draws(), 0, y + b.ascent()));
+            y += b.ascent() + b.descent() + rowGap;
+        }
+        return wrapInDelimiters("{", "", body, innerW, -topY, topY + gridH, pad, scale);
+    }
+
+    // --- Prescript (scripts to the LEFT of the base) ---------------------------------------------
+
+    private LaidOut prescript(MathBox.Prescript p, double scale) {
+        LaidOut base = lay(p.base(), scale);
+        double sScale = scale * c.scriptScale();
+        LaidOut sup = p.superscript() == null ? null : lay(p.superscript(), sScale);
+        LaidOut sub = p.subscript() == null ? null : lay(p.subscript(), sScale);
+        double preW = 0;
+        if (sup != null) preW = Math.max(preW, sup.width());
+        if (sub != null) preW = Math.max(preW, sub.width());
+
+        List<Draw> out = new ArrayList<>();
+        double ascent = base.ascent(), descent = base.descent();
+        if (sup != null) {                               // right-align the prescripts against the base
+            double y = -c.superscriptShiftUp() * scale;
+            out.addAll(shift(sup.draws(), preW - sup.width(), y));
+            ascent = Math.max(ascent, sup.ascent() - y);
+            descent = Math.max(descent, y + sup.descent());
+        }
+        if (sub != null) {
+            double y = c.subscriptShiftDown() * scale;
+            out.addAll(shift(sub.draws(), preW - sub.width(), y));
+            ascent = Math.max(ascent, sub.ascent() - y);
+            descent = Math.max(descent, y + sub.descent());
+        }
+        out.addAll(shift(base.draws(), preW, 0));
+        return new LaidOut(preW + base.width(), ascent, descent, out);
     }
 
     private double delimScale(String glyph, double contentHeight, double scale) {

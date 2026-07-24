@@ -83,6 +83,59 @@ class MathTypesetTest {
                 "backends agree on run count (svg=" + svgTexts + ", ogl=" + oglTexts + ")");
     }
 
+    @Test
+    void matrix_laysOutGridInDelimiters() {
+        MathBox m = MathBox.matrix(List.of(
+                List.of(var("a"), var("b")),
+                List.of(var("c"), var("d"))));
+        LaidOut laid = layout.layout(m);
+        assertTrue(laid.width() > 0 && laid.ascent() > 0 && laid.descent() > 0, "sane box: " + laid);
+        String svg = MathSvg.write(laid, 40.0);
+        assertDoesNotThrow(() -> DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                .parse(new ByteArrayInputStream(svg.getBytes(StandardCharsets.UTF_8))), () -> svg);
+        // 4 cells + 2 bracket delimiters = 6 glyph runs.
+        assertTrue(countOccurrences(svg, "<text") >= 6, "cells + delimiters: " + svg);
+    }
+
+    @Test
+    void underOver_stacksLimitsAboveAndBelow() {
+        // ∑ from k=0 to n
+        MathBox sum = MathBox.underover(MathBox.sym("∑"),
+                var("n"), row(var("k"), op("="), num("0")));
+        LaidOut laid = layout.layout(sum);
+        LaidOut bare = layout.layout(MathBox.sym("∑"));
+        assertTrue(laid.ascent() > bare.ascent(), "the over-limit adds height above");
+        assertTrue(laid.descent() > bare.descent(), "the under-limit adds height below");
+    }
+
+    @Test
+    void cases_stacksRowsUnderOneBrace() {
+        MathBox cs = MathBox.cases(List.of(
+                row(var("x"), op("+"), num("1")),
+                row(num("0"))));
+        LaidOut laid = layout.layout(cs);
+        String svg = MathSvg.write(laid, 40.0);
+        assertTrue(svg.contains("{"), "a left brace is emitted");
+        assertTrue(laid.ascent() > 0 && laid.descent() > 0, "two stacked rows: " + laid);
+    }
+
+    @Test
+    void radical_withIndex_widensForTheDegree() {
+        LaidOut plain = layout.layout(sqrt(var("x")));
+        LaidOut cube = layout.layout(MathBox.root(var("x"), num("3")));
+        assertTrue(cube.width() > plain.width(), "the degree index widens the radical");
+        assertTrue(MathSvg.write(cube, 40.0).contains(">3<"), "the index glyph is drawn");
+    }
+
+    @Test
+    void prescript_placesScriptsLeftOfBase() {
+        // ₆¹⁴C — pre-super 14, pre-sub 6, on C
+        MathBox iso = new MathBox.Prescript(var("C"), num("14"), num("6"));
+        LaidOut laid = layout.layout(iso);
+        LaidOut bareC = layout.layout(var("C"));
+        assertTrue(laid.width() > bareC.width(), "prescripts add width before the base");
+    }
+
     private static long countOccurrences(String s, String sub) {
         long n = 0; int i = 0;
         while ((i = s.indexOf(sub, i)) >= 0) { n++; i += sub.length(); }

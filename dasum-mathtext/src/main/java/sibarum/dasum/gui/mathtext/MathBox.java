@@ -17,12 +17,17 @@ import java.util.List;
  *   <li>{@link Fraction} — numerator over denominator, centered on the math axis;</li>
  *   <li>{@link Script} — a base with an optional superscript and/or subscript;</li>
  *   <li>{@link Radical} — a radicand under a surd, with an optional degree index;</li>
- *   <li>{@link Fenced} — content wrapped in delimiters that grow to its height.</li>
+ *   <li>{@link Fenced} — content wrapped in delimiters that grow to its height;</li>
+ *   <li>{@link Matrix} — a grid of cells in growable delimiters (also a vector, a single column);</li>
+ *   <li>{@link UnderOver} — a base with material centered above and/or below (big operators with
+ *       limits: {@code sum}/{@code product}/{@code lim});</li>
+ *   <li>{@link Cases} — rows stacked under a single tall left brace (branches / piecewise);</li>
+ *   <li>{@link Prescript} — a super/subscript placed to the LEFT of its base (pre-scripts).</li>
  * </ul>
  */
 public sealed interface MathBox
         permits MathBox.Run, MathBox.Row, MathBox.Fraction, MathBox.Script, MathBox.Radical,
-                MathBox.Fenced {
+                MathBox.Fenced, MathBox.Matrix, MathBox.UnderOver, MathBox.Cases, MathBox.Prescript {
 
     /** The semantic class of a {@link Run} — drives font style, inter-atom spacing, and how the
      *  text maps to glyphs (a VARIABLE letter becomes an italic math codepoint; the rest stay upright). */
@@ -48,6 +53,22 @@ public sealed interface MathBox
     /** {@code content} wrapped in a growable delimiter pair (e.g. {@code (} … {@code )}). */
     record Fenced(String open, String close, MathBox content) implements MathBox {}
 
+    /** A grid of cells (row-major) inside a growable delimiter pair — a matrix, or, with one column,
+     *  a column vector. Columns are aligned to their widest cell; rows center on the whole grid's axis. */
+    record Matrix(List<List<MathBox>> rows, String open, String close) implements MathBox {}
+
+    /** A {@code base} with material stacked directly above ({@code over}) and/or below ({@code under}),
+     *  centered — a big operator carrying its limits ({@code ∑} with bounds, {@code lim} with {@code x→a}).
+     *  Either script may be {@code null}. Distinct from {@link Script}, whose scripts sit to the side. */
+    record UnderOver(MathBox base, MathBox over, MathBox under) implements MathBox {}
+
+    /** Rows stacked vertically under a single tall left brace — piecewise definitions / branches. */
+    record Cases(List<MathBox> rows) implements MathBox {}
+
+    /** A super/subscript placed to the LEFT of the {@code base} (a pre-script, e.g. an isotope's mass
+     *  number). Either script may be {@code null}. The right-hand counterpart is {@link Script}. */
+    record Prescript(MathBox base, MathBox superscript, MathBox subscript) implements MathBox {}
+
     // --- terse factories for hand-built trees (the POC front-end) ------------------------------
 
     static MathBox var(String s)  { return new Run(s, Role.VARIABLE); }
@@ -65,4 +86,10 @@ public sealed interface MathBox
         return new Fenced(open, close, content);
     }
     static MathBox paren(MathBox content) { return new Fenced("(", ")", content); }
+    static MathBox matrix(List<List<MathBox>> rows) { return new Matrix(rows, "[", "]"); }
+    static MathBox underover(MathBox base, MathBox over, MathBox under) {
+        return new UnderOver(base, over, under);
+    }
+    static MathBox cases(List<MathBox> rows) { return new Cases(rows); }
+    static MathBox root(MathBox radicand, MathBox index) { return new Radical(radicand, index); }
 }

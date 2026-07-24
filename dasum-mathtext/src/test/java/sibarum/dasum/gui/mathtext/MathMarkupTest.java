@@ -28,6 +28,11 @@ class MathMarkupTest {
             case MathBox.Radical rad -> "sqrt(" + s(rad.radicand())
                     + (rad.index() == null ? "" : ", idx=" + s(rad.index())) + ")";
             case MathBox.Fenced fe -> "fence" + fe.open() + fe.close() + "(" + s(fe.content()) + ")";
+            // Phase-1 markup never produces these; render them anyway so the switch stays total.
+            case MathBox.Matrix mx -> "matrix" + mx.rows();
+            case MathBox.UnderOver uo -> "underover(" + s(uo.base()) + ")";
+            case MathBox.Cases cs -> "cases" + cs.rows();
+            case MathBox.Prescript pr -> "prescript(" + s(pr.base()) + ")";
         };
     }
 
