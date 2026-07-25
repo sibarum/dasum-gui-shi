@@ -136,6 +136,29 @@ class MathTypesetTest {
         assertTrue(laid.width() > bareC.width(), "prescripts add width before the base");
     }
 
+    @Test
+    void fractionInSuperscript_shrinksItsParts_butTopLevelDoesNot() {
+        // A top-level fraction keeps full-size digits; the same fraction in a superscript renders its
+        // digits about half size (scriptScale²) — the TeX "one style smaller in script" rule.
+        double topDigit = firstGlyphSize(layout.layout(frac(num("1"), num("2"))));
+        double supDigit = firstScriptGlyphSize(layout.layout(pow(var("x"), frac(num("1"), num("2")))));
+        assertTrue(topDigit > 0.99, "top-level fraction digits are full size: " + topDigit);
+        assertTrue(supDigit < 0.55 && supDigit > 0.4,
+                "a superscript fraction's digits shrink to ~half: " + supDigit);
+    }
+
+    /** Size of the first glyph run (a top-level fraction: its numerator). */
+    private static double firstGlyphSize(LaidOut m) {
+        return m.draws().stream().filter(d -> d instanceof LaidOut.GlyphRun)
+                .map(d -> ((LaidOut.GlyphRun) d).size()).findFirst().orElse(0.0);
+    }
+
+    /** Size of the first sub-full-size glyph run — the scripted content, skipping the full-size base. */
+    private static double firstScriptGlyphSize(LaidOut m) {
+        return m.draws().stream().filter(d -> d instanceof LaidOut.GlyphRun g && g.size() < 0.99)
+                .map(d -> ((LaidOut.GlyphRun) d).size()).findFirst().orElse(0.0);
+    }
+
     private static long countOccurrences(String s, String sub) {
         long n = 0; int i = 0;
         while ((i = s.indexOf(sub, i)) >= 0) { n++; i += sub.length(); }

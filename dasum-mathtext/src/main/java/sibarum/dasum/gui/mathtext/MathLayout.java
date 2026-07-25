@@ -105,7 +105,12 @@ public final class MathLayout {
     // --- Fraction ---------------------------------------------------------------------------------
 
     private LaidOut fraction(MathBox.Fraction f, double scale) {
-        LaidOut n = lay(f.numerator(), scale), d = lay(f.denominator(), scale);
+        // TeX rule: a fraction's numerator/denominator sit one style smaller than the fraction. We
+        // apply it only when the fraction is ALREADY in script style (scale ≤ scriptScale) — so a
+        // superscript fraction like x^(a/b) shrinks its parts to ~half (scriptScale²), matching the
+        // eye's expectation, while a full-size top-level fraction keeps its parts full-size.
+        double childScale = scale <= c.scriptScale() + 1e-6 ? scale * c.scriptScale() : scale;
+        LaidOut n = lay(f.numerator(), childScale), d = lay(f.denominator(), childScale);
         double rt = c.fractionRuleThickness() * scale;
         double axis = c.axisHeight() * scale;
         double barTop = -axis - rt / 2, barBot = -axis + rt / 2;
