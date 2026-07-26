@@ -149,9 +149,9 @@ public final class MathMarkup {
             default: break;
         }
 
-        // A number, including a leading-decimal one (.5). The "digit right after the dot" test is what
-        // keeps this space-free and unambiguous: a '.' NOT followed by a digit isn't part of a number,
-        // so it stays available for the ./. obelus (2./.3, 1/.2 both parse with no spaces).
+        // A number, including a leading-decimal one (.5). A '.' is part of a number only when a digit
+        // follows it, so a decimal point is never mistaken for anything else (1/.2 → 1 over 0.2). The
+        // dot-bearing ./. obelus can't collide here anyway — it's a spaced operator (see symbol()).
         if (isDigit(c) || (c == '.' && pos + 1 < src.length() && isDigit(src.charAt(pos + 1)))) return number();
         if (isLetter(c)) return word();
 
@@ -334,12 +334,27 @@ public final class MathMarkup {
         return null;
     }
 
-    /** A non-letter operator/relation/arrow/punct token, longest-match; {@code null} if none here. */
+    /** A non-letter operator/relation/arrow/punct token, longest-match; {@code null} if none here.
+     *  A {@link Sym#spaced} token (the {@code ./.} obelus) is recognised only with whitespace or a
+     *  boundary on each side, so it never crowds a number — {@code 2 ./. 3} yes, {@code 2./.3} no. */
     private MathBox symbol() {
+        skipWs();
         for (Sym s : SYMBOLS) {
-            if (matches(s.token)) return new MathBox.Run(s.glyph, s.role);
+            if (!src.regionMatches(pos, s.token, 0, s.token.length())) continue;
+            if (s.spaced && !spacedBoundaries(s.token.length())) continue;
+            pos += s.token.length();
+            return new MathBox.Run(s.glyph, s.role);
         }
         return null;
+    }
+
+    /** True when the token of {@code len} chars at {@code pos} has whitespace (or the string edge) on
+     *  both sides — the "give it elbow room" rule for a {@link Sym#spaced} operator. */
+    private boolean spacedBoundaries(int len) {
+        boolean before = pos == 0 || Character.isWhitespace(src.charAt(pos - 1));
+        int after = pos + len;
+        boolean afterOk = after >= src.length() || Character.isWhitespace(src.charAt(after));
+        return before && afterOk;
     }
 
     // --- keyword & symbol tables -----------------------------------------------------------------
@@ -377,7 +392,12 @@ public final class MathMarkup {
         return best;
     }
 
-    private record Sym(String token, String glyph, Role role) {}
+    /** A non-letter token. {@code spaced} operators are recognised only when whitespace-delimited
+     *  (see {@link #symbol()}) — reserved for the dot-bearing obelus, which would otherwise fight a
+     *  decimal point for characters. */
+    private record Sym(String token, String glyph, Role role, boolean spaced) {
+        Sym(String token, String glyph, Role role) { this(token, glyph, role, false); }
+    }
 
     /** Non-letter tokens, ORDERED longest-first so the scanner is greedy (e.g. {@code <=} before
      *  {@code <}, {@code -->} before {@code -}). */
@@ -394,7 +414,7 @@ public final class MathMarkup {
         new Sym("~=",  "≈", Role.RELATION),   // ≈
         new Sym("+-",  "±", Role.OPERATOR),   // ±
         new Sym("><",  "×", Role.OPERATOR),   // × (cross product)
-        new Sym("./.", "÷", Role.OPERATOR),   // ÷ (obelus — dot·slash·dot mirrors the glyph)
+        new Sym("./.", "÷", Role.OPERATOR, true),  // ÷ obelus (SPACED: 2 ./. 3, so it never eats a decimal)
         new Sym("//",  "/",       Role.OPERATOR),  // literal slash (contrast a/b = fraction)
         new Sym("=",   "=",       Role.RELATION),
         new Sym("<",   "<",       Role.RELATION),

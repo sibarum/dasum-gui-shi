@@ -79,9 +79,7 @@ class MathMarkupTest {
         assertEquals("N'2.5'", p("2.5"));
         assertEquals("N'.5'", p(".5"), "a leading-decimal number");
         assertEquals("frac(N'1', N'.2')", p("1/.2"), "leading decimal as a denominator (2^{1/.2})");
-        // The 'digit after the dot' rule keeps decimals and the ./. obelus unambiguous, space-free.
-        assertEquals("[N'.2' O'÷' N'3']", p(".2./.3"));
-        assertEquals("[N'2.5' O'÷' N'3']", p("2.5./.3"));
+        assertEquals("[N'.2' O'÷' N'3']", p(".2 ./. 3"), "a leading decimal beside the spaced obelus");
     }
 
     @Test
@@ -122,17 +120,31 @@ class MathMarkupTest {
         assertEquals("[V'x' R'→' V'y']", p("x-->y"));
         assertEquals("[V'x' R'⇒' V'y']", p("x==>y"));
         assertEquals("[V'a' O'/' V'b']", p("a//b"), "// is a literal slash, distinct from a/b fraction");
-        assertEquals("[V'a' O'÷' V'b']", p("a./.b"), "./. is the obelus, distinct from / (fraction) and // (slash)");
-        assertEquals("[N'2' O'÷' N'3']", p("2./.3"), "decimal points don't confuse the obelus");
+        assertEquals("[V'a' O'÷' V'b']", p("a ./. b"), "./. is the obelus, distinct from / (fraction) and // (slash)");
+        assertEquals("[N'2' O'÷' N'3']", p("2 ./. 3"), "the obelus is written spaced, like you'd text it");
     }
 
     @Test
-    void whitespaceIsInsignificant_spacesAreReadabilityOnly() {
-        // Spaces around operators are for the eye; they never change the tree. Adjacency is
-        // multiplication with or without a space, so these all agree.
-        assertEquals(p("1./.1"), p("1 ./. 1"), "spaces around an operator don't change meaning");
+    void obelus_isSpaced_soItNeverEatsADecimal() {
+        // ./. is recognised only when whitespace-delimited; cramped against a number it's not an
+        // operator — you write the readable spaced form. A number's decimal point is never contested.
+        assertThrows(MathMarkup.MarkupError.class, () -> MathMarkup.parse("2./.3"),
+                "the cramped form isn't a pattern we support");
+        assertEquals("N'2.5'", p("2.5"), "a decimal is always just a decimal");
+        assertEquals("[N'2.5' O'÷' N'3']", p("2.5 ./. 3"), "spaced obelus after a decimal");
+    }
+
+    @Test
+    void whitespace_optionalForTheCommonCase_meaningfulForDisambiguation() {
+        // Spaces are optional almost everywhere: adjacency is multiplication with or without one, and
+        // ordinary operators pack tight or spaced identically.
         assertEquals(p("2x"), p("2 x"), "adjacency is multiplication, space or not");
         assertEquals("[N'2' V'x']", p("2   x"), "any run of spaces collapses to a single juxtaposition");
+        assertEquals(p("a+b"), p("a + b"), "a single-char operator is space-agnostic");
+        // But a space is a real disambiguator where it matters: ><  is a cross product, >  <  is two
+        // separate relations; and the obelus ./. is only recognised spaced.
+        assertEquals("[V'a' O'×' V'b']", p("a><b"), "adjacent >< is cross product");
+        assertEquals("[V'a' R'>' V'b' R'<' V'c']", p("a > b < c"), "spacing >< apart makes two relations");
     }
 
     @Test
