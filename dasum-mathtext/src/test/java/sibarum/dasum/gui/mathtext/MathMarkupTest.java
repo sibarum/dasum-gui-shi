@@ -75,6 +75,16 @@ class MathMarkupTest {
     }
 
     @Test
+    void numbers_decimalsIncludingLeadingDot() {
+        assertEquals("N'2.5'", p("2.5"));
+        assertEquals("N'.5'", p(".5"), "a leading-decimal number");
+        assertEquals("frac(N'1', N'.2')", p("1/.2"), "leading decimal as a denominator (2^{1/.2})");
+        // The 'digit after the dot' rule keeps decimals and the ./. obelus unambiguous, space-free.
+        assertEquals("[N'.2' O'÷' N'3']", p(".2./.3"));
+        assertEquals("[N'2.5' O'÷' N'3']", p("2.5./.3"));
+    }
+
+    @Test
     void scripts_superSubAndBoth() {
         assertEquals("script(V'x', sup=N'2', sub=_)", p("x^2"));
         assertEquals("script(V'a', sup=_, sub=V'i')", p("a_i"));

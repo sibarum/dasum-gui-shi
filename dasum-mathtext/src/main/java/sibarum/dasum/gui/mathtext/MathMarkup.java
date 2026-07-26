@@ -149,7 +149,10 @@ public final class MathMarkup {
             default: break;
         }
 
-        if (isDigit(c)) return number();
+        // A number, including a leading-decimal one (.5). The "digit right after the dot" test is what
+        // keeps this space-free and unambiguous: a '.' NOT followed by a digit isn't part of a number,
+        // so it stays available for the ./. obelus (2./.3, 1/.2 both parse with no spaces).
+        if (isDigit(c) || (c == '.' && pos + 1 < src.length() && isDigit(src.charAt(pos + 1)))) return number();
         if (isLetter(c)) return word();
 
         MathBox symbol = symbol();                        // + - // = < > arrows dot cross etc.
@@ -260,6 +263,9 @@ public final class MathMarkup {
 
     // --- atoms -----------------------------------------------------------------------------------
 
+    /** A number: optional integer part, optional fractional part (leading decimals like {@code .5}
+     *  are fine), but a decimal point is only consumed when a digit follows it — so a trailing-dot
+     *  {@code 2.} is not a number and the dot stays free for the {@code ./.} obelus. */
     private MathBox number() {
         int start = pos;
         while (pos < src.length() && isDigit(peekRaw())) pos++;
