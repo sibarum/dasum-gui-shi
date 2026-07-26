@@ -117,6 +117,15 @@ class MathMarkupTest {
     }
 
     @Test
+    void whitespaceIsInsignificant_spacesAreReadabilityOnly() {
+        // Spaces around operators are for the eye; they never change the tree. Adjacency is
+        // multiplication with or without a space, so these all agree.
+        assertEquals(p("1./.1"), p("1 ./. 1"), "spaces around an operator don't change meaning");
+        assertEquals(p("2x"), p("2 x"), "adjacency is multiplication, space or not");
+        assertEquals("[N'2' V'x']", p("2   x"), "any run of spaces collapses to a single juxtaposition");
+    }
+
+    @Test
     void sign_leadingMinusAndPlusMinus() {
         assertEquals("[O'−' V'x']", p("-x"));
         assertEquals("[O'±' V'x']", p("+-x"));
