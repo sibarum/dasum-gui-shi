@@ -399,13 +399,22 @@ public final class MathMarkup {
         Sym(String token, String glyph, Role role) { this(token, glyph, role, false); }
     }
 
-    /** Non-letter tokens, ORDERED longest-first so the scanner is greedy (e.g. {@code <=} before
-     *  {@code <}, {@code -->} before {@code -}). */
+    /**
+     * Non-letter tokens, STRICTLY longest-first — the invariant the scanner's greedy longest-match
+     * relies on ({@link #symbol()} takes the first entry that fits). This is the whole disambiguation
+     * policy for adjacent symbols: we don't adjudicate every permutation ({@code -><-} etc.), we take
+     * the longest token at each step and let a SPACE be the universal override — {@code -><-} is two
+     * arrows, {@code - >< -} is minus·cross·minus, {@code -> <-} is the arrows spelled apart. Add new
+     * tokens in the right length group and the policy keeps working.
+     */
     private static final Sym[] SYMBOLS = {
+        // 3 characters
         new Sym("-->", "→", Role.RELATION),   // →
         new Sym("<--", "←", Role.RELATION),   // ←
         new Sym("==>", "⇒", Role.RELATION),   // ⇒
         new Sym("<==", "⇐", Role.RELATION),   // ⇐
+        new Sym("./.", "÷", Role.OPERATOR, true),  // ÷ obelus (SPACED: 2 ./. 3, so it never eats a decimal)
+        // 2 characters
         new Sym("->",  "→", Role.RELATION),   // → (short arrow, e.g. inside lim(x->0, …))
         new Sym("<-",  "←", Role.RELATION),   // ←
         new Sym("<=",  "≤", Role.RELATION),   // ≤
@@ -414,15 +423,15 @@ public final class MathMarkup {
         new Sym("~=",  "≈", Role.RELATION),   // ≈
         new Sym("+-",  "±", Role.OPERATOR),   // ±
         new Sym("><",  "×", Role.OPERATOR),   // × (cross product)
-        new Sym("./.", "÷", Role.OPERATOR, true),  // ÷ obelus (SPACED: 2 ./. 3, so it never eats a decimal)
-        new Sym("//",  "/",       Role.OPERATOR),  // literal slash (contrast a/b = fraction)
-        new Sym("=",   "=",       Role.RELATION),
-        new Sym("<",   "<",       Role.RELATION),
-        new Sym(">",   ">",       Role.RELATION),
-        new Sym("+",   "+",       Role.OPERATOR),
+        new Sym("//",  "/", Role.OPERATOR),   // literal slash (contrast a/b = fraction)
+        // 1 character
+        new Sym("=",   "=", Role.RELATION),
+        new Sym("<",   "<", Role.RELATION),
+        new Sym(">",   ">", Role.RELATION),
+        new Sym("+",   "+", Role.OPERATOR),
         new Sym("-",   "−", Role.OPERATOR),   // − (minus sign, not hyphen)
         new Sym("*",   "⋅", Role.OPERATOR),   // ⋅ (dot product)
-        new Sym(",",   ",",       Role.PUNCT),
+        new Sym(",",   ",", Role.PUNCT),
     };
 
     /** Lowercase Greek letter names → their U+03B1.. codepoints (uppercase is 0x20 lower). Declared

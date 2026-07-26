@@ -125,6 +125,16 @@ class MathMarkupTest {
     }
 
     @Test
+    void adjacentSymbols_longestMatchWins_spaceOverrides() {
+        // We don't adjudicate every permutation of adjacent symbols — longest token wins at each step,
+        // and a space is the universal override. -><- is two arrows; spell it apart to mean otherwise.
+        assertEquals("[R'→' R'←']", p("-><-"), "-><- is two arrows (-> then <-), by longest-match");
+        assertEquals("[R'→' R'←']", p("-> <-"), "arrows spelled apart, same result");
+        assertEquals("[O'−' O'×' O'−']", p("- >< -"), "spacing forces minus·cross·minus");
+        assertEquals("[V'a' O'×' V'b']", p("a><b"), "adjacent >< is a cross product");
+    }
+
+    @Test
     void obelus_isSpaced_soItNeverEatsADecimal() {
         // ./. is recognised only when whitespace-delimited; cramped against a number it's not an
         // operator — you write the readable spaced form. A number's decimal point is never contested.
