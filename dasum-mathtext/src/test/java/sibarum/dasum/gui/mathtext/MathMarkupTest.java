@@ -112,6 +112,8 @@ class MathMarkupTest {
         assertEquals("[V'x' R'→' V'y']", p("x-->y"));
         assertEquals("[V'x' R'⇒' V'y']", p("x==>y"));
         assertEquals("[V'a' O'/' V'b']", p("a//b"), "// is a literal slash, distinct from a/b fraction");
+        assertEquals("[V'a' O'÷' V'b']", p("a./.b"), "./. is the obelus, distinct from / (fraction) and // (slash)");
+        assertEquals("[N'2' O'÷' N'3']", p("2./.3"), "decimal points don't confuse the obelus");
     }
 
     @Test

@@ -388,6 +388,7 @@ public final class MathMarkup {
         new Sym("~=",  "≈", Role.RELATION),   // ≈
         new Sym("+-",  "±", Role.OPERATOR),   // ±
         new Sym("><",  "×", Role.OPERATOR),   // × (cross product)
+        new Sym("./.", "÷", Role.OPERATOR),   // ÷ (obelus — dot·slash·dot mirrors the glyph)
         new Sym("//",  "/",       Role.OPERATOR),  // literal slash (contrast a/b = fraction)
         new Sym("=",   "=",       Role.RELATION),
         new Sym("<",   "<",       Role.RELATION),
