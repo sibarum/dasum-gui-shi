@@ -71,6 +71,35 @@ final class UiBuilderTest {
     }
 
     @Test
+    void editableForcesInteractiveAndSelectable() {
+        // editing needs the full hit-test + focus + selection pipeline, so editable() turns both on
+        // even though the caller only asked for editable — the raw record leaves this to the caller.
+        Component.Text t = (Component.Text) Ui.text("").editable().build();
+        assertTrue(t.editable(), "editable set");
+        assertTrue(t.selectable(), "editable implies selectable");
+        assertTrue(t.interactive(), "editable implies interactive");
+    }
+
+    @Test
+    void emptyEditableGetsNonCollapsingDefaultWidth() {
+        // An empty editable Text has no glyphs; without a width it would lay out to zero (invisible,
+        // unclickable). The builder defaults a width — the fix for the TextField-invisible bug.
+        Component.Text noWidth = (Component.Text) Ui.text("").editable().build();
+        assertNotNull(noWidth.width(), "empty editable field gets a default width, not null");
+        // An explicit width still wins.
+        assertEquals(Em.of(18f), ((Component.Text) Ui.text("").editable().width(Em.of(18f)).build()).width());
+        // A growing editable field sizes from its flex share, so null width is correct there.
+        assertNull(((Component.Text) Ui.text("").editable().grow(1).build()).width(),
+            "a grow>0 editable field keeps null width (flex share sizes it)");
+    }
+
+    @Test
+    void clipOptIn() {
+        assertTrue(((Component.Text) Ui.text("x").clip().build()).clip());
+        assertEquals(false, ((Component.Text) Ui.text("x").build()).clip(), "clip off by default");
+    }
+
+    @Test
     void spacerGrows() {
         assertEquals(1, Ui.spacer().flexGrow());
     }

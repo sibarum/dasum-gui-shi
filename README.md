@@ -193,6 +193,25 @@ A flex child's size is the framework's #1 footgun: a child with a `null` **main-
 
 Use `.fill()` at the root and `.grow(1)` on the one elastic region (content area, scroll, table); leave the default `.fit()` for content stacks.
 
+### Text and input fields
+
+Plain text is `Ui.text(str)`; opt into `.size(em)`, `.color(c)` / `.variant(v)`, `.wrap(maxWidth)`, `.clip()` (glyphs clipped to the box so overflow doesn't bleed), and `.selectable()`. An **editable input field** is `Ui.text(str).editable()` — never the raw constructor:
+
+```java
+Component.Text field = (Component.Text) Ui.text("").editable().width(Em.of(18f)).build();
+```
+
+`.editable()` encodes two rules the raw record leaves to the caller — the same class of footgun as the sizing defaults:
+
+- **editable ⇒ interactive + selectable.** The caret / key / selection pipeline early-returns unless all three flags are on, so a raw `editable`-only `Text` builds fine but silently swallows every keystroke. `.editable()` forces the other two on.
+- **an empty editable field gets a non-collapsing default width.** Empty text has no glyphs and so no intrinsic width — a raw editable `Text` with `null` width lays out to a zero-size, invisible, unclickable rect. `.editable()` supplies a default width when you set none (skipped when the field `.grow(n>0)`s, since the flex share sizes it then).
+
+Reacting to edits is identity-keyed on the built instance: `TextStates.onContentChange(field, s -> …)`. And note the one thing the builder can't do for you — the window's press handler must `FocusState.set(hit)` when the click lands on an editable `Text`, or focus never moves to the field.
+
+### Integrating from another codebase
+
+The one rule: **build every component through `Ui.*`; treat the raw `new Component.…(...)` constructors as an escape hatch, not the API.** The record constructors fail fast on *crash-prone* fields (see below) but they do **not** apply the *layout-correctness* defaults — fit-content sizing, the editable-field rules above, safe non-null styling — because those are choices, not invariants. Reach past the builder and you silently forfeit exactly the guarantees that keep a UI from rendering blank or collapsed. When a builder can't yet express something you need (a new field, a new widget shape), add the method to the builder rather than dropping to the record at the call site — that keeps the guardrail in one place for the next caller. `build()` returns the plain record and `.add(...)` accepts records too, so a consuming codebase can migrate incrementally and mix hand-written subtrees while it does.
+
 ### Interop and refactoring
 
 `build()` returns the plain record, and `.add(...)` takes either a record or another builder — so migration is mechanical and partial trees can stay hand-written. `Ui.from(record)` lifts an existing record back into a builder for fluent editing (a uniform alternative to the scattered `withX` methods):
