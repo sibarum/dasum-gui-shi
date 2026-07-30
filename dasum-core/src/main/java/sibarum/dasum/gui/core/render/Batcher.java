@@ -7,99 +7,74 @@ import static sibarum.dasum.gui.natives.gl.Gl.GL_ONE_MINUS_SRC_ALPHA;
 import static sibarum.dasum.gui.natives.gl.Gl.GL_SRC_ALPHA;
 
 /**
- * Top-level render coordinator. Holds one per-material accumulator (each
- * with its own VAO/VBO + vertex layout). {@link #submit(DrawCommand)}
- * dispatches by command variant; {@link #endFrame(float[])} flushes each
- * accumulator in render order — flat solid fills first, then rounded/bordered
- * fills, then translucent SDF text.
- * <p>
- * <b>Rectangle ordering contract.</b> Flat {@link DrawCommand.ColoredQuad}s
- * and {@link DrawCommand.RoundedQuad}s live in separate accumulators, so
- * their painter's-order is NOT preserved <em>across</em> the two buckets
- * within a frame: every rounded fill is drawn on top of every flat fill.
- * This is chosen so the dominant case — a rounded/bordered widget (button,
- * tab cell, styled card) sitting inside a flat ancestor panel — composites
- * correctly. The inverse (a rounded ancestor whose descendant draws a flat
- * background that must sit on top of it) would be mis-ordered; give such a
- * descendant its own rounded style, or flush between them. Unifying all
- * rectangles into one stream is a tracked follow-up.
- * <p>
- * Adding a new material means adding a new accumulator + a new
- * {@link DrawCommand} variant + a switch arm here.
+ * Top-level render coordinator. Holds ONE geometry accumulator + material (the
+ * {@link UnifiedAccumulator} / {@code unified.*} shader): every
+ * {@link DrawCommand} — flat fill, rounded/bordered rect, MSDF glyph — is
+ * appended to a single buffer in submission (painter's) order and drawn in one
+ * stream.
+ *
+ * <p><b>Ordering is correct by construction.</b> There are no longer separate
+ * flat / rounded / glyph buckets flushed in a fixed order, so the old
+ * cross-bucket hazard — "every rounded fill draws on top of every flat fill",
+ * which silently hid flat carets/selections behind rounded frames — cannot
+ * happen. Whatever is submitted later draws later. A mid-frame {@link #flush}
+ * (before a scissor/viewport change) or an atlas swap just draws the stream so
+ * far and continues; order across those flushes is preserved because they are
+ * sequential.
  */
 public final class Batcher implements AutoCloseable {
 
-    private final SolidFillAccumulator solidFill = new SolidFillAccumulator();
-    private final RoundedFillAccumulator roundedFill = new RoundedFillAccumulator();
-    private final MsdfTextAccumulator msdfText  = new MsdfTextAccumulator();
-    private final ScissorStack scissor          = new ScissorStack();
+    private final UnifiedAccumulator geometry = new UnifiedAccumulator();
+    private final ScissorStack scissor        = new ScissorStack();
 
     public void init() {
-        solidFill.init();
-        roundedFill.init();
-        msdfText.init();
+        geometry.init();
         Gl.glEnable(GL_BLEND);
         Gl.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 
     /**
-     * Bind a new MSDF atlas for subsequent {@link DrawCommand.GlyphQuad}
-     * submissions. If the atlas (or its distance range) is changing and
-     * the text accumulator has pending glyphs from the previous atlas,
-     * flush them first so they're drawn with the correct texture.
-     * <p>
-     * Solid-fill geometry is also flushed in that case to preserve
-     * painter's-algorithm z-order between text and the solid quads that
-     * were emitted alongside it. Without this, a text run from atlas A
-     * would float above a later atlas-B background drawn before atlas-A
-     * glyphs were committed.
+     * Bind a new MSDF atlas for subsequent {@link DrawCommand.GlyphQuad}s. This
+     * no-projection variant refuses to silently drop pending geometry across a
+     * real atlas change (it has no projection to flush with); callers mixing
+     * atlases in a frame use {@link #setTextAtlas(Texture, float, float[])}.
      */
     public void setTextAtlas(Texture atlas, float distanceRange) {
-        if (msdfText.willAtlasChange(atlas, distanceRange) && msdfText.hasPendingGeometry()) {
-            // Need projection to flush — but setTextAtlas doesn't take it.
-            // The caller (Render) supplies it via setTextAtlas(atlas, range, projection)
-            // overload; this no-projection overload assumes the caller has
-            // either drained pending text already or doesn't need cross-
-            // atlas ordering this frame.
+        if (geometry.willAtlasChange(atlas, distanceRange) && geometry.hasPendingGeometry()) {
             throw new IllegalStateException(
-                "setTextAtlas would drop " + msdfText + " pending glyphs of the previous atlas. " +
+                "setTextAtlas would drop pending geometry of the previous atlas. " +
                 "Use setTextAtlas(atlas, distanceRange, projection) when mixing atlases in a frame.");
         }
-        msdfText.setAtlas(atlas, distanceRange);
+        geometry.setAtlas(atlas, distanceRange);
     }
 
     /**
-     * Atlas-swap variant that flushes pending text + solid-fill geometry
-     * with {@code projection} before swapping. Use this when a frame can
-     * mix multiple font groups (e.g. text label next to an icon).
+     * Atlas-swap variant that flushes the pending stream with {@code projection}
+     * before swapping, so painter's order is preserved across the swap (the
+     * geometry drawn so far — including flat/rounded fragments, which don't
+     * sample — is committed under the outgoing atlas, then glyphs continue with
+     * the new one).
      */
     public void setTextAtlas(Texture atlas, float distanceRange, float[] projection) {
-        if (msdfText.willAtlasChange(atlas, distanceRange) && msdfText.hasPendingGeometry()) {
-            // Flush solids + rounded fills first so painter's order is
-            // preserved across the atlas swap, then the text accumulator
-            // finalizes its own pending vertices against the OUTGOING atlas.
-            solidFill.flush(projection);
-            roundedFill.flush(projection);
-            msdfText.flush(projection);
+        if (geometry.willAtlasChange(atlas, distanceRange) && geometry.hasPendingGeometry()) {
+            geometry.flush(projection);
         }
-        msdfText.setAtlas(atlas, distanceRange);
+        geometry.setAtlas(atlas, distanceRange);
     }
 
     public ScissorStack scissor() { return scissor; }
 
     public void beginFrame(int framebufferHeightPx) {
-        solidFill.beginFrame();
-        roundedFill.beginFrame();
-        msdfText.beginFrame();
+        geometry.beginFrame();
         scissor.beginFrame(framebufferHeightPx);
     }
 
     public void submit(DrawCommand cmd) {
         switch (cmd) {
-            case DrawCommand.ColoredTriangle t -> solidFill.submit(t);
-            case DrawCommand.ColoredQuad q     -> solidFill.submit(q);
-            case DrawCommand.RoundedQuad q     -> roundedFill.submit(q);
-            case DrawCommand.GlyphQuad q       -> msdfText.submit(q);
+            case DrawCommand.ColoredTriangle t -> geometry.submit(t);
+            case DrawCommand.ColoredQuad q     -> geometry.submit(q);
+            case DrawCommand.RoundedQuad q     -> geometry.submit(q);
+            case DrawCommand.GlyphQuad q       -> geometry.submit(q);
         }
     }
 
@@ -108,24 +83,19 @@ public final class Batcher implements AutoCloseable {
     }
 
     /**
-     * Force-flushes all accumulators. Call before changing global GL state
-     * (scissor, viewport, blend) mid-frame so already-buffered geometry isn't
-     * drawn under the new state. Stat counters keep accumulating across
-     * multiple flushes within a single frame.
+     * Force-flush the stream. Call before changing global GL state (scissor,
+     * viewport, blend) mid-frame so already-buffered geometry is drawn under the
+     * old state. Stat counters accumulate across multiple flushes within a frame.
      */
     public void flush(float[] projection) {
-        solidFill.flush(projection);
-        roundedFill.flush(projection);
-        msdfText.flush(projection);
+        geometry.flush(projection);
     }
 
-    public int drawCallsThisFrame() { return solidFill.drawCalls() + roundedFill.drawCalls() + msdfText.drawCalls(); }
-    public int verticesThisFrame()  { return solidFill.vertices()  + roundedFill.vertices()  + msdfText.vertices();  }
+    public int drawCallsThisFrame() { return geometry.drawCalls(); }
+    public int verticesThisFrame()  { return geometry.vertices(); }
 
     @Override
     public void close() {
-        msdfText.close();
-        roundedFill.close();
-        solidFill.close();
+        geometry.close();
     }
 }

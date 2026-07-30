@@ -1,10 +1,10 @@
 package sibarum.dasum.gui.core.render;
 
 /**
- * A bundle of GL state (program + uniforms + blend mode + texture bindings)
- * that the batcher groups draw commands by. For M2a there is one material:
- * {@link SolidFillMaterial}. Future variants will include SDF text and
- * textured quad materials.
+ * A bundle of GL state (program + uniforms + texture bindings). There is one
+ * implementation, {@link UnifiedMaterial} — a single program that draws flat
+ * fills, rounded/bordered rects, and MSDF glyphs — so the whole UI renders in
+ * one order-preserving stream (see {@link Batcher}).
  */
 public interface Material extends AutoCloseable {
 
