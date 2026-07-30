@@ -104,7 +104,11 @@ public final class CameraMath {
 
         if (cam.mode() == CameraMode.ORTHOGRAPHIC) {
             float halfH = Math.max(1e-4f, cam.orthoScale());
-            float halfW = halfH * (aspect > 0f ? aspect : 1f);
+            // orthoScaleX > 0 pins the half-width (fill mode: the world rect stretches to the viewport,
+            // non-uniform); otherwise derive it from the aspect (uniform, aspect-preserving default).
+            float halfW = cam.orthoScaleX() > 0f
+                ? cam.orthoScaleX()
+                : halfH * (aspect > 0f ? aspect : 1f);
             proj.identity().ortho(
                 -halfW, halfW, -halfH, halfH,
                 -cam.farPlane(), cam.farPlane()

@@ -32,6 +32,12 @@ public final class PlotView {
     private volatile Function<Float, List<Layer>> builder;
     /** The zoom the plot was framed at — the reference for tick-density scaling. */
     private volatile float baseScale = 1f;
+    /** Fill mode: pin the ortho half-width so the frame's world rect stretches to fill the viewport
+     *  (non-uniform), rather than preserving data aspect and letting width follow the viewport. */
+    private volatile boolean fillViewport = false;
+
+    /** Enable fill mode (see {@link #fillViewport}); re-frame on the next {@code show…} to apply. */
+    public PlotView fillViewport(boolean on) { this.fillViewport = on; return this; }
 
     public PlotView(Component.SceneView view) {
         if (view == null) throw new IllegalArgumentException("view != null");
@@ -200,8 +206,12 @@ public final class PlotView {
         float cx = (left + right) * 0.5f, cy = (bot + top) * 0.5f;
         float halfH = Math.max(1e-4f, (top - bot) * 0.5f);
         baseScale = halfH;
-        SceneStates.setCamera(view,
-            CameraSpec.defaultOrtho().withTarget(new Vec3(cx, cy, 0f)).withOrthoScale(halfH));
+        CameraSpec cam = CameraSpec.defaultOrtho().withTarget(new Vec3(cx, cy, 0f)).withOrthoScale(halfH);
+        // Fill mode: also pin the half-width to the padded frame's world width, so the whole plot rect
+        // maps to the viewport (stretched to fit) regardless of the window's aspect — recomputed here
+        // on every re-frame, so a new expression or a window resize re-fits automatically.
+        if (fillViewport) cam = cam.withOrthoScaleX(Math.max(1e-4f, (right - left) * 0.5f));
+        SceneStates.setCamera(view, cam);
     }
 
     /** Scale the tick targets with zoom: closer (smaller orthoScale) → more ticks. */

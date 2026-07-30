@@ -18,6 +18,11 @@ package sibarum.dasum.gui.vis.math;
  * @param yawRad      perspective: orbit yaw around target (around world Y)
  * @param pitchRad    perspective: orbit pitch
  * @param orthoScale  ortho: world-space half-height visible (zoom)
+ * @param orthoScaleX ortho: explicit world-space half-WIDTH visible. {@code <= 0} (the default) means
+ *                    "derive width from the viewport aspect" — the usual uniform-scale, aspect-
+ *                    preserving ortho. A positive value pins the half-width independently of the
+ *                    aspect, so the visible world rect ({@code 2*orthoScaleX × 2*orthoScale}) is
+ *                    stretched to FILL the viewport (non-uniform scale). Used by fill-mode plots.
  * @param fovYRad     perspective: vertical field of view in radians
  * @param nearPlane   perspective near clip distance
  * @param farPlane    perspective far clip distance
@@ -29,6 +34,7 @@ public record CameraSpec(
     float yawRad,
     float pitchRad,
     float orthoScale,
+    float orthoScaleX,
     float fovYRad,
     float nearPlane, float farPlane
 ) {
@@ -41,7 +47,7 @@ public record CameraSpec(
         return new CameraSpec(
             CameraMode.ORTHOGRAPHIC, Vec3.ZERO,
             5f, 0f, 0f,
-            2f,
+            2f, 0f,
             DEFAULT_FOV, DEFAULT_NEAR, DEFAULT_FAR
         );
     }
@@ -50,15 +56,17 @@ public record CameraSpec(
         return new CameraSpec(
             CameraMode.PERSPECTIVE, Vec3.ZERO,
             5f, (float) Math.toRadians(35.0), (float) Math.toRadians(25.0),
-            2f,
+            2f, 0f,
             DEFAULT_FOV, DEFAULT_NEAR, DEFAULT_FAR
         );
     }
 
-    public CameraSpec withMode(CameraMode m)          { return new CameraSpec(m, target, distance, yawRad, pitchRad, orthoScale, fovYRad, nearPlane, farPlane); }
-    public CameraSpec withTarget(Vec3 t)              { return new CameraSpec(mode, t, distance, yawRad, pitchRad, orthoScale, fovYRad, nearPlane, farPlane); }
-    public CameraSpec withDistance(float d)           { return new CameraSpec(mode, target, d, yawRad, pitchRad, orthoScale, fovYRad, nearPlane, farPlane); }
-    public CameraSpec withYaw(float y)                { return new CameraSpec(mode, target, distance, y, pitchRad, orthoScale, fovYRad, nearPlane, farPlane); }
-    public CameraSpec withPitch(float p)              { return new CameraSpec(mode, target, distance, yawRad, p, orthoScale, fovYRad, nearPlane, farPlane); }
-    public CameraSpec withOrthoScale(float s)         { return new CameraSpec(mode, target, distance, yawRad, pitchRad, s, fovYRad, nearPlane, farPlane); }
+    public CameraSpec withMode(CameraMode m)          { return new CameraSpec(m, target, distance, yawRad, pitchRad, orthoScale, orthoScaleX, fovYRad, nearPlane, farPlane); }
+    public CameraSpec withTarget(Vec3 t)              { return new CameraSpec(mode, t, distance, yawRad, pitchRad, orthoScale, orthoScaleX, fovYRad, nearPlane, farPlane); }
+    public CameraSpec withDistance(float d)           { return new CameraSpec(mode, target, d, yawRad, pitchRad, orthoScale, orthoScaleX, fovYRad, nearPlane, farPlane); }
+    public CameraSpec withYaw(float y)                { return new CameraSpec(mode, target, distance, y, pitchRad, orthoScale, orthoScaleX, fovYRad, nearPlane, farPlane); }
+    public CameraSpec withPitch(float p)              { return new CameraSpec(mode, target, distance, yawRad, p, orthoScale, orthoScaleX, fovYRad, nearPlane, farPlane); }
+    public CameraSpec withOrthoScale(float s)         { return new CameraSpec(mode, target, distance, yawRad, pitchRad, s, orthoScaleX, fovYRad, nearPlane, farPlane); }
+    /** Pin the ortho half-width for fill-mode (non-uniform) plots; {@code <= 0} reverts to aspect-derived. */
+    public CameraSpec withOrthoScaleX(float sx)       { return new CameraSpec(mode, target, distance, yawRad, pitchRad, orthoScale, sx, fovYRad, nearPlane, farPlane); }
 }
