@@ -5,120 +5,111 @@ import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.component.DynamicChildren;
 import sibarum.dasum.gui.core.em.Em;
 import sibarum.dasum.gui.core.render.Color;
-import sibarum.dasum.gui.core.theme.Variant;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Smoke + behavior tests for {@link Status}. The 6-second auto-revert
- * is exercised by manual interaction only — JUnit-time, we verify the
- * synchronous parts (history append, active-event set, clear, listener
- * delivery) which together prove the wiring is sound.
+ * Behaviour tests for the remodelled {@link Status} (a ledger with a log/alert
+ * split, three orthogonal axes, and a seen-counter idle state). The 6-second
+ * auto-revert is exercised by hand; here we verify the synchronous parts —
+ * history append, the surface/counter split, seen-acknowledgment, and axis
+ * preservation. The {@code Status} singleton is shared across tests, so each
+ * counter assertion resets via {@link Status#markSeen()} and works in deltas.
  */
 final class StatusTest {
 
     @Test
-    void logAppendsToHistoryAndSetsActive() {
-        // Snapshot the size — earlier tests may have logged events.
-        int before = Status.events().size();
-        StatusEvent e = Status.log("hello", Variant.INFO);
-        assertNotNull(e);
-        assertEquals("hello", e.message());
-        assertEquals(Variant.INFO, e.variant());
-        assertEquals(before + 1, Status.events().size(),
-            "history grew by one");
-        assertEquals(e, Status.activeEvent(),
-            "log() sets active event");
+    void plainLogIsHistoryOnly_noSurface_noCounterBump() {
+        Status.markSeen();
+        int histBefore = Status.events().size();
+        Status.clearMessage();                 // ensure idle
+        StatusEvent e = Status.log("a quiet note");
+        assertEquals(histBefore + 1, Status.events().size(), "recorded in history");
+        assertFalse(e.alert(), "log() is not an alert");
+        assertNull(Status.activeEvent(), "a plain log does not surface on the bar");
+        assertEquals(0, Status.newAlertCount(), "a plain log does not bump the unseen counter");
     }
 
     @Test
-    void clearMessageRevertsActiveEvent() {
-        Status.log("transient");
+    void alertSurfacesAndBumpsCounter() {
+        Status.markSeen();
+        StatusEvent e = Status.good("compiled");
+        assertTrue(e.alert());
+        assertEquals(Severity.GOOD, e.severity());
+        assertEquals(e, Status.activeEvent(), "an alert becomes the active event");
+        assertEquals(1, Status.newAlertCount(), "an alert bumps the unseen counter");
+        Status.bad("parse error");
+        assertEquals(2, Status.newAlertCount(), "each alert increments the counter");
+    }
+
+    @Test
+    void markSeenZeroesTheCounter() {
+        Status.notify("something");
+        assertTrue(Status.newAlertCount() > 0);
+        Status.markSeen();
+        assertEquals(0, Status.newAlertCount(), "seeing the log acknowledges every alert");
+    }
+
+    @Test
+    void clearMessageRevertsActiveAlert() {
+        Status.notify("transient");
         assertNotNull(Status.activeEvent());
         Status.clearMessage();
-        assertNull(Status.activeEvent(), "clearMessage clears active");
+        assertNull(Status.activeEvent(), "clearMessage reverts to idle");
     }
 
     @Test
-    void subscriberReceivesEvents() {
+    void axesArePreservedAndOrthogonal() {
+        StatusEvent tech = Status.technical("db warm", "took 12ms");
+        assertEquals(Channel.TECHNICAL, tech.channel());
+        assertEquals(Severity.NEUTRAL, tech.severity());
+        assertFalse(tech.alert(), "technical() is history-only");
+        assertTrue(tech.hasDetails());
+
+        StatusEvent bad = Status.bad("boom", "stack line 1\nstack line 2");
+        assertEquals(Channel.USER, bad.channel());
+        assertEquals(Severity.BAD, bad.severity());
+        assertTrue(bad.alert());
+        assertEquals("stack line 1\nstack line 2", bad.details());
+    }
+
+    @Test
+    void subscriberReceivesBothLogsAndAlerts() {
         List<StatusEvent> received = new ArrayList<>();
         Status.subscribe(received::add);
-        StatusEvent a = Status.error("boom", "stack trace line 1\nstack trace line 2");
-        StatusEvent b = Status.success("done");
-        assertTrue(received.contains(a));
-        assertTrue(received.contains(b));
-        // The error event preserves its details for the popup.
-        assertEquals("stack trace line 1\nstack trace line 2", a.details());
-        assertTrue(a.hasDetails());
+        StatusEvent quiet = Status.log("noted");
+        StatusEvent loud  = Status.good("done");
+        assertTrue(received.contains(quiet), "history-only entries reach subscribers too");
+        assertTrue(received.contains(loud));
     }
 
     @Test
     void detailsAreOptional() {
         StatusEvent e = Status.log("no-details");
         assertNull(e.details());
-        assertEquals(false, e.hasDetails());
+        assertFalse(e.hasDetails());
     }
 
     @Test
-    void dockedFieldPersistsAcrossMessagesAndDoesNotOverlap() {
-        Status.setDockedMessage("v1.2.3", Variant.INFO);
+    void wrapBuildsRootContainingRibbonWithASingleContentZone() {
         Component root = Status.wrap(new Component.Box(
             Em.of(1f), Em.of(1f), Em.ZERO, new Color(0.1f, 0.1f, 0.1f, 1f)));
-
-        // root = Flex(COLUMN)[content, ribbon]; ribbon = Flex(ROW)[messageZone, dockedZone].
-        Component.Flex ribbon = (Component.Flex) ((Component.Flex) root).children().get(1);
-        Component messageZone = ribbon.children().get(0);
-        Component dockedZone  = ribbon.children().get(1);
-
-        // Distinct sibling containers — they can't overlap.
-        assertNotSame(messageZone, dockedZone, "message and docked fields are separate zones");
-
-        // The docked zone must fit-content (Em.AUTO), not null: a null-width
-        // flex collapses to 0 in intrinsic sizing, so the docked text would
-        // spill past the right edge instead of right-aligning.
-        assertTrue(((Component.Flex) dockedZone).width() != null
-                && ((Component.Flex) dockedZone).width().isAuto(),
-            "docked zone width is Em.AUTO so it hugs its content");
-        assertEquals(1, DynamicChildren.effectiveChildren(dockedZone).size(),
-            "docked field is shown");
-
-        // A transient event populates the message zone but must NOT clear the docked field.
-        Status.log("saved", Variant.SUCCESS);
-        assertEquals(1, DynamicChildren.effectiveChildren(dockedZone).size(),
-            "docked field survives an active event");
-        assertTrue(DynamicChildren.effectiveChildren(messageZone).size() >= 1,
-            "message zone shows the event message");
-
-        // Reverting the message still leaves the docked field intact.
-        Status.clearMessage();
-        assertEquals(1, DynamicChildren.effectiveChildren(dockedZone).size(),
-            "docked field survives reverting to idle");
-
-        Status.setDockedMessage(""); // tidy up shared singleton for other tests
-    }
-
-    @Test
-    void wrapBuildsRootContainingRibbon() {
-        sibarum.dasum.gui.core.component.Component inner =
-            new sibarum.dasum.gui.core.component.Component.Box(
-                sibarum.dasum.gui.core.em.Em.of(1f),
-                sibarum.dasum.gui.core.em.Em.of(1f),
-                sibarum.dasum.gui.core.em.Em.ZERO,
-                new sibarum.dasum.gui.core.render.Color(0.1f, 0.1f, 0.1f, 1f));
-        sibarum.dasum.gui.core.component.Component root = Status.wrap(inner);
-        // The wrap is a Flex(COLUMN) with two children: grown content + ribbon.
-        assertTrue(root instanceof sibarum.dasum.gui.core.component.Component.Flex,
-            "Status.wrap returns a Flex");
-        sibarum.dasum.gui.core.component.Component.Flex f =
-            (sibarum.dasum.gui.core.component.Component.Flex) root;
-        assertEquals(2, f.children().size(),
-            "Wrapped root has content + ribbon");
+        // root = Flex(COLUMN)[content, ribbon]; ribbon = Flex(ROW)[contentZone].
+        assertTrue(root instanceof Component.Flex, "Status.wrap returns a Flex");
+        Component.Flex f = (Component.Flex) root;
+        assertEquals(2, f.children().size(), "wrapped root = content + ribbon");
+        Component.Flex ribbon = (Component.Flex) f.children().get(1);
+        assertEquals(1, ribbon.children().size(), "the ribbon has a single content zone (no docked zone)");
+        // The idle bar shows something clickable (the counter or the affordance), never empty.
+        Component contentZone = ribbon.children().get(0);
+        assertTrue(DynamicChildren.effectiveChildren(contentZone).size() >= 1,
+            "idle bar always shows the counter or the 'Event log' affordance");
     }
 }
