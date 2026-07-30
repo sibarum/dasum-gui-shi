@@ -98,15 +98,51 @@ final class StatusTest {
     }
 
     @Test
-    void wrapBuildsRootContainingRibbonWithASingleContentZone() {
+    void dockedFieldPersistsAcrossAlertsAndDoesNotOverlap() {
+        Status.setDockedMessage("Ln 12, Col 4");
         Component root = Status.wrap(new Component.Box(
             Em.of(1f), Em.of(1f), Em.ZERO, new Color(0.1f, 0.1f, 0.1f, 1f)));
-        // root = Flex(COLUMN)[content, ribbon]; ribbon = Flex(ROW)[contentZone].
+        // ribbon = Flex(ROW)[contentZone(grow), dockedZone(fit)].
+        Component.Flex ribbon = (Component.Flex) ((Component.Flex) root).children().get(1);
+        Component contentZone = ribbon.children().get(0);
+        Component dockedZone  = ribbon.children().get(1);
+        assertEquals(1, DynamicChildren.effectiveChildren(dockedZone).size(), "docked field shown");
+        // An alert populates the leading zone but must not clear the docked field.
+        Status.good("saved");
+        assertEquals(1, DynamicChildren.effectiveChildren(dockedZone).size(),
+            "docked field survives an active alert");
+        assertTrue(DynamicChildren.effectiveChildren(contentZone).size() >= 1,
+            "leading zone shows the alert");
+        Status.clearMessage();
+        assertEquals(1, DynamicChildren.effectiveChildren(dockedZone).size(),
+            "docked field survives reverting to idle");
+        assertEquals("Ln 12, Col 4", Status.dockedMessage());
+        Status.setDockedMessage("");  // tidy the shared singleton for other tests
+    }
+
+    @Test
+    void contextualOverrideIsPureDisplay_noHistoryNoCounter() {
+        Status.markSeen();
+        Status.clearMessage();            // ensure idle (shared singleton; a prior alert may linger)
+        Status.clearContextualMessage();
+        int histBefore = Status.events().size();
+        Status.setContextualMessage("error: unbound name 'x'", Severity.BAD);
+        assertEquals(histBefore, Status.events().size(), "a contextual override records no history");
+        assertEquals(0, Status.newAlertCount(), "a contextual override bumps no counter");
+        assertNull(Status.activeEvent(), "a contextual override sets no active event");
+        Status.clearContextualMessage();  // tidy the shared singleton
+    }
+
+    @Test
+    void wrapBuildsRootContainingRibbonWithContentAndDockedZones() {
+        Component root = Status.wrap(new Component.Box(
+            Em.of(1f), Em.of(1f), Em.ZERO, new Color(0.1f, 0.1f, 0.1f, 1f)));
+        // root = Flex(COLUMN)[content, ribbon]; ribbon = Flex(ROW)[contentZone, dockedZone].
         assertTrue(root instanceof Component.Flex, "Status.wrap returns a Flex");
         Component.Flex f = (Component.Flex) root;
         assertEquals(2, f.children().size(), "wrapped root = content + ribbon");
         Component.Flex ribbon = (Component.Flex) f.children().get(1);
-        assertEquals(1, ribbon.children().size(), "the ribbon has a single content zone (no docked zone)");
+        assertEquals(2, ribbon.children().size(), "ribbon = leading content zone + trailing docked zone");
         // The idle bar shows something clickable (the counter or the affordance), never empty.
         Component contentZone = ribbon.children().get(0);
         assertTrue(DynamicChildren.effectiveChildren(contentZone).size() >= 1,

@@ -96,10 +96,28 @@ public final class Status {
     private static int newAlertCount = 0;
     private static final AtomicLong eventCounter = new AtomicLong(0L);
 
+    // ----- docked field: a persistent, app-owned indicator (NOT a log/alert) -----
+    // Orthogonal to the ledger: the trailing zone the app writes directly, e.g. an
+    // editor's "Ln 12, Col 4" cursor readout or a mode indicator. Never touched by
+    // events; survives every alert/idle refresh of the leading zone.
+    private static String   dockedMessage = "";
+    private static Severity dockedSeverity = Severity.NEUTRAL;
+
+    // ----- contextual override: a transient, externally-driven leading-zone message -----
+    // NOT the (removed) idle "default message". Another component toggles this on/off from
+    // live user interaction — a caret on a compile error, a hover hint, a keyboard-shortcut
+    // tip — and it layers OVER the ledger display (outranking an active alert and the idle
+    // counter) only while set, reverting the instant it is cleared. It never records history,
+    // bumps the counter, or sets the active event: it is pure display. null = no override.
+    private static String   contextualMessage = null;
+    private static Severity contextualSeverity = Severity.NEUTRAL;
+
     // ----- visuals (lazily built by wrap) -----
     private static Component.Flex ribbon = null;
-    /** The single content zone; refresh() clears + repopulates it (stable identity). */
+    /** The leading zone (grow=1); refresh() clears + repopulates it (stable identity). */
     private static Component.Flex contentZone = null;
+    /** The trailing docked zone (fit-content); owned solely by refreshDocked(). */
+    private static Component.Flex dockedZone = null;
 
     // ----- close-icon registration -----
     private static int    closeIconCodepoint = 0;
@@ -204,6 +222,65 @@ public final class Status {
         }
     }
 
+    /**
+     * Set the text of the ribbon's persistent, trailing <b>docked field</b> — an
+     * app-owned indicator that is <i>not</i> a log or alert and is never touched
+     * by events. Typical use: a code editor's {@code "Ln 12, Col 4"} cursor
+     * readout, a current-mode badge, or a clock. It stays put while alerts come
+     * and go in the leading zone, and never overlaps them (the leading zone
+     * shrinks/ellipsizes first). Pass an empty string to hide it. May be called
+     * before {@link #wrap}; shown once the ribbon is built. Thread-safe.
+     */
+    public static void setDockedMessage(String text) {
+        setDockedMessage(text, Severity.NEUTRAL);
+    }
+
+    /** As {@link #setDockedMessage(String)} with an optional faint severity tint. */
+    public static void setDockedMessage(String text, Severity severity) {
+        synchronized (LOCK) {
+            dockedMessage = text == null ? "" : text;
+            dockedSeverity = severity == null ? Severity.NEUTRAL : severity;
+            refreshDocked();
+        }
+    }
+
+    /** The current docked-field text (empty string when unset). Safe from any thread. */
+    public static String dockedMessage() {
+        synchronized (LOCK) { return dockedMessage; }
+    }
+
+    /**
+     * Override the leading zone with a transient, externally-driven contextual
+     * message — outranking an active alert and the idle counter while set. This
+     * is the integration point for other components to surface a live, in-place
+     * readout (a compile error at the editor caret, a hover hint, a shortcut
+     * tip): the component calls this when its condition turns on and
+     * {@link #clearContextualMessage()} when it turns off. Pure display — it
+     * records no history, bumps no counter, sets no active event. Passing a
+     * null/empty message clears the override. Thread-safe.
+     */
+    public static void setContextualMessage(String text) {
+        setContextualMessage(text, Severity.NEUTRAL);
+    }
+
+    /** As {@link #setContextualMessage(String)} with a faint severity tint. */
+    public static void setContextualMessage(String text, Severity severity) {
+        synchronized (LOCK) {
+            contextualMessage = (text == null || text.isEmpty()) ? null : text;
+            contextualSeverity = severity == null ? Severity.NEUTRAL : severity;
+            refresh();
+        }
+    }
+
+    /** Remove any contextual override, reverting the leading zone to alert/counter. */
+    public static void clearContextualMessage() {
+        synchronized (LOCK) {
+            if (contextualMessage == null) return;
+            contextualMessage = null;
+            refresh();
+        }
+    }
+
     /** Snapshot of session event history, oldest first. Safe to read from any thread. */
     public static List<StatusEvent> events() {
         synchronized (LOCK) {
@@ -286,17 +363,25 @@ public final class Status {
 
     private static void ensureRibbon() {
         if (ribbon != null) return;
+        // Leading zone grows to fill (pushing the docked zone to the trailing edge)
+        // and is the only zone refresh() touches. The docked zone is fit-content
+        // (Em.AUTO via the row default — never null, which would collapse to 0 and
+        // spill), right-justified, and owned solely by refreshDocked().
         contentZone = (Component.Flex) Ui.row()
             .grow(1).gap(Em.of(0.5f)).justify(JustifyContent.START).align(AlignItems.CENTER)
             .build();
+        dockedZone = (Component.Flex) Ui.row()
+            .gap(Em.of(0.5f)).justify(JustifyContent.END).align(AlignItems.CENTER)
+            .build();
         ribbon = (Component.Flex) Ui.row()
-            .height(RIBBON_HEIGHT_EM).padding(Em.of(0.4f)).background(RIBBON_BG)
+            .height(RIBBON_HEIGHT_EM).padding(Em.of(0.4f)).background(RIBBON_BG).gap(Em.of(1.25f))
             .justify(JustifyContent.START).align(AlignItems.CENTER)
             .interactive(true)
-            .add(contentZone)
+            .add(contentZone).add(dockedZone)
             .build();
         Handlers.onClick(ribbon, Status::onRibbonClicked);
         refresh();
+        refreshDocked();
     }
 
     /**
@@ -308,12 +393,28 @@ public final class Status {
         if (contentZone == null) return;
         DynamicChildren.clearChildren(contentZone);
         StatusEvent ev = activeEvent;
-        if (ev != null) {
+        if (contextualMessage != null) {
+            DynamicChildren.add(contentZone, buildMessageText(contextualMessage, faint(contextualSeverity)));
+        } else if (ev != null) {
             DynamicChildren.add(contentZone, buildMessageText(ev.message(), faint(ev.severity())));
         } else if (newAlertCount > 0) {
             DynamicChildren.add(contentZone, buildMessageText(newAlertCount + " new", HINT_FG));
         } else {
             DynamicChildren.add(contentZone, buildMessageText("Event log", HINT_FG));
+        }
+        Invalidator.invalidate();
+    }
+
+    /** Rebuild the docked zone under {@link #LOCK}; independent of {@link #refresh}. */
+    private static void refreshDocked() {
+        if (dockedZone == null) return;
+        DynamicChildren.clearChildren(dockedZone);
+        if (dockedMessage != null && !dockedMessage.isEmpty()) {
+            // A rigid (non-growing) label so it hugs its content at the trailing edge.
+            DynamicChildren.add(dockedZone, new Component.Text(
+                dockedMessage, FontGroups.DEFAULT, Em.of(0.9f), faint(dockedSeverity),
+                null, null, Em.ZERO, null, true,
+                false, false, false, false, false, false, 0));
         }
         Invalidator.invalidate();
     }
