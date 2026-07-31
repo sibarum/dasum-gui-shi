@@ -5,6 +5,7 @@ import sibarum.dasum.gui.core.em.Em;
 import sibarum.dasum.gui.core.input.FocusState;
 import sibarum.dasum.gui.core.input.HoverState;
 import sibarum.dasum.gui.core.input.ScrollbarController;
+import sibarum.dasum.gui.core.input.ScrollFocusFrame;
 import sibarum.dasum.gui.core.input.TabsController;
 import sibarum.dasum.gui.core.input.TextState;
 import sibarum.dasum.gui.core.input.TextStates;
@@ -73,6 +74,17 @@ public final class Render {
 
     private static void renderInOrder(Component c, LayoutResult layout, Batcher batcher, float[] projection,
                                        Component hovered, Component focused) {
+        renderInOrder(c, layout, batcher, projection, hovered, focused, false);
+    }
+
+    /**
+     * @param suppressFocusRing when true, {@code c}'s own focus ring is skipped even
+     *        if it is the focused component — used for the direct child of a
+     *        {@link ScrollFocusFrame}-enabled Scroll, whose ring is drawn on the
+     *        (fixed) scroll viewport instead so it never scrolls out of view.
+     */
+    private static void renderInOrder(Component c, LayoutResult layout, Batcher batcher, float[] projection,
+                                       Component hovered, Component focused, boolean suppressFocusRing) {
         PixelRect r = layout.rectOf(c);
         if (r != null && r.width() > 0f && r.height() > 0f) {
             Color color = backgroundColorOf(c);
@@ -93,7 +105,7 @@ public final class Render {
                 // reads like a selection state, not a hover.
                 emitShapedFill(batcher, r, HOVER_TINT, styleOf(c));
             }
-            if (c == focused) {
+            if (c == focused && !suppressFocusRing) {
                 emitFocusRing(batcher, r);
             }
         }
@@ -518,15 +530,25 @@ public final class Render {
                                               Component hovered, Component focused) {
         PixelRect interior = padInset(outer, scroll.padding());
 
+        // When this Scroll opts into a fixed focus frame (ScrollFocusFrame) and its
+        // direct child holds focus, the ring belongs on the viewport — not on the
+        // child's scrolled content rect, where it slides out of view. Suppress the
+        // child's own ring and draw one on the (unscrolled) outer frame below.
+        boolean frameRing = focused != null
+                && scroll.child() == focused
+                && ScrollFocusFrame.isEnabled(scroll);
+
         batcher.flush(projection);
         batcher.scissor().push(interior);
 
-        renderInOrder(scroll.child(), layout, batcher, projection, hovered, focused);
+        renderInOrder(scroll.child(), layout, batcher, projection, hovered, focused, frameRing);
 
         batcher.flush(projection);
         batcher.scissor().pop();
 
         emitScrollbars(batcher, scroll, interior);
+
+        if (frameRing && outer != null) emitFocusRing(batcher, outer);
     }
 
     private static void emitScrollbars(Batcher batcher, Component.Scroll scroll, PixelRect interior) {

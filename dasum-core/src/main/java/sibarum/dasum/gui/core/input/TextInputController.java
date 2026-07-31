@@ -39,6 +39,18 @@ public final class TextInputController {
     private static double    lastClickY        = 0d;
     private static int       consecutiveClicks = 0;
 
+    // ---------- drag-selection granularity ----------
+    // A double-click starts a WORD-granular drag and a triple-click a LINE-granular
+    // one: while the button stays down, the selection snaps out to whole words/lines
+    // anchored on the originally-clicked word/line (its "pivot"), so dragging past a
+    // boundary never leaves a half-selected word. A single click drags CHAR by char.
+    private static final int DRAG_CHAR = 0;
+    private static final int DRAG_WORD = 1;
+    private static final int DRAG_LINE = 2;
+    private static int dragGranularity = DRAG_CHAR;
+    private static int dragPivotStart  = 0;
+    private static int dragPivotEnd    = 0;
+
     // ---------- mouse ----------
 
     public static void onMouseDown(Component hit, double cursorX, double cursorY, boolean shiftHeld) {
@@ -46,6 +58,7 @@ public final class TextInputController {
             // Click elsewhere resets the multi-click streak.
             consecutiveClicks = 0;
             lastClickTarget = null;
+            dragGranularity = DRAG_CHAR;
             return;
         }
         LayoutResult lr = LatestLayout.result();
@@ -76,6 +89,10 @@ public final class TextInputController {
                 ts.selectionAnchor = bounds[0];
                 ts.caretIndex      = bounds[1];
                 ts.lastVisualX     = TextGeometry.caretVisualX(text, content, rect, ts.caretIndex);
+                // A subsequent drag snaps to whole words, pivoting on this word.
+                dragGranularity = DRAG_WORD;
+                dragPivotStart  = bounds[0];
+                dragPivotEnd    = bounds[1];
             }
             case 3 -> {
                 int lineStart = TextGeometry.lineStartOfIndex(text, content, hitIdx);
@@ -83,11 +100,19 @@ public final class TextInputController {
                 ts.selectionAnchor = lineStart;
                 ts.caretIndex      = lineEnd;
                 ts.lastVisualX     = TextGeometry.caretVisualX(text, content, rect, ts.caretIndex);
+                // A subsequent drag snaps to whole lines, pivoting on this line.
+                dragGranularity = DRAG_LINE;
+                dragPivotStart  = lineStart;
+                dragPivotEnd    = lineEnd;
             }
             default -> {
                 ts.caretIndex = hitIdx;
                 if (!shiftHeld) ts.selectionAnchor = hitIdx;
                 ts.lastVisualX = TextGeometry.caretVisualX(text, content, rect, hitIdx);
+                // Plain click (or shift-extend): char-granular drag from the anchor.
+                dragGranularity = DRAG_CHAR;
+                dragPivotStart  = ts.selectionAnchor;
+                dragPivotEnd    = ts.selectionAnchor;
             }
         }
         ts.hoverCaretIndex = -1;
@@ -116,15 +141,52 @@ public final class TextInputController {
             PixelRect rect = lr.rectOf(dragText);
             if (rect == null) return;
             String content = TextStates.contentOf(dragText);
-            int newCaret = TextGeometry.charIndexAt(dragText, content, rect, (float) cursorX, (float) cursorY);
+            int idx = TextGeometry.charIndexAt(dragText, content, rect, (float) cursorX, (float) cursorY);
             TextState ts = TextStates.of(dragText);
-            if (newCaret != ts.caretIndex) {
-                ts.caretIndex = newCaret;
-                ts.lastVisualX = TextGeometry.caretVisualX(dragText, content, rect, newCaret);
+            int oldCaret  = ts.caretIndex;
+            int oldAnchor = ts.selectionAnchor;
+            if (dragGranularity != DRAG_CHAR && dragText == lastClickTarget) {
+                applySnappedDrag(dragText, content, rect, ts, idx);
+            } else {
+                ts.caretIndex  = idx;
+                ts.lastVisualX = TextGeometry.caretVisualX(dragText, content, rect, idx);
+            }
+            if (ts.caretIndex != oldCaret || ts.selectionAnchor != oldAnchor) {
                 Invalidator.invalidate();
                 scrollCaretIntoView(dragText);
             }
         }
+    }
+
+    /**
+     * Extend a word- or line-granular drag to the position {@code idx}: snap {@code idx}
+     * out to its whole word (or line), then select the union of that unit and the pivot
+     * unit — with the caret on whichever end is being dragged, so the selection direction
+     * follows the mouse. Keeps whole words/lines selected no matter which way you drag.
+     */
+    private static void applySnappedDrag(Component.Text text, String content, PixelRect rect,
+                                         TextState ts, int idx) {
+        int start, end;
+        if (dragGranularity == DRAG_WORD) {
+            int probe = Math.max(0, Math.min(idx, Math.max(0, content.length() - 1)));
+            int[] w = WordBoundary.wordBoundsAt(content, probe);
+            start = w[0];
+            end   = w[1];
+        } else {
+            start = TextGeometry.lineStartOfIndex(text, content, idx);
+            end   = TextGeometry.lineEndOfIndex(text, content, idx);
+        }
+        if (end <= dragPivotStart) {           // dragging before the pivot unit
+            ts.selectionAnchor = dragPivotEnd;
+            ts.caretIndex      = start;
+        } else if (start >= dragPivotEnd) {    // dragging after the pivot unit
+            ts.selectionAnchor = dragPivotStart;
+            ts.caretIndex      = end;
+        } else {                                // overlapping the pivot — take the union
+            ts.selectionAnchor = Math.min(dragPivotStart, start);
+            ts.caretIndex      = Math.max(dragPivotEnd, end);
+        }
+        ts.lastVisualX = TextGeometry.caretVisualX(text, content, rect, ts.caretIndex);
     }
 
     // ---------- key navigation ----------

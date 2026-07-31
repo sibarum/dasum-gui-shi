@@ -15,6 +15,7 @@ import sibarum.dasum.gui.core.input.DataTableHandlers;
 import sibarum.dasum.gui.core.input.FocusState;
 import sibarum.dasum.gui.core.input.Handlers;
 import sibarum.dasum.gui.core.input.HoverState;
+import sibarum.dasum.gui.core.input.ScrollFocusFrame;
 import sibarum.dasum.gui.core.input.ScrollStates;
 import sibarum.dasum.gui.core.input.TextStates;
 import sibarum.dasum.gui.core.input.TextStyleStates;
@@ -135,6 +136,7 @@ public final class Components {
         TextStates.migrate(from, to);
         TextStyleStates.migrate(from, to);
         ScrollStates.migrate(from, to);
+        ScrollFocusFrame.migrate(from, to);
         FocusState.migrate(from, to);
         HoverState.migrate(from, to);
         Connections.migrate(from, to);
@@ -230,6 +232,7 @@ public final class Components {
         TextStates.clear(c);
         TextStyleStates.clear(c);
         ScrollStates.clear(c);
+        ScrollFocusFrame.clear(c);
         FocusState.clear(c);
         HoverState.clear(c);
         // Graph-package sidecars: a port-component clear cascades into
