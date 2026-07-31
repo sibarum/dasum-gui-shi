@@ -50,16 +50,46 @@ public final class PlotView {
                 SceneStates.publish(view, new SceneSnapshot(b.apply(cam.orthoScale())));
             }
         });
+        // Re-publish on viewport resize so pixel-driven tick density (showLinePlot) and
+        // display-resolution rasterization (showFieldMap) refresh with the new size. One listener for
+        // the view's lifetime — subscribed here, never per-show (viewportListeners is append-only).
+        SceneStates.onViewportResize(view, sz -> {
+            Function<Float, List<Layer>> b = builder;
+            CameraSpec cam = SceneStates.cameraOf(view);
+            if (b != null && cam != null) {
+                SceneStates.publish(view, new SceneSnapshot(b.apply(cam.orthoScale())));
+            }
+        });
     }
 
     public Component.SceneView view() { return view; }
 
-    /** Publish a line/curve chart; the camera frames the plot and ticks track zoom. */
+    /** Publish a line/curve chart; the camera frames the plot and tick DENSITY tracks the viewport
+     *  pixels per axis (recomputed on resize via the constructor's viewport listener). */
     public void showLinePlot(PlotFrame frame, List<Series> series, PlotStyle style) {
         List<Series> seriesCopy = List.copyOf(series);
-        builder = zoom -> LinePlot.build(frame, seriesCopy, retick(style, zoom));
+        builder = zoom -> LinePlot.build(frame, seriesCopy, retickByPixels(style));
         frameTo(frame); // setCamera fires the listener, which performs the first publish
     }
+
+    /**
+     * Per-axis tick density from the live viewport pixels: aim for roughly one label every
+     * {@code PX_PER_TICK_*} pixels on EACH axis independently, so a wide plot gets more x-ticks and a
+     * tall one more y-ticks, and the density stays constant as the window resizes (each axis
+     * responding to its own pixel extent — which matters most under a non-uniform fill camera).
+     */
+    private PlotStyle retickByPixels(PlotStyle style) {
+        SceneStates.ViewportPx px = SceneStates.viewportPxOf(view);
+        int pxW = px != null ? px.width()  : DEFAULT_PX;
+        int pxH = px != null ? px.height() : DEFAULT_PX;
+        int xt = Math.max(2, Math.round(pxW / PX_PER_TICK_X));
+        int yt = Math.max(2, Math.round(pxH / PX_PER_TICK_Y));
+        return style.withTargetTicks(xt, yt);
+    }
+
+    /** Target pixels per tick — x labels are wider (numbers), so space them more than y labels. */
+    private static final float PX_PER_TICK_X = 110f;
+    private static final float PX_PER_TICK_Y = 60f;
 
     /**
      * Publish a 2D complex false-colour map (rasterized once) with frame
@@ -124,13 +154,9 @@ public final class PlotView {
         }
         // DISPLAY: the builder ignores its zoom arg and reads the live camera +
         // viewport size, so the camera-change and resize listeners both route
-        // through it. Resize fires from the renderer; the constructor's
-        // camera listener handles zoom/pan and the initial publish in frameTo.
+        // through it. The constructor's viewport listener re-publishes on resize;
+        // its camera listener handles zoom/pan and the initial publish in frameTo.
         builder = zoom -> buildDisplayResLayers(frame, fn, map, style);
-        SceneStates.onViewportResize(view, sz -> {
-            Function<Float, List<Layer>> b = builder;
-            if (b != null) SceneStates.publish(view, new SceneSnapshot(b.apply(0f)));
-        });
         frameTo(frame);
     }
 
