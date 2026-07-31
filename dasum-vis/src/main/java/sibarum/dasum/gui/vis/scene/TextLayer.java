@@ -50,7 +50,8 @@ public record TextLayer(
     BlendMode blend,
     float opacity,
     Color outlineColor,
-    float outlineWidth
+    float outlineWidth,
+    boolean pixelSize
 ) implements Layer {
 
     public enum HAlign { LEFT, CENTER, RIGHT }
@@ -78,16 +79,25 @@ public record TextLayer(
     public TextLayer(String text, String fontGroup, Vec3 anchor, float heightWorld, Color color,
                      HAlign align, boolean billboard, BlendMode blend, float opacity) {
         this(text, fontGroup, anchor, heightWorld, color, align, billboard, blend, opacity,
-             Color.TRANSPARENT, 0f);
+             Color.TRANSPARENT, 0f, false);
     }
 
-    public TextLayer withAlign(HAlign a)       { return new TextLayer(text, fontGroup, anchor, heightWorld, color, a, billboard, blend, opacity, outlineColor, outlineWidth); }
-    public TextLayer withBillboard(boolean b)  { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, b, blend, opacity, outlineColor, outlineWidth); }
-    public TextLayer withFontGroup(String g)   { return new TextLayer(text, g, anchor, heightWorld, color, align, billboard, blend, opacity, outlineColor, outlineWidth); }
-    public TextLayer withBlend(BlendMode b)    { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, b, opacity, outlineColor, outlineWidth); }
-    public TextLayer withOpacity(float o)      { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, blend, o, outlineColor, outlineWidth); }
+    public TextLayer withAlign(HAlign a)       { return new TextLayer(text, fontGroup, anchor, heightWorld, color, a, billboard, blend, opacity, outlineColor, outlineWidth, pixelSize); }
+    public TextLayer withBillboard(boolean b)  { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, b, blend, opacity, outlineColor, outlineWidth, pixelSize); }
+    public TextLayer withFontGroup(String g)   { return new TextLayer(text, g, anchor, heightWorld, color, align, billboard, blend, opacity, outlineColor, outlineWidth, pixelSize); }
+    public TextLayer withBlend(BlendMode b)    { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, b, opacity, outlineColor, outlineWidth, pixelSize); }
+    public TextLayer withOpacity(float o)      { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, blend, o, outlineColor, outlineWidth, pixelSize); }
 
     /** A dark (or coloured) corona around the glyphs, {@code width} screen pixels wide, so the label
      *  stays legible over busy geometry. {@code width <= 0} clears it. */
-    public TextLayer withOutline(Color c, float width) { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, blend, opacity, c, width); }
+    public TextLayer withOutline(Color c, float width) { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, blend, opacity, c, width, pixelSize); }
+
+    /**
+     * Draw the glyphs at a FIXED pixel height instead of world units: the anchor is still projected
+     * by the camera (so the label stays in sync + depth-composites), but the glyph quad is sized in
+     * screen pixels — so it never skews under a non-uniform (fill) camera and never grows/shrinks with
+     * zoom. {@code heightWorld} is then read as a pixel height. This is how plot chrome stays crisp
+     * and fixed-size while the data fills the viewport.
+     */
+    public TextLayer withPixelSize(boolean p) { return new TextLayer(text, fontGroup, anchor, heightWorld, color, align, billboard, blend, opacity, outlineColor, outlineWidth, p); }
 }

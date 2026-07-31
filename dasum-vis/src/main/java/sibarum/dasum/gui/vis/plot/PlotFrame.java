@@ -51,6 +51,9 @@ public record PlotFrame(float wx0, float wy0, float wx1, float wy1, Axis x, Axis
      *  and the curve — matches the annotation-label outline so all plot text reads consistently. */
     private static final float LABEL_OUTLINE_PX = 2.2f;
     private static final Color LABEL_OUTLINE = new Color(0.03f, 0.04f, 0.06f, 0.9f);
+    /** Fixed pixel height for tick-label glyphs (screen-space sized so they never skew under a
+     *  non-uniform fill camera). Tune to taste. */
+    private static final float LABEL_PX = 13f;
 
     /**
      * Build the frame chrome — border, optional gridlines, and tick labels —
@@ -87,21 +90,27 @@ public record PlotFrame(float wx0, float wy0, float wx1, float wy1, Axis x, Axis
 
         // Tick labels — one TextLayer per label, each with a dark corona (outline) so the digits
         // stay legible where a gridline or the curve crosses them, without a solid background plate.
+        // The ANCHOR stays in world space (so the camera positions it, in sync with the frame under
+        // any aspect / fill), but the glyphs are drawn at a FIXED PIXEL height (withPixelSize) so they
+        // never skew when a non-uniform fill camera stretches the data. `h` is now used only to place
+        // the anchor in the gap below/left of the frame.
         float h = style.labelHeightWorld();
         float gap = h * 0.5f;
         for (int i = 0; i < xt.count(); i++) {
             float wx = worldX(xt.values()[i]);
             layers.add(new TextLayer(xt.labels()[i],
-                new Vec3(wx, wy0 - gap - h, 0f), h, style.labelColor())
+                new Vec3(wx, wy0 - gap - h, 0f), LABEL_PX, style.labelColor())
                 .withAlign(TextLayer.HAlign.CENTER)
-                .withOutline(LABEL_OUTLINE, LABEL_OUTLINE_PX));
+                .withOutline(LABEL_OUTLINE, LABEL_OUTLINE_PX)
+                .withPixelSize(true));
         }
         for (int i = 0; i < yt.count(); i++) {
             float wy = worldY(yt.values()[i]);
             layers.add(new TextLayer(yt.labels()[i],
-                new Vec3(wx0 - gap, wy - h * 0.35f, 0f), h, style.labelColor())
+                new Vec3(wx0 - gap, wy - h * 0.35f, 0f), LABEL_PX, style.labelColor())
                 .withAlign(TextLayer.HAlign.RIGHT)
-                .withOutline(LABEL_OUTLINE, LABEL_OUTLINE_PX));
+                .withOutline(LABEL_OUTLINE, LABEL_OUTLINE_PX)
+                .withPixelSize(true));
         }
         return layers;
     }

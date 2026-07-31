@@ -26,6 +26,8 @@ final class SceneTextMaterial implements AutoCloseable {
     private int uOutlineWidth = -1;
     private int uAtlas = -1;
     private int uDistanceRange = -1;
+    private int uViewportPx = -1;
+    private int uPixelMode = -1;
 
     void init() {
         String vs = ShaderUtil.readResource("/shaders/scene-text.vert");
@@ -40,9 +42,12 @@ final class SceneTextMaterial implements AutoCloseable {
         uOutlineWidth  = Gl.glGetUniformLocation(program, "u_outlineWidth");
         uAtlas         = Gl.glGetUniformLocation(program, "u_atlas");
         uDistanceRange = Gl.glGetUniformLocation(program, "u_distanceRange");
+        uViewportPx    = Gl.glGetUniformLocation(program, "u_viewportPx");
+        uPixelMode     = Gl.glGetUniformLocation(program, "u_pixelMode");
         if (uMvp < 0 || uAnchor < 0 || uRight < 0 || uUp < 0
                 || uColor < 0 || uOutlineColor < 0 || uOutlineWidth < 0
-                || uAtlas < 0 || uDistanceRange < 0) {
+                || uAtlas < 0 || uDistanceRange < 0
+                || uViewportPx < 0 || uPixelMode < 0) {
             throw new IllegalStateException("scene-text shader missing required uniforms");
         }
     }
@@ -54,12 +59,15 @@ final class SceneTextMaterial implements AutoCloseable {
      */
     void bind(float[] mvp, float ax, float ay, float az, float[] basis,
               Color color, float opacity, float distanceRange,
-              Color outlineColor, float outlineWidth) {
+              Color outlineColor, float outlineWidth,
+              float viewportW, float viewportH, boolean pixelMode) {
         Gl.glUseProgram(program);
         Gl.glUniformMatrix4fv(uMvp, false, mvp);
         Gl.glUniform3f(uAnchor, ax, ay, az);
         Gl.glUniform3f(uRight, basis[0], basis[1], basis[2]);
         Gl.glUniform3f(uUp,    basis[3], basis[4], basis[5]);
+        Gl.glUniform2f(uViewportPx, viewportW, viewportH);
+        Gl.glUniform1i(uPixelMode, pixelMode ? 1 : 0);
         Gl.glUniform4f(uColor, color.r(), color.g(), color.b(), color.a() * opacity);
         // Outline alpha is premultiplied by the layer opacity too, so a faded label fades its corona.
         Gl.glUniform4f(uOutlineColor, outlineColor.r(), outlineColor.g(), outlineColor.b(),
