@@ -119,8 +119,17 @@ public final class SceneRenderer implements AutoCloseable {
         CameraMath.mvp(cam, rect.width() / rect.height(), scratchMvp);
         boolean perspective = cam.mode() == CameraMode.PERSPECTIVE;
 
+        // Draw in ascending z-index (stable — equal z-index keeps list order). All-zero (the common
+        // case) is the plain list order. A non-zero z-index draws depth-INDEPENDENTLY (below), so a
+        // promoted layer lands on top and a demoted one behind, regardless of true 3D depth.
+        java.util.List<Layer> ls = scene.layers();
+        Integer[] order = new Integer[ls.size()];
+        for (int i = 0; i < order.length; i++) order[i] = i;
+        java.util.Arrays.sort(order, (a, b) -> Integer.compare(scene.zIndexOf(a), scene.zIndexOf(b)));
+
         try (ViewportScope scope = new ViewportScope(batcher, projection, rect, perspective)) {
-            for (Layer layer : scene.layers()) {
+            for (int drawIndex : order) {
+                Layer layer = ls.get(drawIndex);
                 SceneGlBuffers.Slot slot = entry.slot(layer);
                 if (slot == null || slot.vertexCount == 0) continue;
 
@@ -131,6 +140,10 @@ public final class SceneRenderer implements AutoCloseable {
                     // farther content drawn later in painter's order.
                     Gl.glDepthMask(layer.blend() == BlendMode.OPAQUE);
                 }
+                // A promoted/demoted layer ignores the depth test — z-index, not 3D depth, decides its
+                // stacking (drawn last = on top, first = behind). z-index 0 keeps true depth culling.
+                boolean depthIndependent = perspective && scene.zIndexOf(drawIndex) != 0;
+                if (depthIndependent) Gl.glDisable(GL_DEPTH_TEST);
 
                 switch (layer) {
                     case PointLayer p -> {
@@ -214,6 +227,7 @@ public final class SceneRenderer implements AutoCloseable {
                         if (perspective) Gl.glEnable(GL_DEPTH_TEST);
                     }
                 }
+                if (depthIndependent) Gl.glEnable(GL_DEPTH_TEST);
             }
         }
         // ViewportScope.close() restored blend/depth/viewport/program state.
