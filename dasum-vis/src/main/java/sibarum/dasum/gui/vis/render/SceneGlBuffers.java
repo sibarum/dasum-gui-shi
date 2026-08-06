@@ -57,7 +57,7 @@ final class SceneGlBuffers {
     private static final float DEF_R = 0.85f, DEF_G = 0.90f, DEF_B = 1.00f;
 
     enum Kind {
-        POINT(7), FLAT(6), IMAGE(5), TEXT(4), RAYMARCH(3), VOLUME(3);
+        POINT(7), FLAT(6), LIT(9), IMAGE(5), TEXT(4), RAYMARCH(3), VOLUME(3);
 
         final int floatsPerVertex;
         Kind(int f) { this.floatsPerVertex = f; }
@@ -66,7 +66,7 @@ final class SceneGlBuffers {
             return switch (l) {
                 case PointLayer p    -> POINT;
                 case LineLayer ln    -> FLAT;
-                case TriangleLayer t -> FLAT;
+                case TriangleLayer t -> t.lit() ? LIT : FLAT;   // normals ⇒ shaded (pos+col+normal)
                 case ImageLayer i    -> IMAGE;
                 case TextLayer t     -> TEXT;
                 case SdfLayer v -> RAYMARCH;
@@ -195,7 +195,9 @@ final class SceneGlBuffers {
         float[] verts = switch (layer) {
             case PointLayer p    -> buildPointVertices(p);
             case LineLayer l     -> buildFlatVertices(l.endpoints(), l.colors());
-            case TriangleLayer t -> buildFlatVertices(t.vertices(), t.colors());
+            case TriangleLayer t -> t.lit()
+                    ? buildLitVertices(t.vertices(), t.colors(), t.normals())
+                    : buildFlatVertices(t.vertices(), t.colors());
             case ImageLayer img  -> { syncImageTexture(s, img); yield buildImageVertices(img); }
             case TextLayer txt   -> buildTextVertices(txt);
             case SdfLayer v -> UNIT_CUBE; // geometry is uniform-driven; cube is constant
@@ -285,6 +287,32 @@ final class SceneGlBuffers {
                 out[off + 4] = DEF_G;
                 out[off + 5] = DEF_B;
             }
+        }
+        return out;
+    }
+
+    /** Lit triangles: xyz + RGB/default + normal xyz (stride 9). The colour path matches
+     *  {@link #buildFlatVertices}; normals pass through (the shader normalizes). */
+    private static float[] buildLitVertices(float[] xyz, float[] col, float[] nrm) {
+        int n = xyz.length / 3;
+        float[] out = new float[n * Kind.LIT.floatsPerVertex];
+        for (int i = 0; i < n; i++) {
+            int off = i * Kind.LIT.floatsPerVertex;
+            out[off    ] = xyz[i * 3    ];
+            out[off + 1] = xyz[i * 3 + 1];
+            out[off + 2] = xyz[i * 3 + 2];
+            if (col != null) {
+                out[off + 3] = col[i * 3    ];
+                out[off + 4] = col[i * 3 + 1];
+                out[off + 5] = col[i * 3 + 2];
+            } else {
+                out[off + 3] = DEF_R;
+                out[off + 4] = DEF_G;
+                out[off + 5] = DEF_B;
+            }
+            out[off + 6] = nrm[i * 3    ];
+            out[off + 7] = nrm[i * 3 + 1];
+            out[off + 8] = nrm[i * 3 + 2];
         }
         return out;
     }
@@ -405,6 +433,14 @@ final class SceneGlBuffers {
                 Gl.glVertexAttribPointer(1, 3, GL_FLOAT, false, stride, 3L * Float.BYTES);
                 Gl.glEnableVertexAttribArray(0);
                 Gl.glEnableVertexAttribArray(1);
+            }
+            case LIT -> {
+                Gl.glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0L);
+                Gl.glVertexAttribPointer(1, 3, GL_FLOAT, false, stride, 3L * Float.BYTES);
+                Gl.glVertexAttribPointer(2, 3, GL_FLOAT, false, stride, 6L * Float.BYTES);
+                Gl.glEnableVertexAttribArray(0);
+                Gl.glEnableVertexAttribArray(1);
+                Gl.glEnableVertexAttribArray(2);
             }
             case IMAGE -> {
                 Gl.glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0L);

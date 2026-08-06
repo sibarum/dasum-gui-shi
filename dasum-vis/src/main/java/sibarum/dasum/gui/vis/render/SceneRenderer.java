@@ -65,6 +65,7 @@ public final class SceneRenderer implements AutoCloseable {
 
     private final PointMaterial pointMaterial         = new PointMaterial();
     private final FlatMaterial flatMaterial           = new FlatMaterial();
+    private final LitMaterial litMaterial             = new LitMaterial();
     private final ImageMaterial imageMaterial         = new ImageMaterial();
     private final SceneTextMaterial sceneTextMaterial = new SceneTextMaterial();
     private final SdfMaterial sdfMaterial   = new SdfMaterial();
@@ -81,6 +82,7 @@ public final class SceneRenderer implements AutoCloseable {
         if (initialized) return;
         pointMaterial.init();
         flatMaterial.init();
+        litMaterial.init();
         imageMaterial.init();
         sceneTextMaterial.init();
         sdfMaterial.init();
@@ -152,7 +154,10 @@ public final class SceneRenderer implements AutoCloseable {
                         draw(slot, GL_LINES);
                     }
                     case TriangleLayer t -> {
-                        flatMaterial.bind(scratchMvp, t.opacity());
+                        // A mesh with normals (a surface) is Lambert-shaded against the camera-anchored
+                        // key light; a plain triangle layer (bars, thick lines, 2D fills) stays flat.
+                        if (t.lit()) litMaterial.bind(scratchMvp, t.opacity(), keyLight(cam));
+                        else         flatMaterial.bind(scratchMvp, t.opacity());
                         draw(slot, GL_TRIANGLES);
                     }
                     case ImageLayer img -> {
@@ -277,6 +282,7 @@ public final class SceneRenderer implements AutoCloseable {
         buffers.close();
         pointMaterial.close();
         flatMaterial.close();
+        litMaterial.close();
         imageMaterial.close();
         sceneTextMaterial.close();
         sdfMaterial.close();

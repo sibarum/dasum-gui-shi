@@ -11,12 +11,19 @@ package sibarum.dasum.gui.vis.scene;
  *                 length % 9 == 0
  * @param colors   optional per-vertex RGB (linear, 0..1), length
  *                 {@code == vertices.length}; {@code null} = default colour
+ * @param normals  optional per-vertex normal (world-space xyz, need not be
+ *                 unit — the shader normalizes), length {@code ==
+ *                 vertices.length}; {@code null} = UNLIT (flat per-vertex
+ *                 colour, the default). Present ⇒ the layer is Lambert-shaded
+ *                 by the scene's key light, its colour modulated by the shade
+ *                 (a surface mesh sets these so its 3D form reads).
  * @param blend    fixed-function blend mode for this layer
  * @param opacity  uniform layer opacity in [0, 1]
  */
 public record TriangleLayer(
     float[] vertices,
     float[] colors,
+    float[] normals,
     BlendMode blend,
     float opacity
 ) implements Layer {
@@ -29,17 +36,30 @@ public record TriangleLayer(
         if (colors != null && colors.length != vertices.length) {
             throw new IllegalArgumentException("colors length must equal vertices length (RGB per vertex) or null");
         }
+        if (normals != null && normals.length != vertices.length) {
+            throw new IllegalArgumentException("normals length must equal vertices length (xyz per vertex) or null");
+        }
         if (blend == null) throw new IllegalArgumentException("blend != null");
         if (opacity < 0f || opacity > 1f) throw new IllegalArgumentException("opacity in [0, 1]");
     }
 
-    /** Convenience: ALPHA blend, full opacity. */
+    /** Convenience: unlit, ALPHA blend, full opacity. */
     public TriangleLayer(float[] vertices, float[] colors) {
-        this(vertices, colors, BlendMode.ALPHA, 1f);
+        this(vertices, colors, null, BlendMode.ALPHA, 1f);
     }
+
+    /** Convenience: unlit, explicit blend/opacity (the pre-lighting 4-arg form). */
+    public TriangleLayer(float[] vertices, float[] colors, BlendMode blend, float opacity) {
+        this(vertices, colors, null, blend, opacity);
+    }
+
+    /** Whether this layer carries per-vertex normals (⇒ Lambert-shaded rather than flat). */
+    public boolean lit() { return normals != null; }
 
     public int triangleCount() { return vertices.length / 9; }
 
-    public TriangleLayer withBlend(BlendMode b) { return new TriangleLayer(vertices, colors, b, opacity); }
-    public TriangleLayer withOpacity(float o)   { return new TriangleLayer(vertices, colors, blend, o); }
+    public TriangleLayer withBlend(BlendMode b) { return new TriangleLayer(vertices, colors, normals, b, opacity); }
+    public TriangleLayer withOpacity(float o)   { return new TriangleLayer(vertices, colors, normals, blend, o); }
+    /** A shaded copy carrying per-vertex normals (world-space xyz, length == vertices.length). */
+    public TriangleLayer withNormals(float[] n) { return new TriangleLayer(vertices, colors, n, blend, opacity); }
 }
