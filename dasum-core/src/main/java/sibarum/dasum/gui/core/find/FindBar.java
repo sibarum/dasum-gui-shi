@@ -88,6 +88,14 @@ public final class FindBar {
     private static Component.Text target = null;
     private static List<int[]> matches = new ArrayList<>();
     private static int current = -1;
+    /**
+     * The target's background ranges as they stood when Find opened (e.g. a
+     * host syntax-highlighter's body-block tints). Match fills are layered
+     * ON TOP of these while open, and this snapshot is restored on close —
+     * the bar never owns the target's styling, it only overlays it. The
+     * foreground channel is left untouched throughout.
+     */
+    private static List<TextStyle> savedBackground = List.of();
     /** Caret offset in the target when Find opened — anchors "first match". */
     private static int searchOrigin = 0;
 
@@ -118,6 +126,9 @@ public final class FindBar {
 
         ensureQueryInput();
         target = t;
+        // Snapshot the target's existing background BEFORE we start layering
+        // match fills onto it, so we can restore it verbatim on close.
+        savedBackground = TextStyleStates.backgroundOf(target);
 
         // Seed the query from the target's current selection, IntelliJ-style.
         TextState ts = TextStates.of(target);
@@ -238,7 +249,10 @@ public final class FindBar {
     /** Publish background fills for every match except the current one. */
     private static void applyHighlights() {
         if (target == null) return;
-        List<TextStyle> bg = new ArrayList<>();
+        // Layer match fills ON TOP of the host's pre-existing background
+        // (e.g. syntax body-block tints) rather than replacing it — the
+        // snapshot comes first so match fills render over it.
+        List<TextStyle> bg = new ArrayList<>(savedBackground);
         for (int i = 0; i < matches.size(); i++) {
             if (i == current) continue; // current is shown via the selection fill
             int[] m = matches.get(i);
@@ -267,7 +281,12 @@ public final class FindBar {
 
     private static void onDismiss() {
         open = false;
-        if (target != null) TextStyleStates.clearRanges(target);
+        // Restore the target's background to exactly what it was before Find
+        // opened (dropping only our match fills), and leave the foreground
+        // channel untouched — clearing it would wipe the host's syntax
+        // colors, which don't get republished until the next content edit.
+        if (target != null) TextStyleStates.setBackground(target, savedBackground);
+        savedBackground = List.of();
         for (Component cell : currentCells) Handlers.clearAll(cell);
         currentCells.clear();
         matches = new ArrayList<>();

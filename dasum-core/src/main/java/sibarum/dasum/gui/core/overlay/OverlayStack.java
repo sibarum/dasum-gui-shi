@@ -135,6 +135,22 @@ public final class OverlayStack {
         return stack.isEmpty() ? mainRoot : stack.get(stack.size() - 1).overlay().component();
     }
 
+    /**
+     * Input-dispatch root for a pointer at {@code (x, y)}, honoring the
+     * {@code modal} flag. A modal overlay captures all input (topmost
+     * overlay tree). A non-modal overlay (e.g. the Find bar) captures only
+     * when the pointer is inside it — a click/scroll outside it falls
+     * through to {@code mainRoot} so the UI beneath stays interactive while
+     * the overlay floats above. With an empty stack this is just
+     * {@code mainRoot}.
+     */
+    public static Component inputRootAt(Component mainRoot, LayoutResult lr, float x, float y) {
+        if (stack.isEmpty()) return mainRoot;
+        Component top = stack.get(stack.size() - 1).overlay().component();
+        if (anyModal()) return top;
+        return isOutsideTopmost(lr, x, y) ? mainRoot : top;
+    }
+
     // ---------- layout ----------
 
     /**
