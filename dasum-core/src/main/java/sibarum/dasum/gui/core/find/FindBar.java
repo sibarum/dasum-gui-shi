@@ -184,6 +184,20 @@ public final class FindBar {
     }
 
     /**
+     * Re-focus the query field and select all its text, so the next typed
+     * character or paste replaces the query wholesale. Bind to the same
+     * shortcut that opens the bar (e.g. Ctrl+F) so pressing it again while
+     * the bar is already open — focus having moved to the target — snaps
+     * back to the query with its contents highlighted, IntelliJ-style.
+     * No-op unless the bar is open.
+     */
+    public static void focusAndSelectQuery() {
+        if (!open || queryInput == null) return;
+        FocusState.set(queryInput);
+        TextInputController.selectRange(queryInput, 0, TextStates.contentOf(queryInput).length());
+    }
+
+    /**
      * Intercept navigation keys while the bar is open. Enter / Down → next
      * match, Shift+Enter / Up → previous, wrapping. Returns {@code true} when
      * consumed; call this before the text-input key handler so Enter doesn't
