@@ -25,8 +25,11 @@ import sibarum.dasum.gui.core.text.Icon;
 import sibarum.dasum.gui.natives.glfw.Glfw;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Global in-editor "Find" bar, modelled on IntelliJ's editor search. Open
@@ -96,6 +99,23 @@ public final class FindBar {
      * foreground channel is left untouched throughout.
      */
     private static List<TextStyle> savedBackground = List.of();
+    /**
+     * Set true when the current close was triggered by a content edit of the
+     * target (see {@link #attachEditGuard}). On an edit-close we must NOT
+     * restore {@link #savedBackground} — its offsets are stale against the
+     * edited text, and the host will have republished fresh styling on the
+     * same edit; restoring would regress that. Reset each close.
+     */
+    private static boolean closingDueToEdit = false;
+
+    /**
+     * Targets we've already wired an edit-close guard onto, by identity.
+     * {@link TextStates#onContentChange} has no unsubscribe, so we install
+     * the guard at most once per Text instance and gate its body on the live
+     * find state instead.
+     */
+    private static final Set<Component.Text> editGuarded =
+        Collections.newSetFromMap(new IdentityHashMap<>());
     /** Caret offset in the target when Find opened — anchors "first match". */
     private static int searchOrigin = 0;
 
@@ -129,6 +149,7 @@ public final class FindBar {
         // Snapshot the target's existing background BEFORE we start layering
         // match fills onto it, so we can restore it verbatim on close.
         savedBackground = TextStyleStates.backgroundOf(target);
+        attachEditGuard(target);
 
         // Seed the query from the target's current selection, IntelliJ-style.
         TextState ts = TextStates.of(target);
@@ -222,6 +243,25 @@ public final class FindBar {
         }
     }
 
+    /**
+     * Close the bar on the first genuine content edit of {@code t}. Find
+     * never edits the target itself — it only drives selection and background
+     * fills — so any {@code setContent} on the target is a user edit, at
+     * which point the match offsets are stale and the honest move is to
+     * close. Select and copy (which don't change content) stay available
+     * while the bar is open. Installed at most once per target instance;
+     * the body no-ops unless the bar is open on that exact target.
+     */
+    private static void attachEditGuard(Component.Text t) {
+        if (!editGuarded.add(t)) return;
+        TextStates.onContentChange(t, content -> {
+            if (open && t == target) {
+                closingDueToEdit = true;
+                close();
+            }
+        });
+    }
+
     /** Recompute matches for the current query, re-highlight, reveal current. */
     private static void recompute() {
         matches = findMatches(TextStates.contentOf(target), TextStates.contentOf(queryInput));
@@ -285,7 +325,13 @@ public final class FindBar {
         // opened (dropping only our match fills), and leave the foreground
         // channel untouched — clearing it would wipe the host's syntax
         // colors, which don't get republished until the next content edit.
-        if (target != null) TextStyleStates.setBackground(target, savedBackground);
+        // Skip the restore on an edit-close: the snapshot's offsets are stale
+        // against the edited text, and the host republishes fresh styling on
+        // that same edit, which must win.
+        if (target != null && !closingDueToEdit) {
+            TextStyleStates.setBackground(target, savedBackground);
+        }
+        closingDueToEdit = false;
         savedBackground = List.of();
         for (Component cell : currentCells) Handlers.clearAll(cell);
         currentCells.clear();
