@@ -10,6 +10,7 @@ import sibarum.dasum.gui.core.text.FontGroup;
 import sibarum.dasum.gui.core.text.FontGroups;
 import sibarum.dasum.gui.core.text.TextGeometry;
 import sibarum.dasum.gui.core.text.TextMetrics;
+import sibarum.dasum.gui.core.text.TextWrapStates;
 import sibarum.dasum.gui.core.text.WordBoundary;
 import sibarum.dasum.gui.natives.glfw.Glfw;
 
@@ -198,6 +199,18 @@ public final class TextInputController {
         if (lr == null) return false;
         PixelRect rect = lr.rectOf(text);
         if (rect == null) return false;
+
+        // Alt+Z toggles word wrap on the focused editable Text — the common
+        // editor convention. Alt isn't in this method's (pre-existing)
+        // signature, so read it from InputState, matching how onCharInput
+        // consults ctrlHeld(). The re-wrap is seamless: caret/selection are
+        // character offsets, so they survive untouched; we just keep the
+        // caret in view since its visual line may have moved.
+        if (key == 'Z' && InputState.altHeld() && !ctrlHeld && text.editable()) {
+            TextWrapStates.toggleWordWrap(text);
+            scrollCaretIntoView(text);
+            return true;
+        }
 
         TextState ts = TextStates.of(text);
         ts.hoverCaretIndex = -1;

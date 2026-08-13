@@ -16,7 +16,12 @@ public final class TextMetrics {
     public static List<LineBreaker.LineSpan> lines(Component.Text text, String content) {
         FontGroup fg = FontGroups.getOrDefault(text.fontGroup());
         float fontPx = text.fontSize().toPixels();
-        Float wrapPx = text.wrapWidth() != null ? text.wrapWidth().toPixels() : null;
+        // Single source of truth for the wrap width: honours the runtime
+        // word-wrap toggle (wrap to the field's own laid-out width) and
+        // falls back to the record's fixed wrapWidth. Resolving it here — the
+        // one place every geometry consumer routes through — is what keeps
+        // glyphs, style spans, caret, and hit-testing aligned across re-wrap.
+        Float wrapPx = TextWrapStates.effectiveWrapPx(text);
         return LineBreaker.breakLines(content, fg, fontPx, wrapPx);
     }
 

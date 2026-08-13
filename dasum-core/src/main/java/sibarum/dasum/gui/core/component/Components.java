@@ -19,6 +19,7 @@ import sibarum.dasum.gui.core.input.ScrollFocusFrame;
 import sibarum.dasum.gui.core.input.ScrollStates;
 import sibarum.dasum.gui.core.input.TextStates;
 import sibarum.dasum.gui.core.input.TextStyleStates;
+import sibarum.dasum.gui.core.text.TextWrapStates;
 import sibarum.dasum.gui.core.nav.NavId;
 import sibarum.dasum.gui.core.overlay.Tooltips;
 
@@ -135,6 +136,7 @@ public final class Components {
         ContextMenuStates.migrate(from, to);
         TextStates.migrate(from, to);
         TextStyleStates.migrate(from, to);
+        TextWrapStates.migrate(from, to);
         ScrollStates.migrate(from, to);
         ScrollFocusFrame.migrate(from, to);
         FocusState.migrate(from, to);
@@ -231,6 +233,7 @@ public final class Components {
         ContextMenuStates.clear(c);
         TextStates.clear(c);
         TextStyleStates.clear(c);
+        TextWrapStates.clear(c);
         ScrollStates.clear(c);
         ScrollFocusFrame.clear(c);
         FocusState.clear(c);

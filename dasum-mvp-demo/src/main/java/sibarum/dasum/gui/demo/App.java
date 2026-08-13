@@ -9,6 +9,7 @@ import sibarum.dasum.gui.core.component.AlignItems;
 import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.component.Components;
 import sibarum.dasum.gui.core.ui.Ui;
+import sibarum.dasum.gui.core.text.TextWrapStates;
 import sibarum.dasum.gui.core.component.Direction;
 import sibarum.dasum.gui.core.component.DynamicChildren;
 import sibarum.dasum.gui.core.component.JustifyContent;
@@ -2030,12 +2031,40 @@ public final class App {
             TextStyleStates.setForeground(liveStyled, fg);
         }
 
+        // Runtime word-wrap demo - a fixed-width editable field whose soft-wrap
+        // is toggled live by a checkbox (or Alt+Z while focused). Wrap ON reflows
+        // to the field's own content width and grows downward; wrap OFF keeps
+        // each logical line on one row (clipped to the box here). The toggle is
+        // seamless: caret/selection are character offsets, untouched by re-wrap.
+        Component.Text wrapDemo = (Component.Text) Ui.text(
+            "Word wrap reflows long lines to the editor's own width. "
+            + "Toggle it with the checkbox above or press Alt+Z while this field is focused. "
+            + "Editing, caret placement, and selection all stay put across the re-wrap.")
+            .size(Em.of(1.05f))
+            .width(Em.of(24f))
+            .padding(Em.of(0.6f))
+            .editable()
+            .clip()
+            .wordWrap()   // start wrapped
+            .build();
+        Property<Boolean> wrapOn = new Property<>(true);
+        wrapOn.subscribe(on -> TextWrapStates.setWordWrap(wrapDemo, on));
+        Component wrapControls = inlineRow(List.of(
+            Themed.checkbox(Em.of(1.2f), wrapOn, Variant.PRIMARY),
+            Themed.label("Word wrap (Alt+Z)", Em.of(0.9f), Variant.DEFAULT)));
+        Component wrapBlock = new Component.Flex(
+            null, Em.AUTO, Em.ZERO, TRANSPARENT,
+            Direction.COLUMN, JustifyContent.START, AlignItems.START, GAP_SM,
+            List.of(wrapControls, wrapDemo), false, 0);
+
         return new Component.Flex(
             null, Em.AUTO, Em.ZERO, TRANSPARENT,
             Direction.COLUMN, JustifyContent.START, AlignItems.STRETCH, GAP_MD,
             List.of(
                 section("Editable paragraph",
                     "Click to place the caret / drag to select / type to edit", paragraphText),
+                section("Word wrap",
+                    "Toggle soft-wrap at runtime - reflows seamlessly", wrapBlock),
                 section("Static styling",
                     "Foreground + background ranges set once", staticStyled),
                 section("Glyph effects",

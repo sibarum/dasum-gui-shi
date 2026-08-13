@@ -10,6 +10,7 @@ import sibarum.dasum.gui.core.input.ScrollPosition;
 import sibarum.dasum.gui.core.input.ScrollStates;
 import sibarum.dasum.gui.core.input.TextStates;
 import sibarum.dasum.gui.core.text.TextMetrics;
+import sibarum.dasum.gui.core.text.TextWrapStates;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -212,7 +213,17 @@ public final class Layout {
             case Component.Box box      -> layoutBoxChildren(box, rect, rects);
             case Component.Flex flex    -> layoutFlex(flex, rect, rects);
             case Component.Scroll s     -> layoutScroll(s, rect, rects);
-            case Component.Text t       -> { /* leaf — no children to lay out */ }
+            case Component.Text t       -> {
+                // Record the content-box width this layout gave the field so
+                // a runtime word-wrap toggle can wrap to the editor's own
+                // width. Single write point; every wrap consumer reads it back
+                // via TextWrapStates.effectiveWrapPx, so they can't disagree.
+                String content = TextStates.contentOf(t);
+                float padPx    = t.padding().toPixels();
+                float gutterPx = TextMetrics.gutterWidthPixels(t, content);
+                float contentBoxPx = rect.width() - 2f * padPx - gutterPx;
+                TextWrapStates.recordContentWidth(t, contentBoxPx);
+            }
             case Component.Checkbox cb  -> { /* leaf */ }
             case Component.Radio<?> r   -> { /* leaf */ }
             case Component.Slider sl    -> { /* leaf */ }

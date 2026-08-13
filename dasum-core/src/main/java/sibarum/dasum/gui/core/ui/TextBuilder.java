@@ -4,6 +4,7 @@ import sibarum.dasum.gui.core.component.Component;
 import sibarum.dasum.gui.core.em.Em;
 import sibarum.dasum.gui.core.render.Color;
 import sibarum.dasum.gui.core.text.FontGroups;
+import sibarum.dasum.gui.core.text.TextWrapStates;
 import sibarum.dasum.gui.core.theme.Theme;
 import sibarum.dasum.gui.core.theme.Variant;
 
@@ -35,6 +36,7 @@ public final class TextBuilder extends BaseBuilder<TextBuilder> {
     private boolean editable = false;
     private boolean acceptsTab = false;
     private boolean clip = false;
+    private boolean wordWrap = false;  // runtime soft-wrap toggle, initial state
 
     /** Default width for an empty editable field with no explicit width — so it doesn't collapse to
      *  a zero-width (invisible, unclickable) rect. Callers override with {@link #width(Em)}. */
@@ -72,6 +74,15 @@ public final class TextBuilder extends BaseBuilder<TextBuilder> {
     public TextBuilder padding(Em p)      { this.padding = p; return this; }
     /** Word-wrap at the given max line width. */
     public TextBuilder wrap(Em maxWidth)  { this.wrapWidth = maxWidth; return this; }
+    /**
+     * Start with runtime word-wrap on — soft-wraps to the field's own
+     * laid-out content width (re-wrapping on resize), independent of any
+     * fixed {@link #wrap(Em)}. Flip at runtime with
+     * {@link TextWrapStates#setWordWrap} / {@link TextWrapStates#toggleWordWrap}
+     * (or Alt+Z on the focused editable field).
+     */
+    public TextBuilder wordWrap()            { this.wordWrap = true; return this; }
+    public TextBuilder wordWrap(boolean on)  { this.wordWrap = on; return this; }
     /** Clip glyphs to the text's box (so overflowing content doesn't bleed past a fixed/grown width). */
     public TextBuilder clip()             { this.clip = true; return this; }
     public TextBuilder clip(boolean c)    { this.clip = c; return this; }
@@ -99,6 +110,9 @@ public final class TextBuilder extends BaseBuilder<TextBuilder> {
             resolvedWidth, height, padding,
             wrapWidth, clip, false, false,
             isInteractive, isSelectable, editable, acceptsTab, grow);
+        // Runtime word-wrap is sidecar state keyed by the built instance —
+        // seed it here so wordWrap() takes effect from the first frame.
+        if (wordWrap) TextWrapStates.setWordWrap(text, true);
         return tagged(text);
     }
 }
