@@ -73,6 +73,44 @@ public final class PlotView {
     }
 
     /**
+     * Republish a new frame + series at the CURRENT camera, WITHOUT re-framing (unlike
+     * {@link #showLinePlot}, which calls {@code frameTo} and snaps the camera back to fit the data).
+     * This is the interactive-explore seam: after the user pans/zooms the ortho camera, a wrapper
+     * resamples the function over the new visible world rect and pushes the crisp geometry in place —
+     * the camera stays exactly where the user left it, so there is no jump. Lock-free like the rest;
+     * safe to call from a worker thread. No-op if the camera is unset.
+     */
+    public void updateSeries(PlotFrame frame, List<Series> series, PlotStyle style) {
+        List<Series> seriesCopy = List.copyOf(series);
+        builder = zoom -> LinePlot.build(frame, seriesCopy, retickByPixels(style));
+        CameraSpec cam = SceneStates.cameraOf(view);
+        if (cam != null) SceneStates.publish(view, new SceneSnapshot(builder.apply(cam.orthoScale())));
+    }
+
+    /**
+     * The camera's visible world rectangle {@code [xmin, xmax, ymin, ymax]}, or {@code null} when the
+     * camera or viewport pixels are not yet known. Ortho only. This is the range the user has panned/
+     * zoomed to — the single source of truth an interactive-explore wrapper resamples the function
+     * over. Half-height is {@code orthoScale}; half-width is the pinned {@code orthoScaleX} in fill
+     * mode (non-uniform), else derived from the viewport aspect — matching {@link #displayTile} and
+     * how {@code frameTo} sets the camera.
+     */
+    public float[] visibleWorldRect() {
+        CameraSpec cam = SceneStates.cameraOf(view);
+        SceneStates.ViewportPx px = SceneStates.viewportPxOf(view);
+        if (cam == null || cam.mode() != CameraMode.ORTHOGRAPHIC || px == null
+                || px.width() <= 0 || px.height() <= 0 || !(cam.orthoScale() > 0f)) {
+            return null;
+        }
+        float halfH = cam.orthoScale();
+        float halfW = cam.orthoScaleX() > 0f
+                ? cam.orthoScaleX()
+                : cam.orthoScale() * ((float) px.width() / px.height());
+        float cx = cam.target().x(), cy = cam.target().y();
+        return new float[]{cx - halfW, cx + halfW, cy - halfH, cy + halfH};
+    }
+
+    /**
      * Per-axis tick density from the live viewport pixels: aim for roughly one label every
      * {@code PX_PER_TICK_*} pixels on EACH axis independently, so a wide plot gets more x-ticks and a
      * tall one more y-ticks, and the density stays constant as the window resizes (each axis
