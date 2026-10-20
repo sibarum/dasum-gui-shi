@@ -31,3 +31,4 @@ target/
 ### NFDe ###
 nativefiledialog-extended/
 nativefiledialog-extended/build
+.claude/
